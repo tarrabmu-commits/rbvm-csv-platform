@@ -1,0 +1,876 @@
+openapi: 3.1.1
+info:
+  title: RBVM CSV Import API
+  version: 0.5.0
+  description: >-
+    Synchronous upload, validation, preview, and canonical-domain materialization
+    API for the WAZUH_CSV_V1 positive-observation export, including explicit
+    case decisions, an append-only workflow audit trail, and optional health
+    visibility for a synchronous PostgreSQL canonical projection.
+servers:
+  - url: http://127.0.0.1:8080/api/v1
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Check service and recovery state
+      responses:
+        '200':
+          description: Current service health
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+  /catalog/summary:
+    get:
+      operationId: getCatalogSummary
+      summary: Get canonical domain counts and closure invariants
+      responses:
+        '200':
+          description: Current derived catalog summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogSummary'
+  /cases:
+    get:
+      operationId: listCases
+      summary: Search cases with revision-bound cursor pagination
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          description: Opaque cursor returned by the preceding page
+          schema:
+            type: string
+        - name: severity
+          in: query
+          description: Comma-separated current severities
+          schema:
+            type: string
+            examples: [CRITICAL,HIGH]
+        - name: status
+          in: query
+          description: Comma-separated workflow statuses
+          schema:
+            type: string
+            examples: [OPEN,ACCEPTED_RISK]
+        - name: cve
+          in: query
+          description: Case-insensitive CVE substring
+          schema:
+            type: string
+        - name: asset
+          in: query
+          description: Case-insensitive asset-name substring
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Stable page for the current catalog revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CasePage'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '409':
+          description: Cursor belongs to a superseded catalog revision
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /cases/{caseId}:
+    get:
+      operationId: getCase
+      summary: Get one case, its exposures, and its workflow audit trail
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      responses:
+        '200':
+          description: Current case detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaseDetail'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /cases/{caseId}/actions:
+    post:
+      operationId: actOnCase
+      summary: Append an idempotent, audited case decision or comment
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [action, reason]
+              additionalProperties: false
+              properties:
+                action:
+                  type: string
+                  enum: [ACCEPT_RISK, MARK_FALSE_POSITIVE, CLOSE_MANUAL, REOPEN, COMMENT]
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+                expiresAt:
+                  description: Required only by ACCEPT_RISK and must be in the future
+                  type: string
+                  format: date-time
+                evidenceReference:
+                  description: Required by CLOSE_MANUAL
+                  type: string
+                  minLength: 1
+                  maxLength: 1000
+      responses:
+        '200':
+          description: Decision committed, or the identical idempotent request replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaseActionResult'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '413':
+          $ref: '#/components/responses/Problem'
+        '415':
+          $ref: '#/components/responses/Problem'
+  /csv-imports:
+    post:
+      operationId: createCsvImport
+      summary: Stream, validate, and preview a WAZUH_CSV_V1 file
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/SourceProfileId'
+      requestBody:
+        required: true
+        content:
+          text/csv:
+            schema:
+              type: string
+              format: binary
+          application/csv:
+            schema:
+              type: string
+              format: binary
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '201':
+          description: CSV validated and preview resource created
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CsvImportRun'
+        '200':
+          description: Existing import replayed by idempotency key or file SHA-256
+          headers:
+            Idempotency-Replayed:
+              schema:
+                const: 'true'
+            RBVM-Replay-Reason:
+              schema:
+                type: string
+                enum: [IDEMPOTENCY_KEY, FILE_SHA256]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CsvImportRun'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '413':
+          $ref: '#/components/responses/Problem'
+        '415':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+  /csv-imports/{importId}:
+    get:
+      operationId: getCsvImport
+      summary: Get import state, analysis ledger, and preview
+      parameters:
+        - $ref: '#/components/parameters/ImportId'
+      responses:
+        '200':
+          description: Current import state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CsvImportRun'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /csv-imports/{importId}/confirm:
+    post:
+      operationId: confirmCsvImport
+      summary: Materialize validated observations and commit their raw evidence
+      parameters:
+        - $ref: '#/components/parameters/ImportId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Domain materialized or an already completed result replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CsvImportRun'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+components:
+  parameters:
+    ImportId:
+      name: importId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    CaseId:
+      name: caseId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^[a-f0-9]{64}$'
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+    SourceProfileId:
+      name: X-Source-Profile-Id
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+  schemas:
+    Health:
+      type: object
+      required:
+        - status
+        - contractId
+        - catalogBackend
+        - canonicalProjection
+        - storedImports
+        - recoveryWarningCount
+        - maximumUploadBytes
+        - materializedImports
+        - observations
+        - cases
+      properties:
+        status:
+          type: string
+          enum: [UP, DEGRADED]
+        contractId:
+          const: WAZUH_CSV_V1
+        catalogBackend:
+          const: LOCAL_MEMORY_REBUILD
+        canonicalProjection:
+          $ref: '#/components/schemas/CanonicalProjectionHealth'
+        storedImports:
+          type: integer
+          minimum: 0
+        recoveryWarningCount:
+          type: integer
+          minimum: 0
+        maximumUploadBytes:
+          type: integer
+          format: int64
+          minimum: 1
+        materializedImports:
+          type: integer
+          minimum: 0
+        observations:
+          type: integer
+          minimum: 0
+        cases:
+          type: integer
+          minimum: 0
+    CanonicalProjectionHealth:
+      type: object
+      required: [backend, status]
+      properties:
+        backend:
+          type: string
+          enum: [DISABLED, POSTGRESQL]
+        status:
+          type: string
+          enum: [NOT_CONFIGURED, UP, DEGRADED, DOWN]
+        schemaVersion:
+          type: integer
+          minimum: 1
+        materializedImports:
+          type: [integer, 'null']
+          format: int64
+          minimum: 0
+        reconciliationIssues:
+          type: [integer, 'null']
+          format: int64
+          minimum: 0
+        lastSynchronizedAt:
+          type: [string, 'null']
+          format: date-time
+        lastFailure:
+          type: [string, 'null']
+    CsvImportRun:
+      type: object
+      required:
+        - importId
+        - tenantId
+        - sourceProfileId
+        - contractId
+        - semantics
+        - commitScope
+        - status
+        - createdAt
+        - fileSha256
+        - analysis
+        - rawEvidence
+      properties:
+        importId:
+          type: string
+          format: uuid
+        tenantId:
+          const: local
+        sourceProfileId:
+          type: string
+        contractId:
+          const: WAZUH_CSV_V1
+        semantics:
+          const: POSITIVE_OBSERVATION_EXPORT
+        commitScope:
+          const: CANONICAL_DOMAIN_AND_RAW_EVIDENCE
+        status:
+          $ref: '#/components/schemas/CsvImportStatus'
+        createdAt:
+          type: string
+          format: date-time
+        fileSha256:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        terminalReason:
+          type: [string, 'null']
+        analysis:
+          $ref: '#/components/schemas/AnalysisReport'
+        materialization:
+          oneOf:
+            - $ref: '#/components/schemas/DomainMaterialization'
+            - type: 'null'
+        rawEvidence:
+          type: object
+          required: [stored, relativePath]
+          properties:
+            stored:
+              type: boolean
+            relativePath:
+              type: string
+    CsvImportStatus:
+      type: string
+      enum:
+        - UPLOADED
+        - VALIDATING
+        - PREVIEW_READY
+        - IMPORTING
+        - RECONCILING
+        - COMPLETED
+        - PARTIAL
+        - REJECTED
+        - FAILED
+    AnalysisReport:
+      type: object
+      required:
+        - contractId
+        - semantics
+        - file
+        - schema
+        - ledger
+        - identity
+        - severityDistribution
+        - time
+        - quality
+        - preview
+      properties:
+        contractId:
+          const: WAZUH_CSV_V1
+        semantics:
+          const: POSITIVE_OBSERVATION_EXPORT
+        file:
+          type: object
+          required: [sizeBytes, sha256]
+          properties:
+            sizeBytes:
+              type: integer
+              format: int64
+            sha256:
+              type: string
+        schema:
+          type: object
+          additionalProperties: true
+        ledger:
+          $ref: '#/components/schemas/ImportLedger'
+        identity:
+          $ref: '#/components/schemas/IdentityLedger'
+        severityDistribution:
+          type: object
+          required: [CRITICAL, HIGH, MEDIUM, LOW, UNKNOWN]
+          additionalProperties:
+            type: integer
+            format: int64
+            minimum: 0
+        time:
+          type: object
+          additionalProperties: true
+        quality:
+          type: object
+          additionalProperties: true
+        preview:
+          type: array
+          maxItems: 20
+          items:
+            type: object
+            additionalProperties: true
+    ImportLedger:
+      type: object
+      required: [logicalRows, acceptedRows, deduplicatedRows, quarantinedRows]
+      properties:
+        logicalRows:
+          type: integer
+          format: int64
+          minimum: 0
+        acceptedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        deduplicatedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        quarantinedRows:
+          type: integer
+          format: int64
+          minimum: 0
+    IdentityLedger:
+      type: object
+      additionalProperties:
+        type: integer
+        format: int64
+        minimum: 0
+    DomainMaterialization:
+      type: object
+      required:
+        - importId
+        - replayed
+        - acceptedObservations
+        - insertedObservations
+        - duplicateObservations
+        - newAssets
+        - newVulnerabilities
+        - newComponents
+        - newExposures
+        - updatedExposures
+        - newCases
+        - updatedCases
+        - materializedAt
+      properties:
+        importId:
+          type: string
+          format: uuid
+        replayed:
+          type: boolean
+        acceptedObservations:
+          type: integer
+          format: int64
+        insertedObservations:
+          type: integer
+          format: int64
+        duplicateObservations:
+          type: integer
+          format: int64
+        newAssets:
+          type: integer
+          format: int64
+        newVulnerabilities:
+          type: integer
+          format: int64
+        newComponents:
+          type: integer
+          format: int64
+        newExposures:
+          type: integer
+          format: int64
+        updatedExposures:
+          type: integer
+          format: int64
+        newCases:
+          type: integer
+          format: int64
+        updatedCases:
+          type: integer
+          format: int64
+        materializedAt:
+          type: string
+          format: date-time
+    CatalogSummary:
+      type: object
+      required:
+        - materializedImports
+        - observations
+        - importObservationLinks
+        - assets
+        - vulnerabilities
+        - components
+        - exposures
+        - cases
+        - openCases
+        - autoClosedCases
+        - exposuresWithSeverityChanges
+        - exposuresWithTimestampConflicts
+        - currentCaseSeverityDistribution
+        - caseStatusDistribution
+        - closurePolicy
+      properties:
+        materializedImports:
+          type: integer
+          format: int64
+        observations:
+          type: integer
+          format: int64
+        importObservationLinks:
+          type: integer
+          format: int64
+        assets:
+          type: integer
+          format: int64
+        vulnerabilities:
+          type: integer
+          format: int64
+        components:
+          type: integer
+          format: int64
+        exposures:
+          type: integer
+          format: int64
+        cases:
+          type: integer
+          format: int64
+        openCases:
+          type: integer
+          format: int64
+        autoClosedCases:
+          type: integer
+          format: int64
+          const: 0
+        exposuresWithSeverityChanges:
+          type: integer
+          format: int64
+        exposuresWithTimestampConflicts:
+          type: integer
+          format: int64
+        currentCaseSeverityDistribution:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int64
+        caseStatusDistribution:
+          type: object
+          required: [OPEN, ACCEPTED_RISK, FALSE_POSITIVE, CLOSED_MANUAL]
+          properties:
+            OPEN:
+              type: integer
+              format: int64
+              minimum: 0
+            ACCEPTED_RISK:
+              type: integer
+              format: int64
+              minimum: 0
+            FALSE_POSITIVE:
+              type: integer
+              format: int64
+              minimum: 0
+            CLOSED_MANUAL:
+              type: integer
+              format: int64
+              minimum: 0
+        closurePolicy:
+          const: POSITIVE_ONLY_NO_AUTO_CLOSE
+    CasePage:
+      type: object
+      required: [catalogRevision, summary, cases, nextCursor]
+      properties:
+        catalogRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        summary:
+          $ref: '#/components/schemas/CatalogSummary'
+        cases:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/CaseView'
+        nextCursor:
+          type: [string, 'null']
+    CaseView:
+      type: object
+      required:
+        - caseId
+        - assetId
+        - assetName
+        - osName
+        - sourceProfileId
+        - cveId
+        - status
+        - currentSeverity
+        - firstObservedAt
+        - lastObservedAt
+        - exposureCount
+        - workflowVersion
+        - riskAcceptedUntil
+        - riskAcceptanceExpired
+        - decisionReason
+        - decisionEvidence
+        - lastWorkflowAt
+        - closurePolicy
+      properties:
+        caseId:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        assetId:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        assetName:
+          type: string
+        osName:
+          type: string
+        sourceProfileId:
+          type: string
+        cveId:
+          type: string
+        status:
+          type: string
+          enum: [OPEN, ACCEPTED_RISK, FALSE_POSITIVE, CLOSED_MANUAL]
+        currentSeverity:
+          type: string
+          enum: [CRITICAL, HIGH, MEDIUM, LOW, UNKNOWN]
+        firstObservedAt:
+          type: string
+          format: date-time
+        lastObservedAt:
+          type: string
+          format: date-time
+        exposureCount:
+          type: integer
+          minimum: 1
+        workflowVersion:
+          type: integer
+          format: int64
+          minimum: 0
+        riskAcceptedUntil:
+          type: [string, 'null']
+          format: date-time
+        riskAcceptanceExpired:
+          type: boolean
+          description: Informational flag; expiry never silently changes workflow state
+        decisionReason:
+          type: [string, 'null']
+        decisionEvidence:
+          type: [string, 'null']
+        lastWorkflowAt:
+          type: [string, 'null']
+          format: date-time
+        closurePolicy:
+          const: POSITIVE_ONLY_NO_AUTO_CLOSE
+    CaseDetail:
+      allOf:
+        - $ref: '#/components/schemas/CaseView'
+        - type: object
+          required: [description, exposures, auditEvents]
+          properties:
+            description:
+              type: string
+            exposures:
+              type: array
+              items:
+                $ref: '#/components/schemas/ExposureView'
+            auditEvents:
+              type: array
+              items:
+                $ref: '#/components/schemas/CaseAuditEvent'
+    ExposureView:
+      type: object
+      required:
+        - exposureId
+        - assetId
+        - componentId
+        - cveId
+        - product
+        - versionStatus
+        - status
+        - currentSeverity
+        - currentSeverityObservedAt
+        - firstObservedAt
+        - lastObservedAt
+        - observationCount
+        - severityChanged
+        - timestampSeverityConflict
+        - closurePolicy
+      properties:
+        exposureId:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        assetId:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        componentId:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        cveId:
+          type: string
+        product:
+          type: string
+        versionStatus:
+          const: UNKNOWN_FROM_SOURCE
+        status:
+          const: OPEN
+        currentSeverity:
+          type: string
+          enum: [CRITICAL, HIGH, MEDIUM, LOW, UNKNOWN]
+        currentSeverityObservedAt:
+          type: string
+          format: date-time
+        firstObservedAt:
+          type: string
+          format: date-time
+        lastObservedAt:
+          type: string
+          format: date-time
+        observationCount:
+          type: integer
+          format: int64
+          minimum: 1
+        severityChanged:
+          type: boolean
+        timestampSeverityConflict:
+          type: boolean
+        closurePolicy:
+          const: POSITIVE_ONLY_NO_AUTO_CLOSE
+    CaseAuditEvent:
+      type: object
+      required:
+        - sequence
+        - eventId
+        - caseId
+        - caseVersion
+        - action
+        - fromStatus
+        - toStatus
+        - reason
+        - expiresAt
+        - evidenceReference
+        - actorId
+        - actorAssurance
+        - occurredAt
+      properties:
+        sequence:
+          type: integer
+          format: int64
+          minimum: 1
+        eventId:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        caseId:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        caseVersion:
+          type: integer
+          format: int64
+          minimum: 1
+        action:
+          type: string
+          enum: [ACCEPT_RISK, MARK_FALSE_POSITIVE, CLOSE_MANUAL, REOPEN, COMMENT]
+        fromStatus:
+          type: string
+          enum: [OPEN, ACCEPTED_RISK, FALSE_POSITIVE, CLOSED_MANUAL]
+        toStatus:
+          type: string
+          enum: [OPEN, ACCEPTED_RISK, FALSE_POSITIVE, CLOSED_MANUAL]
+        reason:
+          type: string
+        expiresAt:
+          type: [string, 'null']
+          format: date-time
+        evidenceReference:
+          type: [string, 'null']
+        actorId:
+          type: string
+        actorAssurance:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+    CaseActionResult:
+      type: object
+      required: [replayed, case, auditEvent]
+      properties:
+        replayed:
+          type: boolean
+        case:
+          $ref: '#/components/schemas/CaseDetail'
+        auditEvent:
+          $ref: '#/components/schemas/CaseAuditEvent'
+    Problem:
+      type: object
+      required: [type, title, status, detail, correlationId]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+        correlationId:
+          type: string
+          format: uuid
+  responses:
+    Problem:
+      description: Request could not be completed
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
