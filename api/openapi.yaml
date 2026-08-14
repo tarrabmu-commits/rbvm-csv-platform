@@ -1,7 +1,7 @@
 openapi: 3.1.1
 info:
   title: RBVM CSV Import API
-  version: 0.7.0
+  version: 0.8.0
   description: >-
     Synchronous upload, validation, preview, and canonical-domain materialization
     API for the WAZUH_CSV_V1 positive-observation export, including explicit
@@ -14,7 +14,6 @@ security:
 paths:
   /health:
     get:
-      security: []
       operationId: getHealth
       summary: Check service and recovery state
       responses:
@@ -24,6 +23,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Health'
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+        '429':
+          $ref: '#/components/responses/RateLimited'
   /live:
     get:
       security: []
@@ -54,13 +57,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Health'
+                $ref: '#/components/schemas/Probe'
         '503':
           description: A required dependency is unavailable or degraded
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Health'
+                $ref: '#/components/schemas/Probe'
   /metrics:
     get:
       operationId: getMetrics
@@ -72,6 +75,10 @@ paths:
             text/plain:
               schema:
                 type: string
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+        '429':
+          $ref: '#/components/responses/RateLimited'
   /catalog/summary:
     get:
       operationId: getCatalogSummary
@@ -83,6 +90,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CatalogSummary'
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+        '429':
+          $ref: '#/components/responses/RateLimited'
   /cases:
     get:
       operationId: listCases
@@ -131,12 +142,16 @@ paths:
                 $ref: '#/components/schemas/CasePage'
         '400':
           $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
         '409':
           description: Cursor belongs to a superseded catalog revision
           content:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+        '429':
+          $ref: '#/components/responses/RateLimited'
   /cases/{caseId}:
     get:
       operationId: getCase
@@ -152,6 +167,10 @@ paths:
                 $ref: '#/components/schemas/CaseDetail'
         '404':
           $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+        '429':
+          $ref: '#/components/responses/RateLimited'
   /cases/{caseId}/actions:
     post:
       operationId: actOnCase
@@ -193,6 +212,10 @@ paths:
                 $ref: '#/components/schemas/CaseActionResult'
         '400':
           $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+        '403':
+          $ref: '#/components/responses/InsufficientRole'
         '404':
           $ref: '#/components/responses/Problem'
         '409':
@@ -201,6 +224,8 @@ paths:
           $ref: '#/components/responses/Problem'
         '415':
           $ref: '#/components/responses/Problem'
+        '429':
+          $ref: '#/components/responses/RateLimited'
   /csv-imports:
     post:
       operationId: createCsvImport
@@ -250,6 +275,10 @@ paths:
                 $ref: '#/components/schemas/CsvImportRun'
         '400':
           $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+        '403':
+          $ref: '#/components/responses/InsufficientRole'
         '409':
           $ref: '#/components/responses/Problem'
         '413':
@@ -258,6 +287,8 @@ paths:
           $ref: '#/components/responses/Problem'
         '422':
           $ref: '#/components/responses/Problem'
+        '429':
+          $ref: '#/components/responses/RateLimited'
   /csv-imports/{importId}:
     get:
       operationId: getCsvImport
@@ -273,6 +304,10 @@ paths:
                 $ref: '#/components/schemas/CsvImportRun'
         '404':
           $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+        '429':
+          $ref: '#/components/responses/RateLimited'
   /csv-imports/{importId}/confirm:
     post:
       operationId: confirmCsvImport
@@ -289,17 +324,25 @@ paths:
                 $ref: '#/components/schemas/CsvImportRun'
         '400':
           $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+        '403':
+          $ref: '#/components/responses/InsufficientRole'
         '404':
           $ref: '#/components/responses/Problem'
         '409':
           $ref: '#/components/responses/Problem'
+        '429':
+          $ref: '#/components/responses/RateLimited'
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: opaque-api-key
-      description: API key supplied as an opaque bearer token; only its SHA-256 digest is stored.
+      description: >-
+        API key supplied as an opaque bearer token; only its SHA-256 digest is stored.
+        Registry entries may include an optional ISO-8601 expiration timestamp.
   parameters:
     ImportId:
       name: importId
@@ -332,6 +375,17 @@ components:
         minLength: 1
         maxLength: 128
   schemas:
+    Probe:
+      type: object
+      required: [status, checkedAt]
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum: [UP, DEGRADED]
+        checkedAt:
+          type: string
+          format: date-time
     Health:
       type: object
       required:
@@ -926,6 +980,34 @@ components:
           type: string
           format: uuid
   responses:
+    AuthenticationRequired:
+      description: Missing, expired, or invalid bearer API key
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    InsufficientRole:
+      description: Authenticated identity lacks the required role
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    RateLimited:
+      description: Per-actor or failed-authentication request limit exceeded
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 60
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
     Problem:
       description: Request could not be completed
       content:

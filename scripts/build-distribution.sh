@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
-JAR_PATH="$DIST_DIR/rbvm-csv-platform-0.7.0.jar"
+JAR_PATH="$DIST_DIR/rbvm-csv-platform-0.8.0.jar"
 
 "$ROOT_DIR/scripts/compile.sh"
 mkdir -p "$DIST_DIR"

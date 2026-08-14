@@ -35,7 +35,7 @@ def main():
         raise AssertionError(f"JavaScript references missing HTML identifiers: {missing}")
 
     direct_protected = re.findall(
-        r"fetch\((['\"`])/api/v1/(?!health|live|ready)([^'\"`]+)", text
+        r"fetch\((['\"`])/api/v1/(?!live|ready)([^'\"`]+)", text
     )
     if direct_protected:
         raise AssertionError("Protected API calls must use apiFetch so the bearer token is attached")

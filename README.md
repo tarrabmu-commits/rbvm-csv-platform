@@ -1,4 +1,4 @@
-# RBVM CSV Platform — Increment 6
+# RBVM CSV Platform — Increment 8
 
 منصة محلية قابلة للتشغيل لإدخال `WAZUH_CSV_V1` وتحويل مشاهداته الإيجابية إلى
 نموذج RBVM موحّد: Assets وVulnerabilities وComponents وObservations وExposures
@@ -34,6 +34,8 @@
 - Health يصرّح بمصدر القراءة وحالة PostgreSQL reconciliation.
 - Bearer API keys ببصمات SHA-256 فقط وRBAC لأدوار Viewer/Operator/Admin.
 - هوية Actor موثقة في Audit Trail، مع liveness/readiness وPrometheus metrics.
+- انتهاء اختياري لمفاتيح API وحدود طلبات مستقلة للـActors ومحاولات الدخول الفاشلة.
+- Readiness عامة قليلة المعلومات، بينما Health التفصيلية محمية بدور Viewer.
 - GitHub Actions للتحقق والبناء، واختبار تعافي حي بعد إعادة تشغيل PostgreSQL.
 - OpenAPI، PostgreSQL migrations، واختبارات contract/domain/HTTP.
 
@@ -57,7 +59,7 @@ http://127.0.0.1:8080
 
 ```bash
 ./scripts/build-distribution.sh
-java -jar dist/rbvm-csv-platform-0.7.0.jar
+java -jar dist/rbvm-csv-platform-0.8.0.jar
 ```
 
 ولتشغيل الاختبارات ثم تحليل ملف من CLI:
@@ -81,13 +83,26 @@ java -jar dist/rbvm-csv-platform-0.7.0.jar
 | `RBVM_DB_MIGRATE` | `true` | تطبيق migrations المفقودة عند الإقلاع |
 | `RBVM_POSTGRES_DRIVER_JAR` | — | مسار pgJDBC المستخدم بواسطة script التشغيل |
 | `RBVM_AUTH_MODE` | `DISABLED` | استخدم `API_KEY` لرفض الوصول غير الموثق |
-| `RBVM_API_KEYS_FILE` | — | ملف `digest=actor-id\|ROLE` ببصمات SHA-256، وصلاحية 600 موصى بها |
+| `RBVM_API_KEYS_FILE` | — | ملف `digest=actor-id\|ROLE` ببصمات SHA-256؛ يمنع التشغيل أي POSIX group/other permissions |
+| `RBVM_RATE_LIMIT_PER_MINUTE` | `600` | الحد الثابت لكل Actor موثّق؛ القيمة `0` تعطل الحد |
+| `RBVM_AUTH_FAILURE_LIMIT_PER_MINUTE` | `60` | حد محاولات الدخول الفاشلة لكل عنوان مصدر |
 
 أنشئ مفتاحاً من دون وضع القيمة الخام في environment أوGit:
 
 ```bash
 ./scripts/create-api-key.sh ~/.config/rbvm/api-keys.conf \
   ~/.config/rbvm/operator.token soc-operator OPERATOR
+```
+
+يمكن إضافة وقت انتهاء UTC كوسيط خامس، ثم تدوير المفتاح بإضافة البديل وإعادة
+التشغيل، توزيع البديل، وإلغاء القديم:
+
+```bash
+./scripts/create-api-key.sh ~/.config/rbvm/api-keys.conf \
+  ~/.config/rbvm/operator-next.token soc-operator OPERATOR 2026-12-31T23:59:59Z
+systemctl --user restart rbvm-csv-platform
+./scripts/revoke-api-key.sh ~/.config/rbvm/api-keys.conf ~/.config/rbvm/operator.token
+systemctl --user restart rbvm-csv-platform
 ```
 
 الأدوار متدرجة: `VIEWER` للقراءة وmetrics، و`OPERATOR` يضيف الاستيراد والقرارات،
@@ -138,8 +153,9 @@ curl -X POST http://127.0.0.1:8080/api/v1/cases/CASE_ID/actions \
 
 العقد الكامل في [`api/openapi.yaml`](api/openapi.yaml).
 
-المسارات `/api/v1/live` و`/api/v1/ready` عامة لكي تستخدمها probes، بينما
-`/api/v1/metrics` يحتاج دور `VIEWER` أوأعلى. الخدمة الافتراضية تستمع على loopback؛
+المساران `/api/v1/live` و`/api/v1/ready` عامان وقليلا المعلومات لكي تستخدمهما
+probes، بينما `/api/v1/health` و`/api/v1/metrics` يحتاجان دور `VIEWER` أوأعلى.
+الخدمة الافتراضية تستمع على loopback؛
 عند نشرها خارج الجهاز يجب وضع TLS reverse proxy موثوق أمامها وعدم إرسال Bearer token عبر HTTP.
 
 ## نتيجة CSV المرجعية
@@ -216,6 +232,7 @@ export RBVM_DB_PASSWORD='from-a-secret-manager'
 و[`docs/VALIDATION.md`](docs/VALIDATION.md) لنتائج الاختبار الكامل وحدوده.
 وسجل [`docs/INCREMENT_6_VALIDATION.md`](docs/INCREMENT_6_VALIDATION.md) لنتائج المحرك الحي.
 وسجل [`docs/INCREMENT_7_VALIDATION.md`](docs/INCREMENT_7_VALIDATION.md) للمصادقة والتشغيل الصلب والتعافي.
+وسجل [`docs/INCREMENT_8_VALIDATION.md`](docs/INCREMENT_8_VALIDATION.md) لانتهاء المفاتيح وحدود الطلبات وتقليل probe exposure.
 
 ## الحدود الحالية
 
