@@ -43,3 +43,8 @@ Case = Asset + CVE
 
 إذا وُجدت أي إشارة، يصبح وقت الرصد ومراجع HTTPS إلزاميين. استخدم
 `scripts/enrich-wazuh-v2.py` لإنشاء نسخة enriched محفوظة وقابلة لإعادة الاستيراد.
+
+تحتسب API الدليل أقدم من سبعة أيام على أنه `stale` من دون حذف القيمة أو تغيير
+الأولوية بصمت. يمكن تشغيل `scripts/scheduled-intelligence-refresh.sh` يومياً عبر
+وحدات systemd المرفقة. ينتج المشغّل snapshot وchecksum وتقرير JSON، لكنه لا يعتمد
+تصديراً قديماً تلقائياً لأن freshness الاستخبارات لا يثبت freshness حالة finding.

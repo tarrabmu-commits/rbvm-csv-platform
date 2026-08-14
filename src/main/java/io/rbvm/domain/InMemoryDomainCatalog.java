@@ -119,6 +119,7 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
         long sourceResolvedCases = projection.cases.values().stream()
                 .filter(item -> item.status == CaseStatus.SOURCE_RESOLVED)
                 .count();
+        VulnerabilityIntelligenceSummary intelligence = intelligenceSummary(clock.instant());
         return new CatalogSnapshot(
                 results.size(),
                 projection.observations.size(),
@@ -133,7 +134,42 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
                 changed,
                 conflicts,
                 Collections.unmodifiableMap(new LinkedHashMap<>(severityDistribution)),
-                Collections.unmodifiableMap(new LinkedHashMap<>(statusDistribution))
+                Collections.unmodifiableMap(new LinkedHashMap<>(statusDistribution)),
+                intelligence
+        );
+    }
+
+    private VulnerabilityIntelligenceSummary intelligenceSummary(Instant now) {
+        Map<String, Long> priorities = new LinkedHashMap<>();
+        for (VulnerabilityPriorityTier tier : VulnerabilityPriorityTier.values()) {
+            priorities.put(tier.name(), 0L);
+        }
+        long enriched = 0;
+        long stale = 0;
+        long knownExploited = 0;
+        Instant oldest = null;
+        Instant newest = null;
+        Instant staleBefore = now.minus(VulnerabilityIntelligenceSummary.FRESHNESS_WINDOW);
+        for (VulnerabilityEntry vulnerability : projection.vulnerabilities.values()) {
+            io.rbvm.csv.VulnerabilityIntelligenceEvidence value = vulnerability.intelligence;
+            String tier = value == null ? VulnerabilityPriorityTier.UNENRICHED.name()
+                    : value.priorityTier();
+            priorities.compute(tier, (ignored, count) -> count + 1);
+            if (value == null) continue;
+            enriched++;
+            if (value.observedAt().isBefore(staleBefore)) stale++;
+            if (Boolean.TRUE.equals(value.knownExploited())) knownExploited++;
+            if (oldest == null || value.observedAt().isBefore(oldest)) oldest = value.observedAt();
+            if (newest == null || value.observedAt().isAfter(newest)) newest = value.observedAt();
+        }
+        return new VulnerabilityIntelligenceSummary(
+                enriched,
+                projection.vulnerabilities.size() - enriched,
+                stale,
+                knownExploited,
+                oldest,
+                newest,
+                priorities
         );
     }
 

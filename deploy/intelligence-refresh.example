@@ -1,0 +1,7 @@
+RBVM_INTEL_INPUT=/var/lib/rbvm-platform/current-wazuh-v2.csv
+RBVM_INTEL_OUTPUT_DIR=/var/lib/rbvm-platform/intelligence
+RBVM_INTEL_CACHE_DIR=/var/cache/rbvm-platform/intelligence
+RBVM_INTEL_KEEP=14
+RBVM_INTEL_OFFLINE=false
+# NVD_API_KEY is optional. When present it is sent only in the NVD apiKey header.
+# NVD_API_KEY=from-a-secret-manager

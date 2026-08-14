@@ -3,6 +3,8 @@
 
 import argparse
 import csv
+from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -26,6 +28,8 @@ def arguments():
     parser.add_argument("output", type=Path)
     parser.add_argument("--cache-dir", type=Path, default=Path("data/intel-cache"))
     parser.add_argument("--offline", action="store_true", help="use cache only")
+    parser.add_argument("--observed-at", help="fixed ISO-8601 observation time for replay/testing")
+    parser.add_argument("--report", type=Path, help="write an atomic JSON completion report")
     return parser.parse_args()
 
 
@@ -34,7 +38,7 @@ def fetch_json(url, cache, offline=False, headers=None):
         if not cache.is_file():
             raise RuntimeError(f"offline cache is missing: {cache}")
         return json.loads(cache.read_text(encoding="utf-8"))
-    request = Request(url, headers={"User-Agent": "rbvm-csv-platform/0.11", **(headers or {})})
+    request = Request(url, headers={"User-Agent": "rbvm-csv-platform/0.12", **(headers or {})})
     with urlopen(request, timeout=60) as response:  # nosec: URLs are fixed official HTTPS endpoints
         if response.status != 200:
             raise RuntimeError(f"source returned HTTP {response.status}: {url}")
@@ -51,13 +55,19 @@ def chunks(values, size):
         yield values[index:index + size]
 
 
+def batch_cache(cache_dir, source, batch):
+    digest = hashlib.sha256(",".join(batch).encode("ascii")).hexdigest()[:24]
+    return cache_dir / f"{source}-{digest}.json"
+
+
 def nvd_intelligence(cves, cache_dir, offline):
     output = {}
     api_key = os.environ.get("NVD_API_KEY")
     headers = {"apiKey": api_key} if api_key else {}
     delay = 0.7 if api_key else 6.1
-    for number, batch in enumerate(chunks(cves, 100)):
-        cache = cache_dir / f"nvd-{number:05d}.json"
+    batches = list(chunks(cves, 100))
+    for number, batch in enumerate(batches):
+        cache = batch_cache(cache_dir, "nvd", batch)
         url = NVD + "?" + urlencode({"cveIds": ",".join(batch), "noRejected": ""})
         payload = fetch_json(url, cache, offline, headers)
         for wrapper in payload.get("vulnerabilities", []):
@@ -70,7 +80,7 @@ def nvd_intelligence(cves, cache_dir, offline):
                     "score": data.get("baseScore", ""),
                     "vector": data.get("vectorString", ""),
                 }
-        if not offline and number + 1 < (len(cves) + 99) // 100:
+        if not offline and number + 1 < len(batches):
             time.sleep(delay)
     return output
 
@@ -86,8 +96,8 @@ def preferred_metric(metrics):
 
 def epss_intelligence(cves, cache_dir, offline):
     output = {}
-    for number, batch in enumerate(chunks(cves, 100)):
-        cache = cache_dir / f"epss-{number:05d}.json"
+    for batch in chunks(cves, 100):
+        cache = batch_cache(cache_dir, "epss", batch)
         url = EPSS + "?" + urlencode({"cve": ",".join(batch)})
         payload = fetch_json(url, cache, offline)
         for item in payload.get("data", []):
@@ -113,6 +123,34 @@ def validate_headers(fieldnames):
         raise RuntimeError(f"input is not WAZUH_CSV_V2; missing headers: {missing}")
 
 
+def observation_time(value):
+    if not value:
+        return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        raise RuntimeError("--observed-at must include a timezone")
+    return parsed.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def priority(row):
+    if row["Known_Exploited"] == "true":
+        return "IMMEDIATE"
+    epss = float(row["EPSS_Probability"]) if row["EPSS_Probability"] != "" else None
+    cvss = float(row["CVSS_Base_Score"]) if row["CVSS_Base_Score"] != "" else None
+    if (epss is not None and epss >= 0.10) or (cvss is not None and cvss >= 9.0):
+        return "URGENT"
+    if (epss is not None and epss >= 0.01) or (cvss is not None and cvss >= 7.0):
+        return "HIGH"
+    return "STANDARD"
+
+
+def write_json(path, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.replace(path)
+
+
 def main():
     args = arguments()
     with args.input.open("r", encoding="utf-8-sig", newline="") as source:
@@ -124,7 +162,7 @@ def main():
     nvd = nvd_intelligence(cves, args.cache_dir, args.offline)
     epss = epss_intelligence(cves, args.cache_dir, args.offline)
     kev = kev_intelligence(args.cache_dir, args.offline)
-    observed_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    observed_at = observation_time(args.observed_at)
     sources = ",".join((NVD, EPSS, KEV))
     for row in rows:
         cve = row["CVE_ID"].strip().upper()
@@ -151,6 +189,23 @@ def main():
         writer.writeheader()
         writer.writerows(rows)
     temporary.replace(args.output)
+    priorities = {name: 0 for name in ("STANDARD", "HIGH", "URGENT", "IMMEDIATE")}
+    for row in rows:
+        priorities[priority(row)] += 1
+    if args.report:
+        write_json(args.report, {
+            "schemaVersion": 1,
+            "status": "COMPLETE",
+            "observedAt": observed_at,
+            "offline": args.offline,
+            "rows": len(rows),
+            "uniqueCves": len(cves),
+            "cvssSignals": len(nvd),
+            "epssSignals": len(epss),
+            "knownExploited": len(set(cves) & set(kev)),
+            "priorityDistribution": priorities,
+            "sources": [NVD, EPSS, KEV],
+        })
     print(f"enriched_rows={len(rows)} unique_cves={len(cves)} output={args.output}")
 
 

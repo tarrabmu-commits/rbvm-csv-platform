@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily RBVM vulnerability intelligence refresh schedule
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=30m
+Persistent=true
+Unit=rbvm-intelligence-refresh.service
+
+[Install]
+WantedBy=timers.target

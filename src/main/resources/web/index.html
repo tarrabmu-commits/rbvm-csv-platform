@@ -373,11 +373,15 @@
       if (!response.ok) throw new Error(await errorFrom(response));
       const data = await response.json();
       const summary = data.summary;
+      const intelligence = summary.vulnerabilityIntelligence;
       byId('catalogCards').replaceChildren(
         card('Assets', summary.assets),
         card('Observations', summary.observations),
         card('Exposures', summary.exposures),
-        card('Open Cases', summary.openCases)
+        card('Open Cases', summary.openCases),
+        card('Intel enriched', intelligence.enrichedVulnerabilities),
+        card('Intel stale >7d', intelligence.staleVulnerabilities),
+        card('CISA KEV', intelligence.knownExploitedVulnerabilities)
       );
       const cases = byId('cases');
       cases.replaceChildren();

@@ -1,7 +1,7 @@
 openapi: 3.1.1
 info:
   title: RBVM CSV Import API
-  version: 0.11.0
+  version: 0.12.0
   description: >-
     Synchronous upload, validation, preview, and canonical-domain materialization
     API for WAZUH_CSV_V1 positive observations and opt-in WAZUH_CSV_V2 explicit
@@ -781,8 +781,58 @@ components:
               type: integer
               format: int64
               minimum: 0
+        vulnerabilityIntelligence:
+          $ref: '#/components/schemas/VulnerabilityIntelligenceSummary'
         closurePolicy:
           const: EXPLICIT_SOURCE_EVIDENCE_ONLY_NO_ABSENCE_CLOSE
+    VulnerabilityIntelligenceSummary:
+      type: object
+      required:
+        - freshnessWindowHours
+        - enrichedVulnerabilities
+        - unenrichedVulnerabilities
+        - staleVulnerabilities
+        - knownExploitedVulnerabilities
+        - oldestObservedAt
+        - newestObservedAt
+        - priorityDistribution
+      properties:
+        freshnessWindowHours:
+          type: integer
+          format: int64
+          const: 168
+        enrichedVulnerabilities:
+          type: integer
+          format: int64
+          minimum: 0
+        unenrichedVulnerabilities:
+          type: integer
+          format: int64
+          minimum: 0
+        staleVulnerabilities:
+          description: Enriched vulnerabilities whose current evidence is older than seven days
+          type: integer
+          format: int64
+          minimum: 0
+        knownExploitedVulnerabilities:
+          type: integer
+          format: int64
+          minimum: 0
+        oldestObservedAt:
+          type: [string, 'null']
+          format: date-time
+        newestObservedAt:
+          type: [string, 'null']
+          format: date-time
+        priorityDistribution:
+          type: object
+          required: [UNENRICHED, STANDARD, HIGH, URGENT, IMMEDIATE]
+          properties:
+            UNENRICHED: {type: integer, format: int64, minimum: 0}
+            STANDARD: {type: integer, format: int64, minimum: 0}
+            HIGH: {type: integer, format: int64, minimum: 0}
+            URGENT: {type: integer, format: int64, minimum: 0}
+            IMMEDIATE: {type: integer, format: int64, minimum: 0}
     CasePage:
       type: object
       required: [catalogRevision, summary, cases, nextCursor]
