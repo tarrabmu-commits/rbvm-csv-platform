@@ -18,6 +18,8 @@ import io.rbvm.postgres.CanonicalProjectionFactory.RuntimeComponents;
 import io.rbvm.security.ApiKeyAuthenticator;
 import io.rbvm.security.ApiRole;
 import io.rbvm.security.AuthPrincipal;
+import io.rbvm.security.RequestRateLimiter;
+import io.rbvm.security.RequestRateLimiter.Decision;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -57,9 +59,13 @@ public final class CsvPlatformServer implements AutoCloseable {
     private final CsvImportService imports;
     private final byte[] webUi;
     private final ApiKeyAuthenticator authenticator;
+    private final RequestRateLimiter rateLimiter;
     private final Instant startedAt = Instant.now();
     private final AtomicLong requestsTotal = new AtomicLong();
     private final AtomicLong problemsTotal = new AtomicLong();
+    private final AtomicLong authenticationFailuresTotal = new AtomicLong();
+    private final AtomicLong forbiddenTotal = new AtomicLong();
+    private final AtomicLong rateLimitedTotal = new AtomicLong();
 
     public CsvPlatformServer(String host, int port, Path dataDirectory, long maximumUploadBytes)
             throws IOException {
@@ -88,6 +94,7 @@ public final class CsvPlatformServer implements AutoCloseable {
                 canonicalProjection
         );
         this.authenticator = ApiKeyAuthenticator.disabled();
+        this.rateLimiter = RequestRateLimiter.disabled();
         this.webUi = loadResource("/web/index.html");
         this.server = HttpServer.create(new InetSocketAddress(host, port), 32);
         int workers = Math.max(4, Math.min(16, Runtime.getRuntime().availableProcessors()));
@@ -105,7 +112,7 @@ public final class CsvPlatformServer implements AutoCloseable {
             DomainCatalog readCatalog
     ) throws IOException {
         this(host, port, dataDirectory, maximumUploadBytes, canonicalProjection, readCatalog,
-                ApiKeyAuthenticator.disabled());
+                ApiKeyAuthenticator.disabled(), RequestRateLimiter.disabled());
     }
 
     public CsvPlatformServer(
@@ -116,6 +123,20 @@ public final class CsvPlatformServer implements AutoCloseable {
             CanonicalProjection canonicalProjection,
             DomainCatalog readCatalog,
             ApiKeyAuthenticator authenticator
+    ) throws IOException {
+        this(host, port, dataDirectory, maximumUploadBytes, canonicalProjection, readCatalog,
+                authenticator, RequestRateLimiter.disabled());
+    }
+
+    public CsvPlatformServer(
+            String host,
+            int port,
+            Path dataDirectory,
+            long maximumUploadBytes,
+            CanonicalProjection canonicalProjection,
+            DomainCatalog readCatalog,
+            ApiKeyAuthenticator authenticator,
+            RequestRateLimiter rateLimiter
     ) throws IOException {
         if (port < 0 || port > 65_535) {
             throw new IllegalArgumentException("port must be between 0 and 65535");
@@ -132,6 +153,7 @@ public final class CsvPlatformServer implements AutoCloseable {
                 canonicalProjection
         );
         this.authenticator = Objects.requireNonNull(authenticator, "authenticator");
+        this.rateLimiter = Objects.requireNonNull(rateLimiter, "rateLimiter");
         this.webUi = loadResource("/web/index.html");
         this.server = HttpServer.create(new InetSocketAddress(host, port), 32);
         int workers = Math.max(4, Math.min(16, Runtime.getRuntime().availableProcessors()));
@@ -175,6 +197,7 @@ public final class CsvPlatformServer implements AutoCloseable {
             }
             if ("/api/v1/health".equals(path)) {
                 requireMethod(exchange, method, "GET");
+                authorize(exchange, ApiRole.VIEWER);
                 sendJson(exchange, 200, imports.health());
                 return;
             }
@@ -187,7 +210,10 @@ public final class CsvPlatformServer implements AutoCloseable {
                 requireMethod(exchange, method, "GET");
                 Map<String, Object> readiness = imports.health();
                 int status = "UP".equals(readiness.get("status")) ? 200 : 503;
-                sendJson(exchange, status, readiness);
+                sendJson(exchange, status, Map.of(
+                        "status", readiness.get("status"),
+                        "checkedAt", Instant.now().toString()
+                ));
                 return;
             }
             if ("/api/v1/metrics".equals(path)) {
@@ -539,16 +565,35 @@ public final class CsvPlatformServer implements AutoCloseable {
                 : authorization.get(0);
         AuthPrincipal principal = authenticator.authenticate(authorizationHeader)
                 .orElseThrow(() -> {
+                    Decision decision = rateLimiter.checkAuthenticationFailure(
+                            exchange.getRemoteAddress().getAddress().getHostAddress());
+                    if (!decision.permitted()) {
+                        rejectRateLimit(exchange, decision);
+                    }
+                    authenticationFailuresTotal.incrementAndGet();
                     exchange.getResponseHeaders().set(
                             "WWW-Authenticate", "Bearer realm=\"rbvm-api\"");
                     return new HttpProblem(401, "AUTHENTICATION_REQUIRED",
                             "A valid bearer API key is required");
                 });
+        Decision decision = rateLimiter.checkActor(principal.actorId());
+        if (!decision.permitted()) {
+            rejectRateLimit(exchange, decision);
+        }
         if (!principal.role().permits(required)) {
+            forbiddenTotal.incrementAndGet();
             throw new HttpProblem(403, "INSUFFICIENT_ROLE",
                     "The authenticated identity is not permitted to perform this operation");
         }
         return principal;
+    }
+
+    private void rejectRateLimit(HttpExchange exchange, Decision decision) {
+        rateLimitedTotal.incrementAndGet();
+        exchange.getResponseHeaders().set(
+                "Retry-After", Integer.toString(decision.retryAfterSeconds()));
+        throw new HttpProblem(429, "RATE_LIMIT_EXCEEDED",
+                "Request rate limit exceeded; retry after the indicated interval");
     }
 
     private static void sendProblem(
@@ -591,6 +636,12 @@ public final class CsvPlatformServer implements AutoCloseable {
                 + "rbvm_http_requests_total " + requestsTotal.get() + "\n"
                 + "# TYPE rbvm_http_problems_total counter\n"
                 + "rbvm_http_problems_total " + problemsTotal.get() + "\n"
+                + "# TYPE rbvm_authentication_failures_total counter\n"
+                + "rbvm_authentication_failures_total " + authenticationFailuresTotal.get() + "\n"
+                + "# TYPE rbvm_authorization_forbidden_total counter\n"
+                + "rbvm_authorization_forbidden_total " + forbiddenTotal.get() + "\n"
+                + "# TYPE rbvm_rate_limited_total counter\n"
+                + "rbvm_rate_limited_total " + rateLimitedTotal.get() + "\n"
                 + "# TYPE rbvm_process_uptime_seconds gauge\n"
                 + "rbvm_process_uptime_seconds " + uptime + "\n"
                 + "# TYPE rbvm_imports_stored gauge\n"
@@ -631,6 +682,7 @@ public final class CsvPlatformServer implements AutoCloseable {
         ServerConfiguration configuration = ServerConfiguration.fromEnvironment();
         RuntimeComponents runtime = CanonicalProjectionFactory.runtimeFromEnvironment(System.getenv());
         ApiKeyAuthenticator authenticator = ApiKeyAuthenticator.fromEnvironment(System.getenv());
+        RequestRateLimiter rateLimiter = RequestRateLimiter.fromEnvironment(System.getenv());
         CanonicalProjection canonicalProjection = runtime.canonicalProjection();
         CsvPlatformServer application = new CsvPlatformServer(
                 configuration.host(),
@@ -639,7 +691,8 @@ public final class CsvPlatformServer implements AutoCloseable {
                 configuration.maximumUploadBytes(),
                 canonicalProjection,
                 runtime.readCatalog(),
-                authenticator
+                authenticator,
+                rateLimiter
         );
         Runtime.getRuntime().addShutdownHook(new Thread(application::close, "rbvm-shutdown"));
         application.start();

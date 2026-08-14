@@ -259,7 +259,7 @@
   async function loadHealth() {
     const target = byId('runtimeHealth');
     try {
-      const response = await fetch('/api/v1/health', {cache: 'no-store'});
+      const response = await apiFetch('/api/v1/health', {cache: 'no-store'});
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       const projection = data.canonicalProjection || {backend: 'UNKNOWN', status: 'UNKNOWN'};
@@ -550,6 +550,7 @@
     sessionStorage.setItem('rbvmApiToken', supplied);
     byId('apiToken').value = '';
     byId('authMessage').textContent = 'تم تفعيل المفتاح لهذه النافذة. يمكنك الآن تحميل البيانات والعمل عليها.';
+    loadHealth();
     loadCatalog();
   });
   if (apiToken) byId('authMessage').textContent = 'مفتاح وصول مفعّل لهذه النافذة.';

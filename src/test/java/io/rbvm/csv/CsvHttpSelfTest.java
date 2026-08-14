@@ -8,16 +8,22 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.security.MessageDigest;
 import java.time.Duration;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Comparator;
 import java.util.HexFormat;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import io.rbvm.domain.InMemoryDomainCatalog;
 import io.rbvm.security.ApiKeyAuthenticator;
+import io.rbvm.security.RequestRateLimiter;
 
 public final class CsvHttpSelfTest {
     private static final Pattern IMPORT_ID = Pattern.compile(
@@ -295,11 +301,21 @@ public final class CsvHttpSelfTest {
                 digest(viewerToken) + "=security-viewer|VIEWER\n"
                         + digest(operatorToken) + "=soc-operator@example.test|OPERATOR\n",
                 StandardCharsets.UTF_8);
+        try {
+            Files.setPosixFilePermissions(registry, Set.of(
+                    PosixFilePermission.OWNER_READ,
+                    PosixFilePermission.OWNER_WRITE
+            ));
+        } catch (UnsupportedOperationException ignored) {
+            // The authenticator defers to platform ACLs on non-POSIX filesystems.
+        }
         HttpClient client = client();
         try (CsvPlatformServer server = new CsvPlatformServer(
                 "127.0.0.1", 0, data.resolve("evidence"), 1024 * 1024,
                 new NoopCanonicalProjection(), new InMemoryDomainCatalog(),
-                ApiKeyAuthenticator.fromFile(registry))) {
+                ApiKeyAuthenticator.fromFile(registry),
+                RequestRateLimiter.configured(100, 2, Clock.fixed(
+                        Instant.parse("2026-08-14T10:00:30Z"), ZoneOffset.UTC)))) {
             server.start();
             URI base = server.baseUri();
 
@@ -312,6 +328,22 @@ public final class CsvHttpSelfTest {
                     client, base.resolve("/api/v1/cases"), "invalid-secret-that-must-not-leak-123456");
             assert invalid.statusCode() == 401 : invalid.body();
             assert !invalid.body().contains("invalid-secret");
+
+            HttpResponse<String> throttled = get(client, base.resolve("/api/v1/cases"));
+            assert throttled.statusCode() == 429 : throttled.body();
+            assert throttled.headers().firstValue("Retry-After").orElse("").equals("30");
+
+            HttpResponse<String> publicReadiness = get(client, base.resolve("/api/v1/ready"));
+            assert publicReadiness.statusCode() == 200 : publicReadiness.body();
+            assert publicReadiness.body().contains("\"status\": \"UP\"");
+            assert !publicReadiness.body().contains("observations");
+
+            HttpResponse<String> protectedHealthMissing = get(
+                    client, base.resolve("/api/v1/health"));
+            assert protectedHealthMissing.statusCode() == 429 : protectedHealthMissing.body();
+            HttpResponse<String> protectedHealth = authorizedGet(
+                    client, base.resolve("/api/v1/health"), viewerToken);
+            assert protectedHealth.statusCode() == 200 : protectedHealth.body();
 
             HttpResponse<String> allowedRead = authorizedGet(
                     client, base.resolve("/api/v1/cases"), viewerToken);

@@ -41,7 +41,8 @@ audit_privileges="$("${PSQL[@]}" --command="select
     has_table_privilege('rbvm_runtime', 'rbvm.case_audit_event', 'DELETE');")"
 [[ "$audit_privileges" == 't|f|f' ]]
 
-health="$(curl --fail --silent --show-error http://127.0.0.1:8080/api/v1/health)"
+health="$(curl --fail --silent --show-error "${CURL_AUTH[@]}" \
+    http://127.0.0.1:8080/api/v1/health)"
 grep -q '"catalogBackend": "POSTGRESQL"' <<<"$health"
 grep -q '"schemaVersion": 5' <<<"$health"
 grep -q '"status": "UP"' <<<"$health"
