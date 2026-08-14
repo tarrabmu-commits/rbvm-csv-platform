@@ -11,6 +11,7 @@ java -ea -cp "$MAIN_CLASSES:$TEST_CLASSES" io.rbvm.csv.PlatformSelfTest
 python3 "$ROOT_DIR/scripts/verify-api.py"
 python3 "$ROOT_DIR/scripts/verify-sql.py"
 python3 "$ROOT_DIR/scripts/verify-web.py"
+python3 "$ROOT_DIR/scripts/verify-workflows.py"
 for script in "$ROOT_DIR"/scripts/*.sh; do
   bash -n "$script"
 done
