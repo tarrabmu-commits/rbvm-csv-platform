@@ -78,3 +78,11 @@
 
 عدد Components أكبر من عدد أسماء المنتجات الفريدة (`221`) لأن المنتج نفسه على
 أصلين مختلفين يمثل مكوّنين متأثرين مختلفين.
+
+## Increment 10 identity addendum
+
+`WAZUH_CSV_V1` retains source-profile plus normalized Agent-name identity and
+unknown package version. Opt-in `WAZUH_CSV_V2` uses stable `Agent_ID` and defines
+a component by product, package version, and architecture. V2 exposure lifecycle
+comes only from explicit `ACTIVE` or `RESOLVED` observations; absence is never
+evidence of closure.

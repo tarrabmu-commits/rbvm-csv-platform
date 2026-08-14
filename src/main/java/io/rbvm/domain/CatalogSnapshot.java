@@ -31,11 +31,12 @@ public record CatalogSnapshot(
         output.put("cases", cases);
         output.put("openCases", openCases);
         output.put("autoClosedCases", autoClosedCases);
+        output.put("sourceResolvedCases", autoClosedCases);
         output.put("exposuresWithSeverityChanges", exposuresWithSeverityChanges);
         output.put("exposuresWithTimestampConflicts", exposuresWithTimestampConflicts);
         output.put("currentCaseSeverityDistribution", currentCaseSeverityDistribution);
         output.put("caseStatusDistribution", caseStatusDistribution);
-        output.put("closurePolicy", "POSITIVE_ONLY_NO_AUTO_CLOSE");
+        output.put("closurePolicy", "EXPLICIT_SOURCE_EVIDENCE_ONLY_NO_ABSENCE_CLOSE");
         return output;
     }
 }

@@ -1,10 +1,14 @@
-# PostgreSQL Runtime — Increment 6
+# PostgreSQL Runtime — Increments 6–10
 
 ## الهدف والحدود
 
 Increment 6 يثبت PostgreSQL كمصدر قراءة API عند تفعيل Backend، مع بقاء Evidence
 journal المحلي كـOutbox ومصدر إعادة إرسال. الكتابة متزامنة والقراءة تستخدم
 `PostgresReadCatalog` للملخص والبحث وتفاصيل الحالات.
+
+Migration V6 يضيف عقد V2، وهوية الأصل الثابتة وإصدار/معمارية الحزمة ودليل
+`ACTIVE|RESOLVED`. أعمدة Observation تبقى immutable، بينما Exposure وCase إسقاطان
+مشتقان من أحدث دليل صريح ولا يتغيران لمجرد غياب صف.
 
 ```mermaid
 flowchart TD

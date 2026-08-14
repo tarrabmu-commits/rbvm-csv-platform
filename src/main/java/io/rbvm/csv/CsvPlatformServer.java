@@ -329,12 +329,13 @@ public final class CsvPlatformServer implements AutoCloseable {
             );
         }
         String sourceProfile = exchange.getRequestHeaders().getFirst("X-Source-Profile-Id");
+        String contractId = exchange.getRequestHeaders().getFirst("X-CSV-Contract");
         String idempotencyKey = exchange.getRequestHeaders().getFirst("Idempotency-Key");
         long contentLength = parseContentLength(exchange.getRequestHeaders().getFirst("Content-Length"));
 
         CsvImportService.CreateResult result;
         try (InputStream body = exchange.getRequestBody()) {
-            result = imports.create(body, contentLength, sourceProfile, idempotencyKey);
+            result = imports.create(body, contentLength, sourceProfile, idempotencyKey, contractId);
         }
         if (result.replayed()) {
             exchange.getResponseHeaders().set("Idempotency-Replayed", "true");

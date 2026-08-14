@@ -3,6 +3,7 @@ package io.rbvm.postgres;
 import io.rbvm.csv.AnalysisReport;
 import io.rbvm.csv.CanonicalProjection;
 import io.rbvm.csv.CsvSeverity;
+import io.rbvm.csv.FindingStatus;
 import io.rbvm.csv.ProjectionImport;
 import io.rbvm.csv.WazuhCsvAnalyzer;
 import io.rbvm.csv.WazuhObservation;
@@ -44,7 +45,7 @@ import java.util.UUID;
 public final class PostgresCanonicalProjection implements CanonicalProjection {
     private static final String TENANT_KEY = "local";
     private static final long PROJECTION_LOCK = 6_416_166_340_247_368_022L;
-    private static final int REQUIRED_SCHEMA_VERSION = 5;
+    private static final int REQUIRED_SCHEMA_VERSION = 6;
 
     private final JdbcConnectionFactory connections;
     private final Clock clock;
@@ -85,6 +86,7 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                         connection,
                         tenantId,
                         input.sourceProfileId(),
+                        input.analysis().contractId(),
                         now
                 );
                 ensureCatalogState(connection, tenantId, now);
@@ -101,7 +103,8 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                         input,
                         now
                 );
-                AnalysisReport projected = new WazuhCsvAnalyzer(input.sourceProfileId()).analyze(
+                AnalysisReport projected = new WazuhCsvAnalyzer(
+                        input.sourceProfileId(), input.analysis().contractId()).analyze(
                         input.rawEvidence(),
                         0,
                         observation -> {
@@ -300,6 +303,7 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
             Connection connection,
             UUID tenantId,
             String externalKey,
+            String contractId,
             Instant now
     ) throws SQLException {
         UUID proposed = stableUuid("source-profile", key(TENANT_KEY, externalKey));
@@ -307,17 +311,24 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                 INSERT INTO rbvm.source_profile(
                     id, tenant_id, external_key, source_type, contract_id,
                     semantics, enabled, created_at
-                ) VALUES (?, ?, ?, 'WAZUH_CSV', 'WAZUH_CSV_V1',
-                          'POSITIVE_OBSERVATION_EXPORT', true, ?)
+                ) VALUES (?, ?, ?, 'WAZUH_CSV', ?, ?, true, ?)
                 ON CONFLICT (tenant_id, external_key)
                 DO UPDATE SET enabled = true
+                WHERE rbvm.source_profile.contract_id = EXCLUDED.contract_id
                 RETURNING id
                 """)) {
             statement.setObject(1, proposed);
             statement.setObject(2, tenantId);
             statement.setString(3, externalKey);
-            setInstant(statement, 4, now);
-            return requiredUuid(statement);
+            statement.setString(4, contractId);
+            statement.setString(5, contractId.equals("WAZUH_CSV_V2")
+                    ? "EXPLICIT_FINDING_LIFECYCLE_EXPORT" : "POSITIVE_OBSERVATION_EXPORT");
+            setInstant(statement, 6, now);
+            UUID result = optionalUuid(statement);
+            if (result == null) {
+                throw new SQLException("Source profile is already bound to a different CSV contract");
+            }
+            return result;
         }
     }
 
@@ -364,8 +375,7 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                     commit_scope, file_sha256, file_size_bytes, raw_evidence_uri,
                     logical_rows, accepted_rows, deduplicated_rows, quarantined_rows,
                     created_at, confirmed_at
-                ) VALUES (?, ?, ?, 'IMPORTING', 'WAZUH_CSV_V1',
-                    'POSITIVE_OBSERVATION_EXPORT', 'CANONICAL_DOMAIN_AND_RAW_EVIDENCE',
+                ) VALUES (?, ?, ?, 'IMPORTING', ?, ?, 'CANONICAL_DOMAIN_AND_RAW_EVIDENCE',
                     ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (id) DO UPDATE SET
                     status = 'IMPORTING',
@@ -378,6 +388,8 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                 input.importId(),
                 tenantId,
                 sourceProfileId,
+                analysis.contractId(),
+                analysis.semantics(),
                 analysis.fileSha256(),
                 analysis.fileSizeBytes(),
                 input.rawEvidence().toAbsolutePath().normalize().toUri().toString(),
@@ -477,9 +489,9 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                     INSERT INTO rbvm.asset(
                         id, tenant_id, source_profile_id, public_id, observed_name,
                         normalized_observed_name, os_name_raw, identity_basis,
-                        identity_confidence, first_observed_at, last_observed_at,
+                        identity_confidence, source_asset_id, first_observed_at, last_observed_at,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'SOURCE_NAME_ONLY', 'LOW', ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (tenant_id, source_profile_id, normalized_observed_name)
                     DO NOTHING RETURNING id
                     """,
@@ -490,6 +502,9 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                     observation.agentObservedName(),
                     observation.agentIdentityKey(),
                     observation.osNameRaw(),
+                    observation.agentSourceId().isBlank() ? "SOURCE_NAME_ONLY" : "SOURCE_STABLE_ID",
+                    observation.agentSourceId().isBlank() ? "LOW" : "HIGH",
+                    observation.agentSourceId().isBlank() ? null : observation.agentSourceId(),
                     observation.detectedAt(),
                     observation.detectedAt(),
                     accumulator.now,
@@ -605,8 +620,9 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                     INSERT INTO rbvm.asset_component(
                         id, tenant_id, asset_id, public_id, observed_product_name,
                         normalized_product_name, version_status, first_observed_at,
-                        last_observed_at, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, 'UNKNOWN_FROM_SOURCE', ?, ?, ?, ?)
+                        last_observed_at, created_at, updated_at, package_version,
+                        package_architecture
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (tenant_id, asset_id, normalized_product_name)
                     DO NOTHING RETURNING id
                     """,
@@ -616,10 +632,14 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                     publicId,
                     observation.affectedProductObservedName(),
                     observation.affectedProductIdentityKey(),
+                    observation.packageVersion().isBlank()
+                            ? "UNKNOWN_FROM_SOURCE" : "OBSERVED_FROM_SOURCE",
                     observation.detectedAt(),
                     observation.detectedAt(),
                     accumulator.now,
-                    accumulator.now
+                    accumulator.now,
+                    observation.packageVersion(),
+                    observation.packageArchitecture()
             );
             boolean isNew = inserted != null;
             UUID id = isNew ? inserted : selectUuid(connection, """
@@ -639,6 +659,10 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                     first_observed_at = LEAST(first_observed_at, ?),
                     observed_product_name = CASE
                         WHEN ? > last_observed_at THEN ? ELSE observed_product_name END,
+                    package_version = CASE
+                        WHEN ? > last_observed_at THEN ? ELSE package_version END,
+                    package_architecture = CASE
+                        WHEN ? > last_observed_at THEN ? ELSE package_architecture END,
                     last_observed_at = GREATEST(last_observed_at, ?),
                     updated_at = ?
                 WHERE tenant_id = ? AND id = ?
@@ -647,6 +671,10 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                 observation.detectedAt(),
                 observation.detectedAt(),
                 observation.affectedProductObservedName(),
+                observation.detectedAt(),
+                observation.packageVersion(),
+                observation.detectedAt(),
+                observation.packageArchitecture(),
                 observation.detectedAt(),
                 accumulator.now,
                 accumulator.tenantId,
@@ -673,8 +701,8 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                     id, tenant_id, source_profile_id, asset_id, vulnerability_id,
                     component_id, fingerprint, severity, source_severity_recognized,
                     description_snapshot, references_raw, os_name_raw, detected_at,
-                    first_ingested_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    first_ingested_at, finding_status, resolved_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (tenant_id, source_profile_id, fingerprint)
                 DO NOTHING RETURNING id
                 """,
@@ -691,7 +719,9 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                 observation.referencesRaw(),
                 observation.osNameRaw(),
                 observation.detectedAt(),
-                accumulator.now
+                accumulator.now,
+                observation.findingStatus().name(),
+                observation.resolvedAt()
         );
     }
 
@@ -755,7 +785,7 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                         id, tenant_id, source_profile_id, asset_id, vulnerability_id,
                         public_id, status, closure_policy, current_severity,
                         first_observed_at, last_observed_at, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, 'OPEN', 'POSITIVE_ONLY_NO_AUTO_CLOSE',
+                    ) VALUES (?, ?, ?, ?, ?, ?, 'OPEN', ?,
                               ?, ?, ?, ?, ?)
                     ON CONFLICT (tenant_id, source_profile_id, asset_id, vulnerability_id)
                     DO NOTHING RETURNING id
@@ -766,6 +796,8 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                     asset.id(),
                     vulnerability.id(),
                     publicId,
+                    observation.contractId().equals("WAZUH_CSV_V2")
+                            ? "EXPLICIT_SOURCE_EVIDENCE_ONLY" : "POSITIVE_ONLY_NO_AUTO_CLOSE",
                     observation.severity().name(),
                     observation.detectedAt(),
                     observation.detectedAt(),
@@ -821,10 +853,10 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                         vulnerability_id, component_id, public_id, status, closure_policy,
                         current_severity, current_severity_observed_at, first_observed_at,
                         last_observed_at, observation_count, severity_changed,
-                        timestamp_severity_conflict, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'OPEN',
-                              'POSITIVE_ONLY_NO_AUTO_CLOSE', ?, ?, ?, ?, 1, false,
-                              false, ?, ?)
+                        timestamp_severity_conflict, created_at, updated_at,
+                        lifecycle_observed_at, resolved_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, false,
+                              false, ?, ?, ?, ?)
                     ON CONFLICT (
                         tenant_id, source_profile_id, asset_id, vulnerability_id, component_id
                     ) DO NOTHING RETURNING id
@@ -837,12 +869,17 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                     vulnerability.id(),
                     component.id(),
                     publicId,
+                    observation.findingStatus().name(),
+                    observation.contractId().equals("WAZUH_CSV_V2")
+                            ? "EXPLICIT_SOURCE_EVIDENCE_ONLY" : "POSITIVE_ONLY_NO_AUTO_CLOSE",
                     observation.severity().name(),
                     observation.detectedAt(),
                     observation.detectedAt(),
-                    observation.detectedAt(),
+                    observation.evidenceAt(),
                     accumulator.now,
-                    accumulator.now
+                    accumulator.now,
+                    observation.evidenceAt(),
+                    observation.resolvedAt()
             );
             boolean isNew = inserted != null;
             UUID id = isNew ? inserted : selectUuid(connection, """
@@ -880,7 +917,8 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
         ExposureState state;
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT current_severity, current_severity_observed_at,
-                       severity_changed, timestamp_severity_conflict
+                       severity_changed, timestamp_severity_conflict, status,
+                       lifecycle_observed_at, resolved_at
                 FROM rbvm.exposure
                 WHERE tenant_id = ? AND id = ?
                 FOR UPDATE
@@ -895,7 +933,10 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                         CsvSeverity.valueOf(rows.getString(1)),
                         rows.getTimestamp(2).toInstant(),
                         rows.getBoolean(3),
-                        rows.getBoolean(4)
+                        rows.getBoolean(4),
+                        FindingStatus.valueOf(rows.getString(5)),
+                        rows.getTimestamp(6).toInstant(),
+                        rows.getTimestamp(7) == null ? null : rows.getTimestamp(7).toInstant()
                 );
             }
         }
@@ -912,6 +953,16 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
             severity = maximumSeverity(severity, observation.severity());
         }
         boolean changed = state.severityChanged() || state.severity() != observation.severity();
+        FindingStatus findingStatus = state.findingStatus();
+        Instant lifecycleAt = state.lifecycleObservedAt();
+        Instant resolvedAt = state.resolvedAt();
+        int lifecycleOrder = observation.evidenceAt().compareTo(lifecycleAt);
+        if (lifecycleOrder > 0 || (lifecycleOrder == 0
+                && observation.findingStatus() == FindingStatus.ACTIVE)) {
+            findingStatus = observation.findingStatus();
+            lifecycleAt = observation.evidenceAt();
+            resolvedAt = observation.resolvedAt();
+        }
         executeUpdate(connection, """
                 UPDATE rbvm.exposure SET
                     public_id = ?,
@@ -922,6 +973,9 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                     observation_count = observation_count + 1,
                     severity_changed = ?,
                     timestamp_severity_conflict = ?,
+                    status = ?,
+                    lifecycle_observed_at = ?,
+                    resolved_at = ?,
                     updated_at = ?
                 WHERE tenant_id = ? AND id = ?
                 """,
@@ -929,9 +983,12 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                 severity.name(),
                 severityAt,
                 observation.detectedAt(),
-                observation.detectedAt(),
+                observation.evidenceAt(),
                 changed,
                 conflict,
+                findingStatus.name(),
+                lifecycleAt,
+                resolvedAt,
                 accumulator.now,
                 accumulator.tenantId,
                 exposure.id()
@@ -950,6 +1007,7 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                         case_id,
                         min(first_observed_at) AS first_observed_at,
                         max(last_observed_at) AS last_observed_at,
+                        bool_or(status = 'ACTIVE') AS has_active,
                         max(CASE current_severity
                             WHEN 'CRITICAL' THEN 5
                             WHEN 'HIGH' THEN 4
@@ -969,6 +1027,13 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                         WHEN 3 THEN 'MEDIUM'
                         WHEN 2 THEN 'LOW'
                         ELSE 'UNKNOWN' END,
+                    status = CASE
+                        WHEN c.status NOT IN ('OPEN', 'SOURCE_RESOLVED') THEN c.status
+                        WHEN a.has_active THEN 'OPEN'
+                        ELSE 'SOURCE_RESOLVED' END,
+                    closure_policy = CASE
+                        WHEN c.closure_policy = 'EXPLICIT_SOURCE_EVIDENCE_ONLY'
+                        THEN c.closure_policy ELSE 'POSITIVE_ONLY_NO_AUTO_CLOSE' END,
                     updated_at = ?
                 FROM aggregates a
                 WHERE c.tenant_id = ? AND c.id = a.case_id
@@ -1258,6 +1323,12 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
         }
     }
 
+    private static UUID optionalUuid(PreparedStatement statement) throws SQLException {
+        try (ResultSet rows = statement.executeQuery()) {
+            return rows.next() ? rows.getObject(1, UUID.class) : null;
+        }
+    }
+
     private static UUID required(UUID value, String entity) throws SQLException {
         if (value == null) {
             throw new SQLException("Could not resolve PostgreSQL " + entity + " identifier");
@@ -1444,7 +1515,10 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
             CsvSeverity severity,
             Instant severityObservedAt,
             boolean severityChanged,
-            boolean timestampConflict
+            boolean timestampConflict,
+            FindingStatus findingStatus,
+            Instant lifecycleObservedAt,
+            Instant resolvedAt
     ) {
     }
 

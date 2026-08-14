@@ -16,6 +16,8 @@ public record AnalysisReport(
         long acceptedRows,
         long deduplicatedRows,
         long quarantinedRows,
+        long activeRows,
+        long resolvedRows,
         long uniqueAgents,
         long uniqueCves,
         long uniqueProducts,
@@ -55,6 +57,8 @@ public record AnalysisReport(
         ledger.put("acceptedRows", acceptedRows);
         ledger.put("deduplicatedRows", deduplicatedRows);
         ledger.put("quarantinedRows", quarantinedRows);
+        ledger.put("activeRows", activeRows);
+        ledger.put("resolvedRows", resolvedRows);
         root.put("ledger", ledger);
 
         Map<String, Object> identity = new LinkedHashMap<>();
@@ -92,4 +96,3 @@ public record AnalysisReport(
         return root;
     }
 }
-

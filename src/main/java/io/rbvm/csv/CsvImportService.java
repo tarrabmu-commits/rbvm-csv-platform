@@ -158,9 +158,20 @@ public final class CsvImportService implements AutoCloseable {
             String sourceProfileId,
             String idempotencyKey
     ) throws IOException {
+        return create(source, declaredLength, sourceProfileId, idempotencyKey, CsvContractV1.ID);
+    }
+
+    public CreateResult create(
+            InputStream source,
+            long declaredLength,
+            String sourceProfileId,
+            String idempotencyKey,
+            String contractId
+    ) throws IOException {
         Objects.requireNonNull(source, "source");
         String profile = requireText(sourceProfileId, "sourceProfileId", 128);
         String key = requireText(idempotencyKey, "Idempotency-Key", 128);
+        String contract = CsvContractV2.requireSupported(contractId);
         if (key.length() < 8) {
             throw new InvalidRequestException("Idempotency-Key must contain at least 8 characters");
         }
@@ -176,8 +187,8 @@ public final class CsvImportService implements AutoCloseable {
                 throw new InvalidRequestException("The CSV request body is empty");
             }
 
-            AnalysisReport report = new WazuhCsvAnalyzer(profile).analyze(staged, PREVIEW_LIMIT);
-            String contentIdentity = fileIdentity(profile, report.fileSha256());
+            AnalysisReport report = new WazuhCsvAnalyzer(profile, contract).analyze(staged, PREVIEW_LIMIT);
+            String contentIdentity = fileIdentity(profile, contract, report.fileSha256());
 
             synchronized (mutationLock) {
                 UUID previousKeyImportId = createIdempotency.get(key);
@@ -185,6 +196,10 @@ public final class CsvImportService implements AutoCloseable {
                     StoredImport previous = imports.get(previousKeyImportId);
                     if (previous != null && previous.run().fileSha256().equals(report.fileSha256())
                             && previous.run().sourceProfileId().equals(profile)) {
+                        if (!previous.run().analysisReport().contractId().equals(contract)) {
+                            throw new IdempotencyConflictException(
+                                    "Idempotency-Key was already used with a different CSV contract");
+                        }
                         return new CreateResult(snapshot(previous), true, "IDEMPOTENCY_KEY");
                     }
                     throw new IdempotencyConflictException(
@@ -259,7 +274,8 @@ public final class CsvImportService implements AutoCloseable {
             DomainMaterializationResult materialization = domainCatalog.materialize(
                     importId,
                     stored.rawEvidence(),
-                    run.sourceProfileId()
+                    run.sourceProfileId(),
+                    run.analysisReport().contractId()
             );
             canonicalProjection.synchronizeImport(new ProjectionImport(
                     importId,
@@ -339,7 +355,8 @@ public final class CsvImportService implements AutoCloseable {
                 || projectionStatus.equals("NOT_CONFIGURED");
         Map<String, Object> health = new LinkedHashMap<>();
         health.put("status", recoveryWarnings.isEmpty() && projectionHealthy ? "UP" : "DEGRADED");
-        health.put("contractId", CsvContractV1.ID);
+        health.put("supportedContractIds", List.of(CsvContractV1.ID, CsvContractV2.ID));
+        health.put("defaultContractId", CsvContractV1.ID);
         health.put("catalogBackend", readCatalog.backend());
         health.put("canonicalProjection", projectionHealth);
         health.put("storedImports", imports.size());
@@ -462,8 +479,10 @@ public final class CsvImportService implements AutoCloseable {
         Instant createdAt = Instant.parse(requiredProperty(metadata, "createdAt"));
         CsvImportStatus storedStatus = CsvImportStatus.valueOf(requiredProperty(metadata, "status"));
         String creationKey = requiredProperty(metadata, "createIdempotencyKey");
+        String contractId = metadata.getProperty("contractId", CsvContractV1.ID);
 
-        AnalysisReport report = new WazuhCsvAnalyzer(sourceProfileId).analyze(rawEvidence, PREVIEW_LIMIT);
+        AnalysisReport report = new WazuhCsvAnalyzer(sourceProfileId, contractId)
+                .analyze(rawEvidence, PREVIEW_LIMIT);
         if (!expectedHash.equals(report.fileSha256())) {
             throw new IOException("Stored source.csv hash does not match metadata");
         }
@@ -481,7 +500,8 @@ public final class CsvImportService implements AutoCloseable {
             DomainMaterializationResult rebuilt = domainCatalog.materialize(
                     importId,
                     rawEvidence,
-                    sourceProfileId
+                    sourceProfileId,
+                    contractId
             );
             DomainMaterializationResult storedMaterialization = readMaterialization(metadata, importId)
                     .orElse(rebuilt);
@@ -504,7 +524,7 @@ public final class CsvImportService implements AutoCloseable {
         }
         imports.put(importId, stored);
         createIdempotency.put(creationKey, importId);
-        fileIdentity.put(fileIdentity(sourceProfileId, expectedHash), importId);
+        fileIdentity.put(fileIdentity(sourceProfileId, contractId, expectedHash), importId);
     }
 
     private static void restoreState(
@@ -613,6 +633,8 @@ public final class CsvImportService implements AutoCloseable {
         metadata.setProperty("importId", run.importId().toString());
         metadata.setProperty("tenantId", run.tenantId());
         metadata.setProperty("sourceProfileId", run.sourceProfileId());
+        metadata.setProperty("contractId", run.analysisReport() == null
+                ? CsvContractV1.ID : run.analysisReport().contractId());
         metadata.setProperty("fileSha256", run.fileSha256());
         metadata.setProperty("createdAt", run.createdAt().toString());
         metadata.setProperty("status", run.status().name());
@@ -644,8 +666,10 @@ public final class CsvImportService implements AutoCloseable {
         output.put("importId", run.importId().toString());
         output.put("tenantId", run.tenantId());
         output.put("sourceProfileId", run.sourceProfileId());
-        output.put("contractId", CsvContractV1.ID);
-        output.put("semantics", "POSITIVE_OBSERVATION_EXPORT");
+        AnalysisReport analysis = run.analysisReport();
+        output.put("contractId", analysis == null ? CsvContractV1.ID : analysis.contractId());
+        output.put("semantics", analysis == null
+                ? "POSITIVE_OBSERVATION_EXPORT" : analysis.semantics());
         output.put("commitScope", "CANONICAL_DOMAIN_AND_RAW_EVIDENCE");
         output.put("status", run.status().name());
         output.put("createdAt", run.createdAt().toString());
@@ -713,8 +737,8 @@ public final class CsvImportService implements AutoCloseable {
         }
     }
 
-    private static String fileIdentity(String sourceProfileId, String hash) {
-        return sourceProfileId + '\u001f' + hash;
+    private static String fileIdentity(String sourceProfileId, String contractId, String hash) {
+        return sourceProfileId + '\u001f' + contractId + '\u001f' + hash;
     }
 
     @Override
