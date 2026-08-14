@@ -158,7 +158,8 @@ public final class PostgresReadCatalog implements DomainCatalog {
     }
 
     @Override
-    public DomainMaterializationResult materialize(UUID importId, Path csvPath, String sourceProfileId)
+    public DomainMaterializationResult materialize(UUID importId, Path csvPath, String sourceProfileId,
+                                                   String contractId)
             throws IOException {
         throw new UnsupportedOperationException("PostgreSQL read catalog does not materialize CSV files");
     }
@@ -185,7 +186,7 @@ public final class PostgresReadCatalog implements DomainCatalog {
                        (SELECT count(*) FROM rbvm.exposure e
                           WHERE e.tenant_id = c.tenant_id AND e.case_id = c.id) AS exposure_count,
                        c.workflow_version, c.risk_accepted_until, c.decision_reason,
-                       c.decision_evidence, c.last_workflow_at
+                       c.decision_evidence, c.last_workflow_at, c.closure_policy
                 FROM rbvm.vulnerability_case c
                 JOIN rbvm.asset a ON a.tenant_id = c.tenant_id AND a.id = c.asset_id
                 JOIN rbvm.source_profile sp
@@ -259,7 +260,7 @@ public final class PostgresReadCatalog implements DomainCatalog {
         output.put("decisionEvidence", rows.getString("decision_evidence"));
         Instant workflowAt = optionalInstant(rows, "last_workflow_at");
         output.put("lastWorkflowAt", workflowAt == null ? null : workflowAt.toString());
-        output.put("closurePolicy", "POSITIVE_ONLY_NO_AUTO_CLOSE");
+        output.put("closurePolicy", rows.getString("closure_policy"));
         return output;
     }
 
@@ -270,9 +271,11 @@ public final class PostgresReadCatalog implements DomainCatalog {
                 SELECT e.public_id AS exposure_id, a.public_id AS asset_id,
                        ac.public_id AS component_id, v.cve_id,
                        ac.observed_product_name AS product, ac.version_status,
+                       ac.package_version, ac.package_architecture,
                        e.status, e.current_severity, e.current_severity_observed_at,
                        e.first_observed_at, e.last_observed_at, e.observation_count,
-                       e.severity_changed, e.timestamp_severity_conflict, e.closure_policy
+                       e.severity_changed, e.timestamp_severity_conflict, e.closure_policy,
+                       e.lifecycle_observed_at, e.resolved_at
                 FROM rbvm.exposure e
                 JOIN rbvm.asset a ON a.tenant_id = e.tenant_id AND a.id = e.asset_id
                 JOIN rbvm.asset_component ac
@@ -295,6 +298,8 @@ public final class PostgresReadCatalog implements DomainCatalog {
                     item.put("cveId", rows.getString("cve_id"));
                     item.put("product", rows.getString("product"));
                     item.put("versionStatus", rows.getString("version_status"));
+                    item.put("packageVersion", rows.getString("package_version"));
+                    item.put("packageArchitecture", rows.getString("package_architecture"));
                     item.put("status", rows.getString("status"));
                     item.put("currentSeverity", rows.getString("current_severity"));
                     item.put("currentSeverityObservedAt",
@@ -306,6 +311,10 @@ public final class PostgresReadCatalog implements DomainCatalog {
                     item.put("timestampSeverityConflict",
                             rows.getBoolean("timestamp_severity_conflict"));
                     item.put("closurePolicy", rows.getString("closure_policy"));
+                    item.put("lifecycleObservedAt",
+                            instant(rows, "lifecycle_observed_at").toString());
+                    Instant resolved = optionalInstant(rows, "resolved_at");
+                    item.put("resolvedAt", resolved == null ? null : resolved.toString());
                     output.add(item);
                 }
             }
@@ -371,6 +380,10 @@ public final class PostgresReadCatalog implements DomainCatalog {
         long openCases = count(connection, """
                 SELECT count(*) FROM rbvm.vulnerability_case WHERE tenant_id = ? AND status = 'OPEN'
                 """, tenantId);
+        long sourceResolvedCases = count(connection, """
+                SELECT count(*) FROM rbvm.vulnerability_case
+                WHERE tenant_id = ? AND status = 'SOURCE_RESOLVED'
+                """, tenantId);
         long changed = count(connection, """
                 SELECT count(*) FROM rbvm.exposure WHERE tenant_id = ? AND severity_changed
                 """, tenantId);
@@ -383,7 +396,7 @@ public final class PostgresReadCatalog implements DomainCatalog {
         Map<String, Long> statuses = enumCounts(CaseStatus.values());
         fillCounts(connection, tenantId, "status", statuses);
         return new CatalogSnapshot(materialized, observations, links, assets, vulnerabilities,
-                components, exposures, cases, openCases, 0, changed, conflicts,
+                components, exposures, cases, openCases, sourceResolvedCases, changed, conflicts,
                 severities, statuses);
     }
 

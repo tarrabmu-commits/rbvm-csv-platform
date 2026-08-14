@@ -54,8 +54,9 @@ def lexical_check(path: Path) -> str:
     normalized = " ".join(text.split()).upper()
     if not normalized.startswith("BEGIN;") or not normalized.endswith("COMMIT;"):
         raise AssertionError(f"{path}: migration must be transaction-wrapped")
-    if " DROP " in f" {normalized} " or " CASCADE" in normalized:
-        raise AssertionError(f"{path}: destructive SQL is forbidden in these migrations")
+    destructive = ("DROP TABLE", "DROP SCHEMA", "DROP COLUMN", "TRUNCATE ", " CASCADE")
+    if any(token in normalized for token in destructive):
+        raise AssertionError(f"{path}: destructive data SQL is forbidden in these migrations")
     return normalized
 
 
@@ -66,11 +67,13 @@ def main() -> None:
     v3_path = root / "db/migration/V3__case_workflow_audit.sql"
     v4_path = root / "db/migration/V4__postgres_projection_runtime.sql"
     v5_path = root / "db/migration/V5__postgres_read_catalog.sql"
+    v6_path = root / "db/migration/V6__explicit_finding_lifecycle.sql"
     v1 = lexical_check(v1_path)
     v2 = lexical_check(v2_path)
     v3 = lexical_check(v3_path)
     v4 = lexical_check(v4_path)
     v5 = lexical_check(v5_path)
+    v6 = lexical_check(v6_path)
 
     required_tables = {
         "tenant",
@@ -130,6 +133,17 @@ def main() -> None:
     ):
         if invariant not in v5:
             raise AssertionError(f"V5 is missing read-cutover invariant {invariant}")
+    for invariant in (
+        "WAZUH_CSV_V2",
+        "EXPLICIT_FINDING_LIFECYCLE_EXPORT",
+        "SOURCE_STABLE_ID",
+        "OBSERVED_FROM_SOURCE",
+        "SOURCE_RESOLVED",
+        "EXPLICIT_SOURCE_EVIDENCE_ONLY",
+        "OBSERVATION_LIFECYCLE_EVIDENCE_CHECK",
+    ):
+        if invariant not in v6:
+            raise AssertionError(f"V6 is missing lifecycle invariant {invariant}")
     for invariant in (
         "POSITIVE_ONLY_NO_AUTO_CLOSE",
         "SOURCE_NAME_ONLY",

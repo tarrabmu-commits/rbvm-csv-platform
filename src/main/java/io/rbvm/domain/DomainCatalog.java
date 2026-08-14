@@ -13,8 +13,15 @@ public interface DomainCatalog {
         return "LOCAL_MEMORY_REBUILD";
     }
 
-    DomainMaterializationResult materialize(UUID importId, Path csvPath, String sourceProfileId)
-            throws IOException;
+    default DomainMaterializationResult materialize(
+            UUID importId, Path csvPath, String sourceProfileId
+    ) throws IOException {
+        return materialize(importId, csvPath, sourceProfileId, "WAZUH_CSV_V1");
+    }
+
+    DomainMaterializationResult materialize(
+            UUID importId, Path csvPath, String sourceProfileId, String contractId
+    ) throws IOException;
 
     CatalogSnapshot snapshot();
 

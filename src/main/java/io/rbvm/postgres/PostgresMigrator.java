@@ -24,7 +24,8 @@ public final class PostgresMigrator {
             new Migration(2, "V2__dashboard_views.sql"),
             new Migration(3, "V3__case_workflow_audit.sql"),
             new Migration(4, "V4__postgres_projection_runtime.sql"),
-            new Migration(5, "V5__postgres_read_catalog.sql")
+            new Migration(5, "V5__postgres_read_catalog.sql"),
+            new Migration(6, "V6__explicit_finding_lifecycle.sql")
     );
 
     private final JdbcConnectionFactory connections;

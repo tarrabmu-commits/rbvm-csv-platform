@@ -108,7 +108,7 @@
       <p>بوابة إدخال مشاهدات Vulnerability Detection من Wazuh، مع تحقق ومعاينة قبل الاعتماد.</p>
     </div>
     <div class="runtime-stack">
-      <div class="badge">WAZUH_CSV_V1 · Positive observations</div>
+      <div class="badge">WAZUH_CSV_V1 + V2 · Explicit evidence</div>
       <div id="runtimeHealth" role="status" aria-live="polite">Runtime status…</div>
     </div>
   </header>
@@ -134,10 +134,13 @@
       <label>Source Profile ID
         <input id="profile" value="accepted-wazuh-csv" maxlength="128">
       </label>
+      <label>CSV Contract
+        <select id="csvContract"><option>WAZUH_CSV_V1</option><option>WAZUH_CSV_V2</option></select>
+      </label>
       <button id="analyze">تحليل ومعاينة</button>
     </div>
     <div id="message" role="status" aria-live="polite"></div>
-    <p class="note">عند الاعتماد ستتحول المشاهدات إلى Assets وExposures وCases، لكن غياب الثغرة عن ملف لاحق لن يغلقها لأن CSV الحالي ليس Complete Snapshot.</p>
+    <p class="note">V1 إيجابي فقط. في V2 لا يتم الحل إلا بصف RESOLVED صريح ومطابق؛ غياب الثغرة عن ملف لاحق لا يغلقها.</p>
   </section>
 
   <section id="result" class="panel hidden">
@@ -182,7 +185,7 @@
         <select id="caseSeverity"><option value="">الكل</option><option>CRITICAL</option><option>HIGH</option><option>MEDIUM</option><option>LOW</option><option>UNKNOWN</option></select>
       </label>
       <label>Status
-        <select id="caseStatus"><option value="">الكل</option><option>OPEN</option><option>ACCEPTED_RISK</option><option>FALSE_POSITIVE</option><option>CLOSED_MANUAL</option></select>
+        <select id="caseStatus"><option value="">الكل</option><option>OPEN</option><option>SOURCE_RESOLVED</option><option>ACCEPTED_RISK</option><option>FALSE_POSITIVE</option><option>CLOSED_MANUAL</option></select>
       </label>
       <label>CVE
         <input id="caseCve" placeholder="CVE-2026 أو جزء منه">
@@ -456,6 +459,7 @@
         headers: {
           'Content-Type': 'text/csv; charset=utf-8',
           'X-Source-Profile-Id': profile,
+          'X-CSV-Contract': byId('csvContract').value,
           'Idempotency-Key': uuid()
         },
         body: file

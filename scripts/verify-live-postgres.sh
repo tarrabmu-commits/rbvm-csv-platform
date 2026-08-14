@@ -44,7 +44,7 @@ audit_privileges="$("${PSQL[@]}" --command="select
 health="$(curl --fail --silent --show-error "${CURL_AUTH[@]}" \
     http://127.0.0.1:8080/api/v1/health)"
 grep -q '"catalogBackend": "POSTGRESQL"' <<<"$health"
-grep -q '"schemaVersion": 5' <<<"$health"
+grep -q '"schemaVersion": 6' <<<"$health"
 grep -q '"status": "UP"' <<<"$health"
 
 case_page="$(curl --fail --silent --show-error "${CURL_AUTH[@]}" \

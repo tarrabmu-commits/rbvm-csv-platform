@@ -34,15 +34,19 @@ import java.util.regex.Pattern;
 public final class WazuhCsvAnalyzer {
     private static final Pattern CVE_PATTERN = Pattern.compile("(?i)^CVE-\\d{4}-\\d{4,}$");
     private static final int MAX_ISSUE_SAMPLES = 100;
-    private static final List<String> SEMANTIC_HEADERS = CsvContractV1.HEADERS;
-
     private final String sourceProfileId;
+    private final String contractId;
 
     public WazuhCsvAnalyzer(String sourceProfileId) {
+        this(sourceProfileId, CsvContractV1.ID);
+    }
+
+    public WazuhCsvAnalyzer(String sourceProfileId, String contractId) {
         if (sourceProfileId == null || sourceProfileId.isBlank()) {
             throw new IllegalArgumentException("sourceProfileId is required");
         }
         this.sourceProfileId = sourceProfileId.trim();
+        this.contractId = CsvContractV2.requireSupported(contractId);
     }
 
     public AnalysisReport analyze(Path path, int previewLimit) throws IOException {
@@ -70,6 +74,8 @@ public final class WazuhCsvAnalyzer {
         long acceptedRows = 0;
         long deduplicatedRows = 0;
         long quarantinedRows = 0;
+        long activeRows = 0;
+        long resolvedRows = 0;
         long embeddedNewlineValues = 0;
         long rowsWithoutHttpReferences = 0;
         Instant minimumDetectedAt = null;
@@ -85,12 +91,16 @@ public final class WazuhCsvAnalyzer {
         Map<String, Integer> maxLengths = new LinkedHashMap<>();
         List<ValidationIssue> issues = new ArrayList<>();
         List<Map<String, Object>> preview = new ArrayList<>();
-        CsvContractV1.HeaderMapping mapping;
+        ContractMapping mapping;
+        List<String> semanticHeaders = contractId.equals(CsvContractV2.ID)
+                ? CsvContractV2.HEADERS : CsvContractV1.HEADERS;
+        Set<String> requiredHeaders = contractId.equals(CsvContractV2.ID)
+                ? CsvContractV2.ROW_REQUIRED : CsvContractV1.ROW_REQUIRED;
 
         for (CsvSeverity value : CsvSeverity.values()) {
             severity.put(value, 0L);
         }
-        for (String header : SEMANTIC_HEADERS) {
+        for (String header : semanticHeaders) {
             maxLengths.put(header, 0);
         }
 
@@ -102,7 +112,7 @@ public final class WazuhCsvAnalyzer {
             if (rawHeaders == null) {
                 throw new CsvContractException("CSV file is empty");
             }
-            mapping = CsvContractV1.mapHeaders(rawHeaders);
+            mapping = mapHeaders(rawHeaders);
 
             List<String> row;
             while ((row = csv.readRow()) != null) {
@@ -118,10 +128,10 @@ public final class WazuhCsvAnalyzer {
                     continue;
                 }
 
-                updateLengthsAndNewlines(mapping, currentRow, maxLengths);
-                embeddedNewlineValues += countNewlineValues(mapping, currentRow);
+                updateLengthsAndNewlines(mapping, currentRow, maxLengths, semanticHeaders);
+                embeddedNewlineValues += countNewlineValues(mapping, currentRow, semanticHeaders);
 
-                List<String> missingRequired = CsvContractV1.ROW_REQUIRED.stream()
+                List<String> missingRequired = requiredHeaders.stream()
                         .filter(header -> mapping.value(currentRow, header).trim().isEmpty())
                         .toList();
                 if (!missingRequired.isEmpty()) {
@@ -149,6 +159,46 @@ public final class WazuhCsvAnalyzer {
                     continue;
                 }
 
+                FindingStatus findingStatus = FindingStatus.ACTIVE;
+                Instant resolvedAt = null;
+                if (contractId.equals(CsvContractV2.ID)) {
+                    try {
+                        findingStatus = FindingStatus.parse(mapping.value(currentRow, "Finding_Status"));
+                    } catch (IllegalArgumentException exception) {
+                        quarantinedRows++;
+                        addIssue(issues, new ValidationIssue(sourceRowNumber,
+                                ValidationIssue.Level.ERROR, "INVALID_FINDING_STATUS",
+                                exception.getMessage()));
+                        continue;
+                    }
+                    String resolvedRaw = mapping.value(currentRow, "Resolved_At").trim();
+                    if (findingStatus == FindingStatus.ACTIVE && !resolvedRaw.isEmpty()) {
+                        quarantinedRows++;
+                        addIssue(issues, new ValidationIssue(sourceRowNumber,
+                                ValidationIssue.Level.ERROR, "ACTIVE_WITH_RESOLVED_AT",
+                                "ACTIVE rows must leave Resolved_At empty"));
+                        continue;
+                    }
+                    if (findingStatus == FindingStatus.RESOLVED) {
+                        try {
+                            resolvedAt = Instant.parse(resolvedRaw);
+                        } catch (DateTimeParseException exception) {
+                            quarantinedRows++;
+                            addIssue(issues, new ValidationIssue(sourceRowNumber,
+                                    ValidationIssue.Level.ERROR, "INVALID_RESOLVED_AT",
+                                    "RESOLVED rows require ISO-8601 Resolved_At with timezone"));
+                            continue;
+                        }
+                        if (resolvedAt.isBefore(detectedAt)) {
+                            quarantinedRows++;
+                            addIssue(issues, new ValidationIssue(sourceRowNumber,
+                                    ValidationIssue.Level.ERROR, "RESOLVED_BEFORE_DETECTED",
+                                    "Resolved_At must not be before Detected_At"));
+                            continue;
+                        }
+                    }
+                }
+
                 CsvSeverity.ParseResult severityResult = CsvSeverity.parse(mapping.value(currentRow, "Severity"));
                 if (!severityResult.recognized()) {
                     addIssue(issues, new ValidationIssue(sourceRowNumber, ValidationIssue.Level.WARNING,
@@ -163,10 +213,22 @@ public final class WazuhCsvAnalyzer {
                 }
 
                 acceptedRows++;
+                if (findingStatus == FindingStatus.ACTIVE) {
+                    activeRows++;
+                } else {
+                    resolvedRows++;
+                }
                 String agentRaw = mapping.value(currentRow, "Agent").trim();
                 String productRaw = mapping.value(currentRow, "Affected_Product").trim();
-                String agent = normalizeKey(agentRaw);
-                String product = normalizeKey(productRaw);
+                String agentSourceId = mapping.value(currentRow, "Agent_ID").trim();
+                String packageVersion = mapping.value(currentRow, "Package_Version").trim();
+                String packageArchitecture = mapping.value(currentRow, "Package_Architecture").trim();
+                String agent = contractId.equals(CsvContractV2.ID)
+                        ? normalizeKey(agentSourceId) : normalizeKey(agentRaw);
+                String product = contractId.equals(CsvContractV2.ID)
+                        ? compositeKey(normalizeKey(productRaw), normalizeKey(packageVersion),
+                                normalizeKey(packageArchitecture))
+                        : normalizeKey(productRaw);
                 String exposureKey = compositeKey(sourceProfileId, agent, cve, product);
                 String caseKey = compositeKey(sourceProfileId, agent, cve);
 
@@ -193,18 +255,24 @@ public final class WazuhCsvAnalyzer {
                 observationSink.accept(new WazuhObservation(
                         sourceRowNumber,
                         sourceProfileId,
+                        contractId,
                         rowFingerprint,
                         agentRaw,
+                        agentSourceId,
                         agent,
                         cve,
                         severityResult.value(),
                         severityResult.recognized(),
                         mapping.value(currentRow, "CVE_Description"),
                         productRaw,
+                        packageVersion,
+                        packageArchitecture,
                         product,
                         references,
                         mapping.value(currentRow, "OS_name").trim(),
-                        detectedAt
+                        findingStatus,
+                        detectedAt,
+                        resolvedAt
                 ));
 
                 if (preview.size() < previewLimit) {
@@ -216,6 +284,13 @@ public final class WazuhCsvAnalyzer {
                     item.put("affectedProduct", productRaw);
                     item.put("osName", mapping.value(currentRow, "OS_name").trim());
                     item.put("detectedAt", detectedAt.toString());
+                    item.put("findingStatus", findingStatus.name());
+                    item.put("resolvedAt", resolvedAt == null ? null : resolvedAt.toString());
+                    if (contractId.equals(CsvContractV2.ID)) {
+                        item.put("agentId", agentSourceId);
+                        item.put("packageVersion", packageVersion);
+                        item.put("packageArchitecture", packageArchitecture);
+                    }
                     item.put("observationFingerprint", rowFingerprint);
                     preview.add(item);
                 }
@@ -237,8 +312,9 @@ public final class WazuhCsvAnalyzer {
         }
 
         return new AnalysisReport(
-                CsvContractV1.ID,
-                "POSITIVE_OBSERVATION_EXPORT",
+                contractId,
+                contractId.equals(CsvContractV2.ID)
+                        ? CsvContractV2.SEMANTICS : "POSITIVE_OBSERVATION_EXPORT",
                 fileSize,
                 fileHash,
                 mapping.headers(),
@@ -247,6 +323,8 @@ public final class WazuhCsvAnalyzer {
                 acceptedRows,
                 deduplicatedRows,
                 quarantinedRows,
+                activeRows,
+                resolvedRows,
                 agents.size(),
                 cves.size(),
                 products.size(),
@@ -269,18 +347,20 @@ public final class WazuhCsvAnalyzer {
     }
 
     private static void updateLengthsAndNewlines(
-            CsvContractV1.HeaderMapping mapping,
+            ContractMapping mapping,
             List<String> row,
-            Map<String, Integer> maxLengths
+            Map<String, Integer> maxLengths,
+            List<String> semanticHeaders
     ) {
-        for (String header : SEMANTIC_HEADERS) {
+        for (String header : semanticHeaders) {
             int length = mapping.value(row, header).length();
             maxLengths.compute(header, (ignored, current) -> Math.max(current, length));
         }
     }
 
-    private static long countNewlineValues(CsvContractV1.HeaderMapping mapping, List<String> row) {
-        return SEMANTIC_HEADERS.stream()
+    private static long countNewlineValues(ContractMapping mapping, List<String> row,
+                                           List<String> semanticHeaders) {
+        return semanticHeaders.stream()
                 .map(header -> mapping.value(row, header))
                 .filter(value -> value.indexOf('\n') >= 0 || value.indexOf('\r') >= 0)
                 .count();
@@ -311,10 +391,11 @@ public final class WazuhCsvAnalyzer {
         return String.join("\u001F", values);
     }
 
-    private static String fingerprint(CsvContractV1.HeaderMapping mapping, List<String> row) {
+    private String fingerprint(ContractMapping mapping, List<String> row) {
         MessageDigest digest = sha256Digest();
-        updateFingerprint(digest, CsvContractV1.ID);
-        List<String> orderedHeaders = new ArrayList<>(SEMANTIC_HEADERS);
+        updateFingerprint(digest, contractId);
+        List<String> orderedHeaders = new ArrayList<>(contractId.equals(CsvContractV2.ID)
+                ? CsvContractV2.HEADERS : CsvContractV1.HEADERS);
         mapping.additionalHeaders().stream().sorted().forEach(orderedHeaders::add);
         for (String header : orderedHeaders) {
             updateFingerprint(digest, header);
@@ -322,6 +403,23 @@ public final class WazuhCsvAnalyzer {
             updateFingerprint(digest, value);
         }
         return hex(digest.digest());
+    }
+
+    private ContractMapping mapHeaders(List<String> rawHeaders) {
+        if (contractId.equals(CsvContractV2.ID)) {
+            CsvContractV2.HeaderMapping value = CsvContractV2.mapHeaders(rawHeaders);
+            return new ContractMapping(value.headers(), value.indexes(), value.additionalHeaders());
+        }
+        CsvContractV1.HeaderMapping value = CsvContractV1.mapHeaders(rawHeaders);
+        return new ContractMapping(value.headers(), value.indexes(), value.additionalHeaders());
+    }
+
+    private record ContractMapping(List<String> headers, Map<String, Integer> indexes,
+                                   List<String> additionalHeaders) {
+        private String value(List<String> row, String header) {
+            Integer index = indexes.get(header);
+            return index == null || index >= row.size() ? "" : row.get(index);
+        }
     }
 
     private static void updateFingerprint(MessageDigest digest, String value) {

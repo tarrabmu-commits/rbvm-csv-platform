@@ -18,6 +18,7 @@ public final class CsvContractSelfTest {
         rejectsMissingContractHeader();
         rejectsMalformedUtf8();
         rejectsInvalidCveAndTimestampIntoQuarantine();
+        validatesExplicitV2LifecycleEvidence();
         enforcesImportRunTransitions();
         System.out.println("CsvContractSelfTest: PASS");
     }
@@ -133,6 +134,35 @@ public final class CsvContractSelfTest {
             rejectedInvalidTransition = true;
         }
         assert rejectedInvalidTransition;
+    }
+
+    private static void validatesExplicitV2LifecycleEvidence() throws Exception {
+        String headers = "Agent,Agent_ID,CVE_ID,Severity,CVE_Description,Affected_Product,"
+                + "Package_Version,Package_Architecture,References,OS_name,Finding_Status,"
+                + "Detected_At,Resolved_At\r\n";
+        String rows = "renamed-agent,001,CVE-2026-4321,High,description,openssl,3.0.2,amd64,"
+                + "https://example.test/1,Ubuntu,ACTIVE,2026-08-01T10:00:00Z,\r\n"
+                + "renamed-agent,001,CVE-2026-4321,High,description,openssl,3.0.2,amd64,"
+                + "https://example.test/2,Ubuntu,RESOLVED,2026-08-01T10:00:00Z,"
+                + "2026-08-02T10:00:00Z\r\n"
+                + "renamed-agent,001,CVE-2026-4321,High,description,openssl,3.0.2,amd64,"
+                + "https://example.test/3,Ubuntu,ACTIVE,2026-08-03T10:00:00Z,"
+                + "2026-08-04T10:00:00Z\r\n";
+        Path file = Files.createTempFile("wazuh-csv-v2-", ".csv");
+        try {
+            Files.writeString(file, headers + rows, StandardCharsets.UTF_8);
+            AnalysisReport report = new WazuhCsvAnalyzer("v2-profile", CsvContractV2.ID)
+                    .analyze(file, 10);
+            assert report.contractId().equals(CsvContractV2.ID);
+            assert report.semantics().equals(CsvContractV2.SEMANTICS);
+            assert report.activeRows() == 1;
+            assert report.resolvedRows() == 1;
+            assert report.quarantinedRows() == 1;
+            assert report.issueSamples().stream()
+                    .anyMatch(issue -> issue.code().equals("ACTIVE_WITH_RESOLVED_AT"));
+        } finally {
+            Files.deleteIfExists(file);
+        }
     }
 
     private static AnalysisReport analyze(String csv) throws Exception {

@@ -1,6 +1,6 @@
-# RBVM CSV Platform — Increment 9
+# RBVM CSV Platform — Increment 10
 
-منصة محلية قابلة للتشغيل لإدخال `WAZUH_CSV_V1` وتحويل مشاهداته الإيجابية إلى
+منصة محلية قابلة للتشغيل لإدخال `WAZUH_CSV_V1` أوعقد `WAZUH_CSV_V2` الاختياري وتحويل الأدلة إلى
 نموذج RBVM موحّد: Assets وVulnerabilities وComponents وObservations وExposures
 وCases، مع حفظ الدليل الخام وإدارة قرارات الحالة بسجل تدقيق قابل لإعادة البناء،
 وقراءة وكتابة كانونـية اختيارية عبر PostgreSQL.
@@ -11,6 +11,8 @@
 - HTTP API ورفع Streaming بحد افتراضي `100 MiB`.
 - RFC 4180 وUTF-8 صارم، بما فيه الحقول ذات الأسطر الداخلية.
 - تحقق من headers وCVE والتوقيت والحقول المطلوبة.
+- V2 يضيف Agent ID ثابتاً وإصدار/معمارية الحزمة و`ACTIVE|RESOLVED` مع وقت حل صريح.
+- حل تقني وإعادة فتح من دليل V2 صريح فقط؛ لا يوجد أي إغلاق مبني على غياب الصف.
 - Fingerprint دلالية ثابتة لا تتغير عند إعادة ترتيب الأعمدة.
 - Idempotency على مفتاح الطلب و`source profile + file SHA-256`.
 - Observation immutable ومنع تكرارها داخل الملف وبين الاستيرادات.
@@ -28,7 +30,7 @@
 - PostgreSQL projection متزامنة: Import لا يكتمل قبل Commit معاملة قاعدة البيانات.
 - إعادة إرسال آمنة للـImports وأحداث Workflow من الأدلة المحلية بعد الانقطاع.
 - PostgreSQL Read Catalog لملخص الكاتالوج والبحث وتفاصيل الحالات.
-- Migration runner بتدقيق SHA-256 وقفل PostgreSQL advisory وتسلسل V1–V5.
+- Migration runner بتدقيق SHA-256 وقفل PostgreSQL advisory وتسلسل V1–V6.
 - دور Runtime محدود، وحارس append-only يمنع تعديل أوحذف Audit Events.
 - TLS `verify-full` وأدوات Backup/Restore واختبار قطع الاتصال.
 - Health يصرّح بمصدر القراءة وحالة PostgreSQL reconciliation.
@@ -61,7 +63,7 @@ http://127.0.0.1:8080
 
 ```bash
 ./scripts/build-distribution.sh
-java -jar dist/rbvm-csv-platform-0.9.0.jar
+java -jar dist/rbvm-csv-platform-0.10.0.jar
 ```
 
 ولتشغيل الاختبارات ثم تحليل ملف من CLI:
@@ -74,10 +76,10 @@ java -jar dist/rbvm-csv-platform-0.9.0.jar
 
 ```bash
 ./scripts/verify-reproducible-build.sh
-sha256sum --check dist/rbvm-csv-platform-0.9.0.jar.sha256
+sha256sum --check dist/rbvm-csv-platform-0.10.0.jar.sha256
 ```
 
-ينشر tag مطابق مثل `v0.9.0` Release يحتوي JAR وchecksum وSPDX SBOM، ويولد
+ينشر tag مطابق مثل `v0.10.0` Release يحتوي JAR وchecksum وSPDX SBOM، ويولد
 GitHub build-provenance وSBOM attestations. يتحقق workflow من تطابق tag مع
 Gradle وOpenAPI واسم الحزمة قبل النشر.
 
@@ -134,6 +136,9 @@ curl -X POST http://127.0.0.1:8080/api/v1/csv-imports \
   -H 'Idempotency-Key: upload-20260720-0001' \
   --data-binary @test.csv
 ```
+
+لاستخدام V2 أضف `-H 'X-CSV-Contract: WAZUH_CSV_V2'` واستعمل Source Profile
+مخصصاً لهذا العقد. حذف الـheader يعني V1 حفاظاً على التوافق.
 
 اعتماد المادية:
 
@@ -214,6 +219,7 @@ data/
 - [`db/migration/V3__case_workflow_audit.sql`](db/migration/V3__case_workflow_audit.sql)
 - [`db/migration/V4__postgres_projection_runtime.sql`](db/migration/V4__postgres_projection_runtime.sql)
 - [`db/migration/V5__postgres_read_catalog.sql`](db/migration/V5__postgres_read_catalog.sql)
+- [`db/migration/V6__explicit_finding_lifecycle.sql`](db/migration/V6__explicit_finding_lifecycle.sql)
 
 لتفعيل الإسقاط، ضع pgJDBC على الـclasspath من دون تضمينه داخل حزمة التطبيق:
 
@@ -228,7 +234,7 @@ export RBVM_DB_PASSWORD='from-a-secret-manager'
 ```
 
 المخطط يثبت Tenant boundaries والمفاتيح الطبيعية والـforeign keys والـindexes
-وسياسة `POSITIVE_ONLY_NO_AUTO_CLOSE`. يكتب Increment 6 البيانات والأحداث داخل
+وسياسة V1 الإيجابية وسياسة V2 القائمة على دليل lifecycle صريح. يكتب المحرك البيانات والأحداث داخل
 معاملات Serializable ويقرأ الكاتالوج من PostgreSQL. استخدم دور مالك للمigrations
 ودور Runtime محدود للتشغيل اليومي؛ راجع وثيقة PostgreSQL وسجل التحقق الحي.
 
@@ -241,19 +247,21 @@ export RBVM_DB_PASSWORD='from-a-secret-manager'
 راجع [`docs/DOMAIN_MODEL.md`](docs/DOMAIN_MODEL.md) لقواعد الهوية والزمن والمادية،
 و[`docs/CASE_WORKFLOW.md`](docs/CASE_WORKFLOW.md) لآلة الحالات والتدقيق،
 و[`docs/WAZUH_CSV_V1.md`](docs/WAZUH_CSV_V1.md) لعقد المصدر،
+و[`docs/WAZUH_CSV_V2.md`](docs/WAZUH_CSV_V2.md) للعقد ذي الهوية والحل الصريح،
 و[`docs/POSTGRES_PROJECTION.md`](docs/POSTGRES_PROJECTION.md) لحدود الإسقاط والتشغيل،
 و[`docs/VALIDATION.md`](docs/VALIDATION.md) لنتائج الاختبار الكامل وحدوده.
 وسجل [`docs/INCREMENT_6_VALIDATION.md`](docs/INCREMENT_6_VALIDATION.md) لنتائج المحرك الحي.
 وسجل [`docs/INCREMENT_7_VALIDATION.md`](docs/INCREMENT_7_VALIDATION.md) للمصادقة والتشغيل الصلب والتعافي.
 وسجل [`docs/INCREMENT_8_VALIDATION.md`](docs/INCREMENT_8_VALIDATION.md) لانتهاء المفاتيح وحدود الطلبات وتقليل probe exposure.
 وسجل [`docs/INCREMENT_9_VALIDATION.md`](docs/INCREMENT_9_VALIDATION.md) للبناء القابل لإعادة الإنتاج وCodeQL وprovenance.
+وسجل [`docs/INCREMENT_10_VALIDATION.md`](docs/INCREMENT_10_VALIDATION.md) لدورة حياة V2 والترحيل V6.
 
 ## الحدود الحالية
 
 - يوجد API-key RBAC محلي، لكن لا يوجد SSO/OIDC أوMFA أوعزل تنفيذي لعدة Tenants بعد.
 - عند `RBVM_AUTH_MODE=DISABLED` يبقى الفاعل `local-operator` غير موثّق؛ وضع الإنتاج هو `API_KEY`.
 - لا يوجد CVSS/EPSS أوThreat Intelligence لأن CSV لا يحملها.
-- لا يوجد package version، ولذلك لا نثبت remediation لحزمة.
-- لا يوجد Auto-close لأن الملف Positive-only وليس Complete Snapshot.
+- V1 لا يحمل package version ولا يثبت remediation؛ V2 يثبتها فقط من الحقول الصريحة.
+- لا يوجد إغلاق من الغياب؛ `SOURCE_RESOLVED` يحتاج صف V2 صريحاً ومطابقاً.
 - تعافي single-node بعد restart مختبر، لكن لا يوجد HA أوMulti-writer؛ مسار الكتابة يستخدم advisory lock واحداً عن قصد.
 - TLS المحلي وBackup/Restore مختبران، لكن إدارة الشهادات وRPO/RTO الإنتاجية تعتمد بيئة النشر.

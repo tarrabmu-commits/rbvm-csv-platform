@@ -39,6 +39,7 @@ public final class CsvHttpSelfTest {
     public static void main(String[] args) throws Exception {
         uploadPreviewConfirmAndRecover();
         rejectsInvalidRequests();
+        acceptsOptInV2ContractHeader();
         enforcesAuthenticationRolesAndAuditIdentity();
         System.out.println("CsvHttpSelfTest: PASS");
     }
@@ -287,6 +288,44 @@ public final class CsvHttpSelfTest {
 
             HttpResponse<String> invalidLimit = get(client, base.resolve("/api/v1/cases?limit=101"));
             assert invalidLimit.statusCode() == 400 : invalidLimit.body();
+        } finally {
+            deleteTree(data);
+        }
+    }
+
+    private static void acceptsOptInV2ContractHeader() throws Exception {
+        Path data = Files.createTempDirectory("rbvm-http-v2-");
+        HttpClient client = client();
+        String csv = "Agent,Agent_ID,CVE_ID,Severity,CVE_Description,Affected_Product,"
+                + "Package_Version,Package_Architecture,References,OS_name,Finding_Status,"
+                + "Detected_At,Resolved_At\r\n"
+                + "agent,agent-1,CVE-2026-9999,High,description,pkg,1.2.3,amd64,"
+                + "https://example.test/v2,Ubuntu,RESOLVED,2026-08-01T10:00:00Z,"
+                + "2026-08-02T10:00:00Z\r\n";
+        try (CsvPlatformServer server = server(data, 1024 * 1024)) {
+            server.start();
+            HttpRequest request = HttpRequest.newBuilder(
+                            server.baseUri().resolve("/api/v1/csv-imports"))
+                    .timeout(Duration.ofSeconds(10))
+                    .header("Content-Type", "text/csv")
+                    .header("X-Source-Profile-Id", "v2-http-profile")
+                    .header("X-CSV-Contract", "WAZUH_CSV_V2")
+                    .header("Idempotency-Key", "v2-http-create-0001")
+                    .POST(HttpRequest.BodyPublishers.ofString(csv, StandardCharsets.UTF_8))
+                    .build();
+            HttpResponse<String> created = client.send(
+                    request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            assert created.statusCode() == 201 : created.body();
+            assert created.body().contains("\"contractId\": \"WAZUH_CSV_V2\"");
+            assert created.body().contains("\"resolvedRows\": 1");
+            String importId = extractImportId(created.body());
+            HttpResponse<String> confirmed = confirm(
+                    client, server.baseUri(), importId, "v2-http-confirm-0001");
+            assert confirmed.statusCode() == 200 : confirmed.body();
+            HttpResponse<String> cases = get(
+                    client, server.baseUri().resolve("/api/v1/cases?status=SOURCE_RESOLVED"));
+            assert cases.statusCode() == 200;
+            assert cases.body().contains("\"status\": \"SOURCE_RESOLVED\"");
         } finally {
             deleteTree(data);
         }

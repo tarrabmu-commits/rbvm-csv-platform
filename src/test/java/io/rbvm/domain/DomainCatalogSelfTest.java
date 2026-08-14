@@ -20,6 +20,7 @@ public final class DomainCatalogSelfTest {
         malformedCsvDoesNotPartiallyCommit();
         queriesAndPaginatesCases();
         enforcesWorkflowAndIdempotency();
+        closesAndReopensOnlyFromExplicitV2Evidence();
         System.out.println("DomainCatalogSelfTest: PASS");
     }
 
@@ -274,6 +275,50 @@ public final class DomainCatalogSelfTest {
             assert expiredAcceptanceRejected;
         } finally {
             Files.deleteIfExists(csv);
+        }
+    }
+
+    private static void closesAndReopensOnlyFromExplicitV2Evidence() throws Exception {
+        InMemoryDomainCatalog catalog = catalog();
+        String header = "Agent,Agent_ID,CVE_ID,Severity,CVE_Description,Affected_Product,"
+                + "Package_Version,Package_Architecture,References,OS_name,Finding_Status,"
+                + "Detected_At,Resolved_At\r\n";
+        String identity = "agent-name,agent-001,CVE-2026-5555,High,description,openssl,3.0.2,"
+                + "amd64,https://example.test/evidence,Ubuntu,";
+        Path active = csv(header + identity + "ACTIVE,2026-08-01T10:00:00Z,\r\n");
+        Path absent = csv(header);
+        Path resolved = csv(header + identity
+                + "RESOLVED,2026-08-01T10:00:00Z,2026-08-02T10:00:00Z\r\n");
+        Path reopened = csv(header + identity + "ACTIVE,2026-08-03T10:00:00Z,\r\n");
+        try {
+            catalog.materialize(UUID.randomUUID(), active, "v2-profile", "WAZUH_CSV_V2");
+            Map<String, Object> first = catalog.casePreview(1).get(0);
+            assert first.get("status").equals("OPEN");
+            String caseId = first.get("caseId").toString();
+
+            catalog.materialize(UUID.randomUUID(), absent, "v2-profile", "WAZUH_CSV_V2");
+            assert catalog.casePreview(1).get(0).get("status").equals("OPEN")
+                    : "absence must not close";
+
+            catalog.materialize(UUID.randomUUID(), resolved, "v2-profile", "WAZUH_CSV_V2");
+            Map<String, Object> closed = catalog.casePreview(1).get(0);
+            assert closed.get("caseId").equals(caseId);
+            assert closed.get("status").equals("SOURCE_RESOLVED");
+            assert catalog.snapshot().autoClosedCases() == 1;
+            Map<?, ?> exposure = (Map<?, ?>) ((java.util.List<?>) catalog.caseDetail(caseId)
+                    .orElseThrow().get("exposures")).get(0);
+            assert exposure.get("packageVersion").equals("3.0.2");
+            assert exposure.get("packageArchitecture").equals("amd64");
+            assert exposure.get("resolvedAt").equals("2026-08-02T10:00:00Z");
+
+            catalog.materialize(UUID.randomUUID(), reopened, "v2-profile", "WAZUH_CSV_V2");
+            assert catalog.casePreview(1).get(0).get("status").equals("OPEN");
+            assert catalog.snapshot().autoClosedCases() == 0;
+        } finally {
+            Files.deleteIfExists(active);
+            Files.deleteIfExists(absent);
+            Files.deleteIfExists(resolved);
+            Files.deleteIfExists(reopened);
         }
     }
 

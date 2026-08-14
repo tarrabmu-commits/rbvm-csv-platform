@@ -55,8 +55,8 @@ def main():
 
     if document.get("openapi") != "3.1.1":
         raise AssertionError("OpenAPI document must declare 3.1.1")
-    if document.get("info", {}).get("version") != "0.9.0":
-        raise AssertionError("OpenAPI info.version must match Increment 9")
+    if document.get("info", {}).get("version") != "0.10.0":
+        raise AssertionError("OpenAPI info.version must match Increment 10")
 
     bearer = document.get("components", {}).get("securitySchemes", {}).get("bearerAuth", {})
     if bearer.get("type") != "http" or bearer.get("scheme") != "bearer":
@@ -99,7 +99,9 @@ def main():
 
     schemas = document["components"]["schemas"]
     statuses = schemas["CaseView"]["properties"]["status"]["enum"]
-    if set(statuses) != {"OPEN", "ACCEPTED_RISK", "FALSE_POSITIVE", "CLOSED_MANUAL"}:
+    if set(statuses) != {
+        "OPEN", "SOURCE_RESOLVED", "ACCEPTED_RISK", "FALSE_POSITIVE", "CLOSED_MANUAL"
+    }:
         raise AssertionError("Case workflow statuses are incomplete")
 
     print("OpenAPI structural checks: PASS")

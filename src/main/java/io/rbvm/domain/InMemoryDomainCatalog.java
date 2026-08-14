@@ -2,6 +2,7 @@ package io.rbvm.domain;
 
 import io.rbvm.csv.AnalysisReport;
 import io.rbvm.csv.CsvSeverity;
+import io.rbvm.csv.FindingStatus;
 import io.rbvm.csv.WazuhCsvAnalyzer;
 import io.rbvm.csv.WazuhObservation;
 
@@ -58,7 +59,8 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
     public synchronized DomainMaterializationResult materialize(
             UUID importId,
             Path csvPath,
-            String sourceProfileId
+            String sourceProfileId,
+            String contractId
     ) throws IOException {
         Objects.requireNonNull(importId, "importId");
         Objects.requireNonNull(csvPath, "csvPath");
@@ -71,7 +73,7 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
 
         Projection working = new Projection(projection);
         Accumulator accumulator = new Accumulator(importId);
-        AnalysisReport analysis = new WazuhCsvAnalyzer(sourceProfileId).analyze(
+        AnalysisReport analysis = new WazuhCsvAnalyzer(sourceProfileId, contractId).analyze(
                 csvPath,
                 0,
                 observation -> working.apply(importId, observation, accumulator)
@@ -114,6 +116,9 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
         long openCases = projection.cases.values().stream()
                 .filter(item -> item.status == CaseStatus.OPEN)
                 .count();
+        long sourceResolvedCases = projection.cases.values().stream()
+                .filter(item -> item.status == CaseStatus.SOURCE_RESOLVED)
+                .count();
         return new CatalogSnapshot(
                 results.size(),
                 projection.observations.size(),
@@ -124,7 +129,7 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
                 projection.exposures.size(),
                 projection.cases.size(),
                 openCases,
-                0,
+                sourceResolvedCases,
                 changed,
                 conflicts,
                 Collections.unmodifiableMap(new LinkedHashMap<>(severityDistribution)),
@@ -410,12 +415,17 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
                 yield CaseStatus.CLOSED_MANUAL;
             }
             case REOPEN -> {
-                if (item.status == CaseStatus.OPEN) {
+                if (item.status == CaseStatus.OPEN || item.status == CaseStatus.SOURCE_RESOLVED) {
                     throw invalidTransition(item, command);
                 }
                 yield CaseStatus.OPEN;
             }
-            case COMMENT -> item.status;
+            case COMMENT -> {
+                if (item.status == CaseStatus.SOURCE_RESOLVED) {
+                    throw invalidTransition(item, command);
+                }
+                yield item.status;
+            }
         };
     }
 
@@ -717,6 +727,8 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
         private final String assetPublicId;
         private final String normalizedProductName;
         private String observedProductName;
+        private String packageVersion;
+        private String packageArchitecture;
         private Instant firstObservedAt;
         private Instant lastObservedAt;
 
@@ -725,6 +737,8 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
             assetPublicId = publicId("asset", assetKey);
             normalizedProductName = observation.affectedProductIdentityKey();
             observedProductName = observation.affectedProductObservedName();
+            packageVersion = observation.packageVersion();
+            packageArchitecture = observation.packageArchitecture();
             firstObservedAt = observation.detectedAt();
             lastObservedAt = observation.detectedAt();
         }
@@ -734,6 +748,8 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
             assetPublicId = source.assetPublicId;
             normalizedProductName = source.normalizedProductName;
             observedProductName = source.observedProductName;
+            packageVersion = source.packageVersion;
+            packageArchitecture = source.packageArchitecture;
             firstObservedAt = source.firstObservedAt;
             lastObservedAt = source.lastObservedAt;
         }
@@ -745,6 +761,8 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
             if (observation.detectedAt().isAfter(lastObservedAt)) {
                 lastObservedAt = observation.detectedAt();
                 observedProductName = observation.affectedProductObservedName();
+                packageVersion = observation.packageVersion();
+                packageArchitecture = observation.packageArchitecture();
             }
         }
     }
@@ -759,6 +777,10 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
         private Instant firstObservedAt;
         private Instant lastObservedAt;
         private Instant currentSeverityObservedAt;
+        private FindingStatus findingStatus;
+        private Instant lifecycleObservedAt;
+        private Instant resolvedAt;
+        private final String closurePolicy;
         private CsvSeverity currentSeverity;
         private long observationCount;
         private final Set<CsvSeverity> observedSeverities;
@@ -781,6 +803,11 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
             lastObservedAt = observation.detectedAt();
             currentSeverityObservedAt = observation.detectedAt();
             currentSeverity = observation.severity();
+            findingStatus = observation.findingStatus();
+            lifecycleObservedAt = observation.evidenceAt();
+            resolvedAt = observation.resolvedAt();
+            closurePolicy = observation.contractId().equals("WAZUH_CSV_V2")
+                    ? "EXPLICIT_SOURCE_EVIDENCE_ONLY" : "POSITIVE_ONLY_NO_AUTO_CLOSE";
             observationCount = 1;
             observedSeverities = new HashSet<>();
             observedSeverities.add(observation.severity());
@@ -797,6 +824,10 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
             lastObservedAt = source.lastObservedAt;
             currentSeverityObservedAt = source.currentSeverityObservedAt;
             currentSeverity = source.currentSeverity;
+            findingStatus = source.findingStatus;
+            lifecycleObservedAt = source.lifecycleObservedAt;
+            resolvedAt = source.resolvedAt;
+            closurePolicy = source.closurePolicy;
             observationCount = source.observationCount;
             observedSeverities = new HashSet<>(source.observedSeverities);
             timestampSeverityConflict = source.timestampSeverityConflict;
@@ -819,6 +850,13 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
                 timestampSeverityConflict = true;
                 currentSeverity = maximumSeverity(currentSeverity, observation.severity());
             }
+            int lifecycleOrder = observation.evidenceAt().compareTo(lifecycleObservedAt);
+            if (lifecycleOrder > 0 || (lifecycleOrder == 0
+                    && observation.findingStatus() == FindingStatus.ACTIVE)) {
+                lifecycleObservedAt = observation.evidenceAt();
+                findingStatus = observation.findingStatus();
+                resolvedAt = observation.resolvedAt();
+            }
         }
 
         private Map<String, Object> toMap(ComponentEntry component) {
@@ -828,8 +866,13 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
             output.put("componentId", componentPublicId);
             output.put("cveId", cveId);
             output.put("product", component == null ? "" : component.observedProductName);
-            output.put("versionStatus", "UNKNOWN_FROM_SOURCE");
-            output.put("status", "OPEN");
+            output.put("packageVersion", component == null ? "" : component.packageVersion);
+            output.put("packageArchitecture", component == null ? "" : component.packageArchitecture);
+            output.put("versionStatus", component == null || component.packageVersion.isBlank()
+                    ? "UNKNOWN_FROM_SOURCE" : "OBSERVED_FROM_SOURCE");
+            output.put("status", findingStatus.name());
+            output.put("lifecycleObservedAt", lifecycleObservedAt.toString());
+            output.put("resolvedAt", resolvedAt == null ? null : resolvedAt.toString());
             output.put("currentSeverity", currentSeverity.name());
             output.put("currentSeverityObservedAt", currentSeverityObservedAt.toString());
             output.put("firstObservedAt", firstObservedAt.toString());
@@ -837,7 +880,7 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
             output.put("observationCount", observationCount);
             output.put("severityChanged", observedSeverities.size() > 1);
             output.put("timestampSeverityConflict", timestampSeverityConflict);
-            output.put("closurePolicy", "POSITIVE_ONLY_NO_AUTO_CLOSE");
+            output.put("closurePolicy", closurePolicy);
             return output;
         }
     }
@@ -858,6 +901,7 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
         private String decisionReason;
         private String decisionEvidence;
         private Instant lastWorkflowAt;
+        private final String closurePolicy;
 
         private CaseEntry(String naturalKey, String assetKey, WazuhObservation observation) {
             publicId = publicId("case", naturalKey);
@@ -870,6 +914,8 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
             lastObservedAt = observation.detectedAt();
             currentSeverity = observation.severity();
             status = CaseStatus.OPEN;
+            closurePolicy = observation.contractId().equals("WAZUH_CSV_V2")
+                    ? "EXPLICIT_SOURCE_EVIDENCE_ONLY" : "POSITIVE_ONLY_NO_AUTO_CLOSE";
         }
 
         private CaseEntry(CaseEntry source) {
@@ -888,12 +934,14 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
             decisionReason = source.decisionReason;
             decisionEvidence = source.decisionEvidence;
             lastWorkflowAt = source.lastWorkflowAt;
+            closurePolicy = source.closurePolicy;
         }
 
         private void recompute(Map<String, ExposureEntry> exposures) {
             Instant first = null;
             Instant last = null;
             CsvSeverity severity = CsvSeverity.UNKNOWN;
+            boolean anyActive = false;
             for (String exposureKey : exposureKeys) {
                 ExposureEntry exposure = exposures.get(exposureKey);
                 if (exposure == null) {
@@ -906,11 +954,15 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
                     last = exposure.lastObservedAt;
                 }
                 severity = maximumSeverity(severity, exposure.currentSeverity);
+                anyActive |= exposure.findingStatus == FindingStatus.ACTIVE;
             }
             if (first != null) {
                 firstObservedAt = first;
                 lastObservedAt = last;
                 currentSeverity = severity;
+                if (status == CaseStatus.OPEN || status == CaseStatus.SOURCE_RESOLVED) {
+                    status = anyActive ? CaseStatus.OPEN : CaseStatus.SOURCE_RESOLVED;
+                }
             }
         }
 
@@ -935,7 +987,7 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
             output.put("decisionReason", decisionReason);
             output.put("decisionEvidence", decisionEvidence);
             output.put("lastWorkflowAt", lastWorkflowAt == null ? null : lastWorkflowAt.toString());
-            output.put("closurePolicy", "POSITIVE_ONLY_NO_AUTO_CLOSE");
+            output.put("closurePolicy", closurePolicy);
             return output;
         }
     }

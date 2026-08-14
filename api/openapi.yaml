@@ -1,10 +1,11 @@
 openapi: 3.1.1
 info:
   title: RBVM CSV Import API
-  version: 0.9.0
+  version: 0.10.0
   description: >-
     Synchronous upload, validation, preview, and canonical-domain materialization
-    API for the WAZUH_CSV_V1 positive-observation export, including explicit
+    API for WAZUH_CSV_V1 positive observations and opt-in WAZUH_CSV_V2 explicit
+    finding lifecycle evidence, including explicit
     case decisions, an append-only workflow audit trail, and optional health
     visibility for a synchronous PostgreSQL canonical projection.
 servers:
@@ -229,10 +230,11 @@ paths:
   /csv-imports:
     post:
       operationId: createCsvImport
-      summary: Stream, validate, and preview a WAZUH_CSV_V1 file
+      summary: Stream, validate, and preview a supported Wazuh CSV contract
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/SourceProfileId'
+        - $ref: '#/components/parameters/CsvContract'
       requestBody:
         required: true
         content:
@@ -374,6 +376,15 @@ components:
         type: string
         minLength: 1
         maxLength: 128
+    CsvContract:
+      name: X-CSV-Contract
+      in: header
+      required: false
+      description: Opt in to V2; omitted requests retain V1 compatibility
+      schema:
+        type: string
+        enum: [WAZUH_CSV_V1, WAZUH_CSV_V2]
+        default: WAZUH_CSV_V1
   schemas:
     Probe:
       type: object
@@ -390,7 +401,8 @@ components:
       type: object
       required:
         - status
-        - contractId
+        - supportedContractIds
+        - defaultContractId
         - catalogBackend
         - canonicalProjection
         - storedImports
@@ -403,7 +415,11 @@ components:
         status:
           type: string
           enum: [UP, DEGRADED]
-        contractId:
+        supportedContractIds:
+          type: array
+          items:
+            enum: [WAZUH_CSV_V1, WAZUH_CSV_V2]
+        defaultContractId:
           const: WAZUH_CSV_V1
         catalogBackend:
           type: string
@@ -478,9 +494,9 @@ components:
         sourceProfileId:
           type: string
         contractId:
-          const: WAZUH_CSV_V1
+          enum: [WAZUH_CSV_V1, WAZUH_CSV_V2]
         semantics:
-          const: POSITIVE_OBSERVATION_EXPORT
+          enum: [POSITIVE_OBSERVATION_EXPORT, EXPLICIT_FINDING_LIFECYCLE_EXPORT]
         commitScope:
           const: CANONICAL_DOMAIN_AND_RAW_EVIDENCE
         status:
@@ -534,9 +550,9 @@ components:
         - preview
       properties:
         contractId:
-          const: WAZUH_CSV_V1
+          enum: [WAZUH_CSV_V1, WAZUH_CSV_V2]
         semantics:
-          const: POSITIVE_OBSERVATION_EXPORT
+          enum: [POSITIVE_OBSERVATION_EXPORT, EXPLICIT_FINDING_LIFECYCLE_EXPORT]
         file:
           type: object
           required: [sizeBytes, sha256]
@@ -574,7 +590,7 @@ components:
             additionalProperties: true
     ImportLedger:
       type: object
-      required: [logicalRows, acceptedRows, deduplicatedRows, quarantinedRows]
+      required: [logicalRows, acceptedRows, deduplicatedRows, quarantinedRows, activeRows, resolvedRows]
       properties:
         logicalRows:
           type: integer
@@ -589,6 +605,14 @@ components:
           format: int64
           minimum: 0
         quarantinedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        activeRows:
+          type: integer
+          format: int64
+          minimum: 0
+        resolvedRows:
           type: integer
           format: int64
           minimum: 0
@@ -666,6 +690,7 @@ components:
         - cases
         - openCases
         - autoClosedCases
+        - sourceResolvedCases
         - exposuresWithSeverityChanges
         - exposuresWithTimestampConflicts
         - currentCaseSeverityDistribution
@@ -702,7 +727,13 @@ components:
         autoClosedCases:
           type: integer
           format: int64
-          const: 0
+          minimum: 0
+          deprecated: true
+          description: Compatibility alias for sourceResolvedCases
+        sourceResolvedCases:
+          type: integer
+          format: int64
+          minimum: 0
         exposuresWithSeverityChanges:
           type: integer
           format: int64
@@ -716,9 +747,13 @@ components:
             format: int64
         caseStatusDistribution:
           type: object
-          required: [OPEN, ACCEPTED_RISK, FALSE_POSITIVE, CLOSED_MANUAL]
+          required: [OPEN, SOURCE_RESOLVED, ACCEPTED_RISK, FALSE_POSITIVE, CLOSED_MANUAL]
           properties:
             OPEN:
+              type: integer
+              format: int64
+              minimum: 0
+            SOURCE_RESOLVED:
               type: integer
               format: int64
               minimum: 0
@@ -735,7 +770,7 @@ components:
               format: int64
               minimum: 0
         closurePolicy:
-          const: POSITIVE_ONLY_NO_AUTO_CLOSE
+          const: EXPLICIT_SOURCE_EVIDENCE_ONLY_NO_ABSENCE_CLOSE
     CasePage:
       type: object
       required: [catalogRevision, summary, cases, nextCursor]
@@ -791,7 +826,7 @@ components:
           type: string
         status:
           type: string
-          enum: [OPEN, ACCEPTED_RISK, FALSE_POSITIVE, CLOSED_MANUAL]
+          enum: [OPEN, SOURCE_RESOLVED, ACCEPTED_RISK, FALSE_POSITIVE, CLOSED_MANUAL]
         currentSeverity:
           type: string
           enum: [CRITICAL, HIGH, MEDIUM, LOW, UNKNOWN]
@@ -822,7 +857,7 @@ components:
           type: [string, 'null']
           format: date-time
         closurePolicy:
-          const: POSITIVE_ONLY_NO_AUTO_CLOSE
+          enum: [POSITIVE_ONLY_NO_AUTO_CLOSE, EXPLICIT_SOURCE_EVIDENCE_ONLY]
     CaseDetail:
       allOf:
         - $ref: '#/components/schemas/CaseView'
@@ -848,6 +883,8 @@ components:
         - cveId
         - product
         - versionStatus
+        - packageVersion
+        - packageArchitecture
         - status
         - currentSeverity
         - currentSeverityObservedAt
@@ -857,6 +894,8 @@ components:
         - severityChanged
         - timestampSeverityConflict
         - closurePolicy
+        - lifecycleObservedAt
+        - resolvedAt
       properties:
         exposureId:
           type: string
@@ -872,9 +911,13 @@ components:
         product:
           type: string
         versionStatus:
-          const: UNKNOWN_FROM_SOURCE
+          enum: [UNKNOWN_FROM_SOURCE, OBSERVED_FROM_SOURCE]
+        packageVersion:
+          type: string
+        packageArchitecture:
+          type: string
         status:
-          const: OPEN
+          enum: [ACTIVE, RESOLVED]
         currentSeverity:
           type: string
           enum: [CRITICAL, HIGH, MEDIUM, LOW, UNKNOWN]
@@ -896,7 +939,13 @@ components:
         timestampSeverityConflict:
           type: boolean
         closurePolicy:
-          const: POSITIVE_ONLY_NO_AUTO_CLOSE
+          enum: [POSITIVE_ONLY_NO_AUTO_CLOSE, EXPLICIT_SOURCE_EVIDENCE_ONLY]
+        lifecycleObservedAt:
+          type: string
+          format: date-time
+        resolvedAt:
+          type: [string, 'null']
+          format: date-time
     CaseAuditEvent:
       type: object
       required:
@@ -933,10 +982,10 @@ components:
           enum: [ACCEPT_RISK, MARK_FALSE_POSITIVE, CLOSE_MANUAL, REOPEN, COMMENT]
         fromStatus:
           type: string
-          enum: [OPEN, ACCEPTED_RISK, FALSE_POSITIVE, CLOSED_MANUAL]
+          enum: [OPEN, SOURCE_RESOLVED, ACCEPTED_RISK, FALSE_POSITIVE, CLOSED_MANUAL]
         toStatus:
           type: string
-          enum: [OPEN, ACCEPTED_RISK, FALSE_POSITIVE, CLOSED_MANUAL]
+          enum: [OPEN, SOURCE_RESOLVED, ACCEPTED_RISK, FALSE_POSITIVE, CLOSED_MANUAL]
         reason:
           type: string
         expiresAt:
