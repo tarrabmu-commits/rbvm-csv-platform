@@ -13,6 +13,7 @@ import io.rbvm.domain.DomainCatalog;
 import io.rbvm.domain.CaseWorkflowConflictException;
 import io.rbvm.domain.InvalidCaseActionException;
 import io.rbvm.domain.StaleCaseCursorException;
+import io.rbvm.domain.VulnerabilityPriorityTier;
 import io.rbvm.postgres.CanonicalProjectionFactory;
 import io.rbvm.postgres.CanonicalProjectionFactory.RuntimeComponents;
 import io.rbvm.security.ApiKeyAuthenticator;
@@ -451,7 +452,9 @@ public final class CsvPlatformServer implements AutoCloseable {
 
     private static CaseQuery parseCaseQuery(URI uri) {
         Map<String, String> query = parseParameters(uri.getRawQuery());
-        rejectUnknownFields(query, Set.of("limit", "cursor", "severity", "status", "cve", "asset"));
+        rejectUnknownFields(query, Set.of(
+                "limit", "cursor", "severity", "status", "cve", "asset",
+                "priority", "knownExploited"));
         int limit = 20;
         if (query.containsKey("limit")) {
             try {
@@ -469,8 +472,17 @@ public final class CsvPlatformServer implements AutoCloseable {
                 parseEnumSet(query.get("severity"), CsvSeverity.class, "severity"),
                 parseEnumSet(query.get("status"), CaseStatus.class, "status"),
                 query.get("cve"),
-                query.get("asset")
+                query.get("asset"),
+                parseEnumSet(query.get("priority"), VulnerabilityPriorityTier.class, "priority"),
+                parseOptionalBoolean(query.get("knownExploited"), "knownExploited")
         );
+    }
+
+    private static Boolean parseOptionalBoolean(String value, String field) {
+        if (value == null || value.isBlank()) return null;
+        if (value.equalsIgnoreCase("true")) return true;
+        if (value.equalsIgnoreCase("false")) return false;
+        throw new InvalidCaseActionException(field + " must be true or false");
     }
 
     private static Map<String, String> readForm(InputStream input) throws IOException {

@@ -7,6 +7,7 @@ import io.rbvm.csv.FindingStatus;
 import io.rbvm.csv.ProjectionImport;
 import io.rbvm.csv.WazuhCsvAnalyzer;
 import io.rbvm.csv.WazuhObservation;
+import io.rbvm.csv.VulnerabilityIntelligenceEvidence;
 import io.rbvm.domain.CaseAuditEvent;
 import io.rbvm.domain.CaseActionType;
 
@@ -45,7 +46,7 @@ import java.util.UUID;
 public final class PostgresCanonicalProjection implements CanonicalProjection {
     private static final String TENANT_KEY = "local";
     private static final long PROJECTION_LOCK = 6_416_166_340_247_368_022L;
-    private static final int REQUIRED_SCHEMA_VERSION = 6;
+    private static final int REQUIRED_SCHEMA_VERSION = 7;
 
     private final JdbcConnectionFactory connections;
     private final Clock clock;
@@ -557,15 +558,30 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
             UUID proposed = stableUuid("vulnerability", observation.cveId());
             UUID inserted = returningUuid(connection, """
                     INSERT INTO rbvm.vulnerability(
-                        id, cve_id, created_at, description_current, description_observed_at
-                    ) VALUES (?, ?, ?, ?, ?)
+                        id, cve_id, created_at, description_current, description_observed_at,
+                        cvss_version, cvss_base_score, cvss_vector, epss_probability,
+                        epss_percentile, known_exploited, kev_date_added, kev_due_date,
+                        intelligence_observed_at, intelligence_source_references, priority_tier
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (cve_id) DO NOTHING RETURNING id
                     """,
                     proposed,
                     observation.cveId(),
                     accumulator.now,
                     observation.descriptionSnapshot(),
-                    observation.detectedAt()
+                    observation.detectedAt(),
+                    intel(observation, VulnerabilityIntelligenceEvidence::cvssVersion),
+                    intel(observation, VulnerabilityIntelligenceEvidence::cvssBaseScore),
+                    intel(observation, VulnerabilityIntelligenceEvidence::cvssVector),
+                    intel(observation, VulnerabilityIntelligenceEvidence::epssProbability),
+                    intel(observation, VulnerabilityIntelligenceEvidence::epssPercentile),
+                    intel(observation, VulnerabilityIntelligenceEvidence::knownExploited),
+                    intel(observation, VulnerabilityIntelligenceEvidence::kevDateAdded),
+                    intel(observation, VulnerabilityIntelligenceEvidence::kevDueDate),
+                    intel(observation, VulnerabilityIntelligenceEvidence::observedAt),
+                    intel(observation, VulnerabilityIntelligenceEvidence::sourceReferences),
+                    observation.intelligence() == null ? "UNENRICHED"
+                            : observation.intelligence().priorityTier()
             );
             boolean isNew = inserted != null;
             UUID id = isNew ? inserted : selectUuid(
@@ -599,6 +615,22 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                 observation.detectedAt(),
                 cached.id()
         );
+        if (observation.intelligence() != null) {
+            VulnerabilityIntelligenceEvidence intel = observation.intelligence();
+            executeUpdate(connection, """
+                    UPDATE rbvm.vulnerability SET
+                        cvss_version = ?, cvss_base_score = ?, cvss_vector = ?,
+                        epss_probability = ?, epss_percentile = ?, known_exploited = ?,
+                        kev_date_added = ?, kev_due_date = ?, intelligence_observed_at = ?,
+                        intelligence_source_references = ?, priority_tier = ?
+                    WHERE id = ? AND (intelligence_observed_at IS NULL
+                        OR ? > intelligence_observed_at)
+                    """,
+                    intel.cvssVersion(), intel.cvssBaseScore(), intel.cvssVector(),
+                    intel.epssProbability(), intel.epssPercentile(), intel.knownExploited(),
+                    intel.kevDateAdded(), intel.kevDueDate(), intel.observedAt(),
+                    intel.sourceReferences(), intel.priorityTier(), cached.id(), intel.observedAt());
+        }
         return cached;
     }
 
@@ -702,7 +734,12 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                     component_id, fingerprint, severity, source_severity_recognized,
                     description_snapshot, references_raw, os_name_raw, detected_at,
                     first_ingested_at, finding_status, resolved_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    , cvss_version_snapshot, cvss_base_score_snapshot, cvss_vector_snapshot,
+                    epss_probability_snapshot, epss_percentile_snapshot,
+                    known_exploited_snapshot, kev_date_added_snapshot, kev_due_date_snapshot,
+                    intelligence_observed_at_snapshot,
+                    intelligence_source_references_snapshot
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (tenant_id, source_profile_id, fingerprint)
                 DO NOTHING RETURNING id
                 """,
@@ -721,8 +758,25 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                 observation.detectedAt(),
                 accumulator.now,
                 observation.findingStatus().name(),
-                observation.resolvedAt()
+                observation.resolvedAt(),
+                intel(observation, VulnerabilityIntelligenceEvidence::cvssVersion),
+                intel(observation, VulnerabilityIntelligenceEvidence::cvssBaseScore),
+                intel(observation, VulnerabilityIntelligenceEvidence::cvssVector),
+                intel(observation, VulnerabilityIntelligenceEvidence::epssProbability),
+                intel(observation, VulnerabilityIntelligenceEvidence::epssPercentile),
+                intel(observation, VulnerabilityIntelligenceEvidence::knownExploited),
+                intel(observation, VulnerabilityIntelligenceEvidence::kevDateAdded),
+                intel(observation, VulnerabilityIntelligenceEvidence::kevDueDate),
+                intel(observation, VulnerabilityIntelligenceEvidence::observedAt),
+                intel(observation, VulnerabilityIntelligenceEvidence::sourceReferences)
         );
+    }
+
+    private static <T> T intel(
+            WazuhObservation observation,
+            java.util.function.Function<VulnerabilityIntelligenceEvidence, T> getter
+    ) {
+        return observation.intelligence() == null ? null : getter.apply(observation.intelligence());
     }
 
     private static void linkImportObservation(

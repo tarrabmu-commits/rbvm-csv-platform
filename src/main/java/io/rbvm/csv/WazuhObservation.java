@@ -24,7 +24,8 @@ public record WazuhObservation(
         String osNameRaw,
         FindingStatus findingStatus,
         Instant detectedAt,
-        Instant resolvedAt
+        Instant resolvedAt,
+        VulnerabilityIntelligenceEvidence intelligence
 ) {
     public WazuhObservation {
         if (sourceRowNumber < 2) {

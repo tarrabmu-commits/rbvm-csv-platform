@@ -1,7 +1,7 @@
 openapi: 3.1.1
 info:
   title: RBVM CSV Import API
-  version: 0.10.0
+  version: 0.11.0
   description: >-
     Synchronous upload, validation, preview, and canonical-domain materialization
     API for WAZUH_CSV_V1 positive observations and opt-in WAZUH_CSV_V2 explicit
@@ -134,6 +134,17 @@ paths:
           description: Case-insensitive asset-name substring
           schema:
             type: string
+        - name: priority
+          in: query
+          description: Comma-separated vulnerability priority tiers
+          schema:
+            type: string
+            examples: [IMMEDIATE,URGENT]
+        - name: knownExploited
+          in: query
+          description: Filter by CISA KEV evidence
+          schema:
+            type: boolean
       responses:
         '200':
           description: Stable page for the current catalog revision
@@ -696,6 +707,7 @@ components:
         - currentCaseSeverityDistribution
         - caseStatusDistribution
         - closurePolicy
+        - vulnerabilityIntelligence
       properties:
         materializedImports:
           type: integer
@@ -858,6 +870,56 @@ components:
           format: date-time
         closurePolicy:
           enum: [POSITIVE_ONLY_NO_AUTO_CLOSE, EXPLICIT_SOURCE_EVIDENCE_ONLY]
+        vulnerabilityIntelligence:
+          oneOf:
+            - $ref: '#/components/schemas/VulnerabilityIntelligence'
+            - type: 'null'
+    VulnerabilityIntelligence:
+      type: object
+      required:
+        - priorityTier
+        - cvssVersion
+        - cvssBaseScore
+        - cvssVector
+        - epssProbability
+        - epssPercentile
+        - knownExploited
+        - kevDateAdded
+        - kevDueDate
+        - observedAt
+        - sourceReferences
+      properties:
+        priorityTier:
+          enum: [STANDARD, HIGH, URGENT, IMMEDIATE]
+        cvssVersion:
+          type: [string, 'null']
+        cvssBaseScore:
+          type: [number, 'null']
+          minimum: 0
+          maximum: 10
+        cvssVector:
+          type: [string, 'null']
+        epssProbability:
+          type: [number, 'null']
+          minimum: 0
+          maximum: 1
+        epssPercentile:
+          type: [number, 'null']
+          minimum: 0
+          maximum: 1
+        knownExploited:
+          type: [boolean, 'null']
+        kevDateAdded:
+          type: [string, 'null']
+          format: date
+        kevDueDate:
+          type: [string, 'null']
+          format: date
+        observedAt:
+          type: string
+          format: date-time
+        sourceReferences:
+          type: string
     CaseDetail:
       allOf:
         - $ref: '#/components/schemas/CaseView'

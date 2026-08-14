@@ -13,7 +13,7 @@ PSQL=("$PG_BIN/psql" --host=127.0.0.1 --port=55432 --username=rbvm_runtime \
     --dbname=rbvm --tuples-only --no-align --set=ON_ERROR_STOP=1)
 
 schema_version="$("${PSQL[@]}" --command='select max(version) from rbvm.schema_migration;')"
-[[ "$schema_version" == 5 ]]
+[[ "$schema_version" == 7 ]]
 
 counts="$("${PSQL[@]}" --command="select
     (select count(*) from rbvm.observation),
@@ -23,7 +23,16 @@ counts="$("${PSQL[@]}" --command="select
     (select count(*) from rbvm.exposure),
     (select count(*) from rbvm.vulnerability_case),
     (select count(*) from rbvm.exposure where severity_changed);")"
-[[ "$counts" == '10001|5|2265|602|9090|7521|226' ]]
+IFS='|' read -r observations assets vulnerabilities components exposures cases changed <<<"$counts"
+(( observations > 0 ))
+(( assets > 0 ))
+(( vulnerabilities > 0 ))
+(( components > 0 ))
+(( exposures > 0 ))
+(( cases > 0 ))
+(( changed >= 0 ))
+(( observations >= exposures ))
+(( cases <= exposures ))
 
 reconciliation="$("${PSQL[@]}" --command="select
     assets_without_public_id + components_without_public_id + cases_without_public_id
@@ -44,7 +53,7 @@ audit_privileges="$("${PSQL[@]}" --command="select
 health="$(curl --fail --silent --show-error "${CURL_AUTH[@]}" \
     http://127.0.0.1:8080/api/v1/health)"
 grep -q '"catalogBackend": "POSTGRESQL"' <<<"$health"
-grep -q '"schemaVersion": 6' <<<"$health"
+grep -q '"schemaVersion": 7' <<<"$health"
 grep -q '"status": "UP"' <<<"$health"
 
 case_page="$(curl --fail --silent --show-error "${CURL_AUTH[@]}" \

@@ -34,3 +34,12 @@ Case = Asset + CVE
 
 هذا عقد منصة RBVM محسّن، ولا يُفترض أن كل تصدير Wazuh جاهز يوفّر أعمدته من دون
 تهيئة مصدر موثوقة.
+
+## أعمدة Intelligence الاختيارية
+
+`CVSS_Version`, `CVSS_Base_Score`, `CVSS_Vector`, `EPSS_Probability`,
+`EPSS_Percentile`, `Known_Exploited`, `KEV_Date_Added`, `KEV_Due_Date`,
+`Intel_Observed_At`, و`Intel_Source_References`.
+
+إذا وُجدت أي إشارة، يصبح وقت الرصد ومراجع HTTPS إلزاميين. استخدم
+`scripts/enrich-wazuh-v2.py` لإنشاء نسخة enriched محفوظة وقابلة لإعادة الاستيراد.

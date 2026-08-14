@@ -16,6 +16,7 @@ import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.text.Normalizer;
 import java.util.ArrayList;
@@ -206,6 +207,21 @@ public final class WazuhCsvAnalyzer {
                             "Mapped source severity to UNKNOWN: " + mapping.value(currentRow, "Severity")));
                 }
 
+                VulnerabilityIntelligenceEvidence intelligence = null;
+                if (contractId.equals(CsvContractV2.ID)
+                        && CsvContractV2.INTELLIGENCE_HEADERS.stream()
+                        .anyMatch(header -> !mapping.value(currentRow, header).trim().isEmpty())) {
+                    try {
+                        intelligence = intelligence(mapping, currentRow);
+                    } catch (IllegalArgumentException exception) {
+                        quarantinedRows++;
+                        addIssue(issues, new ValidationIssue(sourceRowNumber,
+                                ValidationIssue.Level.ERROR, "INVALID_INTELLIGENCE",
+                                exception.getMessage()));
+                        continue;
+                    }
+                }
+
                 String rowFingerprint = fingerprint(mapping, currentRow);
                 if (!rowFingerprints.add(rowFingerprint)) {
                     deduplicatedRows++;
@@ -272,7 +288,8 @@ public final class WazuhCsvAnalyzer {
                         mapping.value(currentRow, "OS_name").trim(),
                         findingStatus,
                         detectedAt,
-                        resolvedAt
+                        resolvedAt,
+                        intelligence
                 ));
 
                 if (preview.size() < previewLimit) {
@@ -290,6 +307,8 @@ public final class WazuhCsvAnalyzer {
                         item.put("agentId", agentSourceId);
                         item.put("packageVersion", packageVersion);
                         item.put("packageArchitecture", packageArchitecture);
+                        item.put("priorityTier", intelligence == null
+                                ? "UNENRICHED" : intelligence.priorityTier());
                     }
                     item.put("observationFingerprint", rowFingerprint);
                     preview.add(item);
@@ -412,6 +431,52 @@ public final class WazuhCsvAnalyzer {
         }
         CsvContractV1.HeaderMapping value = CsvContractV1.mapHeaders(rawHeaders);
         return new ContractMapping(value.headers(), value.indexes(), value.additionalHeaders());
+    }
+
+    private static VulnerabilityIntelligenceEvidence intelligence(
+            ContractMapping mapping, List<String> row
+    ) {
+        return new VulnerabilityIntelligenceEvidence(
+                mapping.value(row, "CVSS_Version"),
+                optionalDouble(mapping.value(row, "CVSS_Base_Score"), "CVSS_Base_Score"),
+                mapping.value(row, "CVSS_Vector"),
+                optionalDouble(mapping.value(row, "EPSS_Probability"), "EPSS_Probability"),
+                optionalDouble(mapping.value(row, "EPSS_Percentile"), "EPSS_Percentile"),
+                optionalBoolean(mapping.value(row, "Known_Exploited")),
+                optionalDate(mapping.value(row, "KEV_Date_Added")),
+                optionalDate(mapping.value(row, "KEV_Due_Date")),
+                Instant.parse(requiredIntel(mapping.value(row, "Intel_Observed_At"),
+                        "Intel_Observed_At")),
+                requiredIntel(mapping.value(row, "Intel_Source_References"),
+                        "Intel_Source_References")
+        );
+    }
+
+    private static Double optionalDouble(String raw, String field) {
+        if (raw == null || raw.isBlank()) return null;
+        try {
+            return Double.valueOf(raw.trim());
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException(field + " must be numeric");
+        }
+    }
+
+    private static Boolean optionalBoolean(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        if (raw.trim().equalsIgnoreCase("true")) return true;
+        if (raw.trim().equalsIgnoreCase("false")) return false;
+        throw new IllegalArgumentException("Known_Exploited must be true or false");
+    }
+
+    private static LocalDate optionalDate(String raw) {
+        return raw == null || raw.isBlank() ? null : LocalDate.parse(raw.trim());
+    }
+
+    private static String requiredIntel(String raw, String field) {
+        if (raw == null || raw.isBlank()) {
+            throw new IllegalArgumentException(field + " is required with intelligence signals");
+        }
+        return raw.trim();
     }
 
     private record ContractMapping(List<String> headers, Map<String, Integer> indexes,
