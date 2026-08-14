@@ -197,6 +197,10 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
                 throw new CaseWorkflowConflictException(
                         "Idempotency-Key was already used for a different case action");
             }
+            if (!previous.actorId().equals(normalizedActor)) {
+                throw new CaseWorkflowConflictException(
+                        "Idempotency-Key was already used by a different authenticated actor");
+            }
             return new PreparedCaseAction(previous, true);
         }
 

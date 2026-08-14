@@ -37,14 +37,14 @@ import java.util.UUID;
 /**
  * Transactional PostgreSQL write projection of the local evidence journals.
  *
- * <p>The browser/API read model remains the reconstructable local catalog in
- * Increment 5. This class is intentionally a synchronous projection: an import
- * is not marked completed until its PostgreSQL transaction commits.</p>
+ * <p>This class is the synchronous write side of the Increment 6 PostgreSQL
+ * runtime. An import is not marked completed until its transaction commits;
+ * API reads are served by {@link PostgresReadCatalog}.</p>
  */
 public final class PostgresCanonicalProjection implements CanonicalProjection {
     private static final String TENANT_KEY = "local";
     private static final long PROJECTION_LOCK = 6_416_166_340_247_368_022L;
-    private static final int REQUIRED_SCHEMA_VERSION = 4;
+    private static final int REQUIRED_SCHEMA_VERSION = 5;
 
     private final JdbcConnectionFactory connections;
     private final Clock clock;

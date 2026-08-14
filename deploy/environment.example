@@ -1,0 +1,11 @@
+RBVM_PROJECTION_BACKEND=POSTGRESQL
+RBVM_POSTGRES_DRIVER_JAR=/opt/postgresql/postgresql.jar
+RBVM_JDBC_URL=jdbc:postgresql://127.0.0.1:55432/rbvm?sslmode=verify-full&sslrootcert=/path/to/postgres-ca.crt
+RBVM_DB_USER=rbvm_runtime
+RBVM_DB_PASSWORD=from-a-secret-manager
+RBVM_DB_MIGRATE=false
+RBVM_HOST=127.0.0.1
+RBVM_PORT=8080
+RBVM_DATA_DIR=/var/lib/rbvm-platform/data
+RBVM_AUTH_MODE=API_KEY
+RBVM_API_KEYS_FILE=/run/secrets/rbvm-api-keys.conf

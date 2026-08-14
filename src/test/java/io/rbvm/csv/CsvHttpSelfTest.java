@@ -8,11 +8,16 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.Comparator;
+import java.util.HexFormat;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+
+import io.rbvm.domain.InMemoryDomainCatalog;
+import io.rbvm.security.ApiKeyAuthenticator;
 
 public final class CsvHttpSelfTest {
     private static final Pattern IMPORT_ID = Pattern.compile(
@@ -28,6 +33,7 @@ public final class CsvHttpSelfTest {
     public static void main(String[] args) throws Exception {
         uploadPreviewConfirmAndRecover();
         rejectsInvalidRequests();
+        enforcesAuthenticationRolesAndAuditIdentity();
         System.out.println("CsvHttpSelfTest: PASS");
     }
 
@@ -280,6 +286,71 @@ public final class CsvHttpSelfTest {
         }
     }
 
+    private static void enforcesAuthenticationRolesAndAuditIdentity() throws Exception {
+        Path data = Files.createTempDirectory("rbvm-http-auth-");
+        String viewerToken = "viewer-token-abcdefghijklmnopqrstuvwxyz-123456";
+        String operatorToken = "operator-token-abcdefghijklmnopqrstuvwxyz-123";
+        Path registry = data.resolve("api-keys.conf");
+        Files.writeString(registry,
+                digest(viewerToken) + "=security-viewer|VIEWER\n"
+                        + digest(operatorToken) + "=soc-operator@example.test|OPERATOR\n",
+                StandardCharsets.UTF_8);
+        HttpClient client = client();
+        try (CsvPlatformServer server = new CsvPlatformServer(
+                "127.0.0.1", 0, data.resolve("evidence"), 1024 * 1024,
+                new NoopCanonicalProjection(), new InMemoryDomainCatalog(),
+                ApiKeyAuthenticator.fromFile(registry))) {
+            server.start();
+            URI base = server.baseUri();
+
+            HttpResponse<String> missing = get(client, base.resolve("/api/v1/cases"));
+            assert missing.statusCode() == 401 : missing.body();
+            assert missing.headers().firstValue("WWW-Authenticate").orElse("")
+                    .startsWith("Bearer");
+
+            HttpResponse<String> invalid = authorizedGet(
+                    client, base.resolve("/api/v1/cases"), "invalid-secret-that-must-not-leak-123456");
+            assert invalid.statusCode() == 401 : invalid.body();
+            assert !invalid.body().contains("invalid-secret");
+
+            HttpResponse<String> allowedRead = authorizedGet(
+                    client, base.resolve("/api/v1/cases"), viewerToken);
+            assert allowedRead.statusCode() == 200 : allowedRead.body();
+
+            HttpResponse<String> deniedWrite = authorizedUpload(
+                    client, base, headers(), "viewer-denied-0001", viewerToken);
+            assert deniedWrite.statusCode() == 403 : deniedWrite.body();
+
+            String csv = headers()
+                    + "agent-auth,CVE-2026-9001,High,description,pkg-auth,"
+                    + "https://example.test/auth,Ubuntu,2026-08-01T10:15:30Z\r\n";
+            HttpResponse<String> created = authorizedUpload(
+                    client, base, csv, "operator-create-0001", operatorToken);
+            assert created.statusCode() == 201 : created.body();
+            String importId = extractImportId(created.body());
+            HttpResponse<String> confirmed = authorizedPost(
+                    client,
+                    base.resolve("/api/v1/csv-imports/" + importId + "/confirm"),
+                    "operator-confirm-0001", null, operatorToken);
+            assert confirmed.statusCode() == 200 : confirmed.body();
+
+            HttpResponse<String> cases = authorizedGet(
+                    client, base.resolve("/api/v1/cases?limit=1"), operatorToken);
+            String caseId = extract(CASE_ID, cases.body(), "caseId");
+            HttpResponse<String> action = authorizedPost(
+                    client,
+                    base.resolve("/api/v1/cases/" + caseId + "/actions"),
+                    "operator-action-0001",
+                    "action=COMMENT&reason=Authenticated+decision",
+                    operatorToken);
+            assert action.statusCode() == 200 : action.body();
+            assert action.body().contains("\"actorId\": \"soc-operator@example.test\"");
+            assert action.body().contains("\"actorAssurance\": \"API_KEY_SHA256\"");
+        } finally {
+            deleteTree(data);
+        }
+    }
+
     private static CsvPlatformServer server(Path data, long maxBytes) throws IOException {
         return new CsvPlatformServer("127.0.0.1", 0, data, maxBytes);
     }
@@ -345,6 +416,52 @@ public final class CsvHttpSelfTest {
                 .GET()
                 .build();
         return client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+    }
+
+    private static HttpResponse<String> authorizedGet(HttpClient client, URI uri, String token)
+            throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder(uri)
+                .timeout(Duration.ofSeconds(10))
+                .header("Authorization", "Bearer " + token)
+                .GET()
+                .build();
+        return client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+    }
+
+    private static HttpResponse<String> authorizedUpload(
+            HttpClient client, URI base, String csv, String idempotencyKey, String token)
+            throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder(base.resolve("/api/v1/csv-imports"))
+                .timeout(Duration.ofSeconds(10))
+                .header("Authorization", "Bearer " + token)
+                .header("Content-Type", "text/csv; charset=utf-8")
+                .header("X-Source-Profile-Id", "test-profile")
+                .header("Idempotency-Key", idempotencyKey)
+                .POST(HttpRequest.BodyPublishers.ofString(csv, StandardCharsets.UTF_8))
+                .build();
+        return client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+    }
+
+    private static HttpResponse<String> authorizedPost(
+            HttpClient client, URI uri, String idempotencyKey, String form, String token)
+            throws IOException, InterruptedException {
+        HttpRequest.Builder request = HttpRequest.newBuilder(uri)
+                .timeout(Duration.ofSeconds(10))
+                .header("Authorization", "Bearer " + token)
+                .header("Idempotency-Key", idempotencyKey);
+        if (form == null) {
+            request.POST(HttpRequest.BodyPublishers.noBody());
+        } else {
+            request.header("Content-Type", "application/x-www-form-urlencoded; charset=utf-8")
+                    .POST(HttpRequest.BodyPublishers.ofString(form, StandardCharsets.UTF_8));
+        }
+        return client.send(request.build(),
+                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+    }
+
+    private static String digest(String token) throws Exception {
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                .digest(token.getBytes(StandardCharsets.UTF_8)));
     }
 
     private static String extractImportId(String body) {

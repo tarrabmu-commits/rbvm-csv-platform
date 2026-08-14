@@ -55,8 +55,14 @@ def main():
 
     if document.get("openapi") != "3.1.1":
         raise AssertionError("OpenAPI document must declare 3.1.1")
-    if document.get("info", {}).get("version") != "0.5.0":
-        raise AssertionError("OpenAPI info.version must match Increment 5")
+    if document.get("info", {}).get("version") != "0.7.0":
+        raise AssertionError("OpenAPI info.version must match Increment 7")
+
+    bearer = document.get("components", {}).get("securitySchemes", {}).get("bearerAuth", {})
+    if bearer.get("type") != "http" or bearer.get("scheme") != "bearer":
+        raise AssertionError("OpenAPI must declare bearer API-key authentication")
+    if document.get("security") != [{"bearerAuth": []}]:
+        raise AssertionError("OpenAPI must protect operations by default")
 
     operation_ids = []
     for path_item in document.get("paths", {}).values():

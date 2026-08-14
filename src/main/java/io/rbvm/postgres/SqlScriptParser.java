@@ -12,6 +12,7 @@ final class SqlScriptParser {
         StringBuilder current = new StringBuilder();
         State state = State.NORMAL;
         int blockDepth = 0;
+        String dollarDelimiter = null;
         for (int index = 0; index < script.length(); index++) {
             char value = script.charAt(index);
             char next = index + 1 < script.length() ? script.charAt(index + 1) : '\0';
@@ -31,6 +32,14 @@ final class SqlScriptParser {
                         index++;
                         blockDepth = 1;
                         state = State.BLOCK_COMMENT;
+                    } else if (value == '$') {
+                        String delimiter = dollarDelimiterAt(script, index);
+                        if (delimiter != null) {
+                            current.append(delimiter, 1, delimiter.length());
+                            index += delimiter.length() - 1;
+                            dollarDelimiter = delimiter;
+                            state = State.DOLLAR_QUOTE;
+                        }
                     } else if (value == ';') {
                         addStatement(output, current);
                     }
@@ -70,6 +79,14 @@ final class SqlScriptParser {
                         }
                     }
                 }
+                case DOLLAR_QUOTE -> {
+                    if (script.startsWith(dollarDelimiter, index)) {
+                        current.append(dollarDelimiter, 1, dollarDelimiter.length());
+                        index += dollarDelimiter.length() - 1;
+                        dollarDelimiter = null;
+                        state = State.NORMAL;
+                    }
+                }
             }
         }
         if (state != State.NORMAL && state != State.LINE_COMMENT) {
@@ -77,6 +94,20 @@ final class SqlScriptParser {
         }
         addStatement(output, current);
         return List.copyOf(output);
+    }
+
+    private static String dollarDelimiterAt(String script, int offset) {
+        int end = script.indexOf('$', offset + 1);
+        if (end < 0) {
+            return null;
+        }
+        for (int index = offset + 1; index < end; index++) {
+            char value = script.charAt(index);
+            if (!(Character.isLetterOrDigit(value) || value == '_')) {
+                return null;
+            }
+        }
+        return script.substring(offset, end + 1);
     }
 
     private static void addStatement(List<String> output, StringBuilder current) {
@@ -97,6 +128,7 @@ final class SqlScriptParser {
         SINGLE_QUOTE,
         DOUBLE_QUOTE,
         LINE_COMMENT,
-        BLOCK_COMMENT
+        BLOCK_COMMENT,
+        DOLLAR_QUOTE
     }
 }

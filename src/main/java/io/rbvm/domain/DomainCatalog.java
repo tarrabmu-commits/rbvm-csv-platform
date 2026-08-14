@@ -9,6 +9,10 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface DomainCatalog {
+    default String backend() {
+        return "LOCAL_MEMORY_REBUILD";
+    }
+
     DomainMaterializationResult materialize(UUID importId, Path csvPath, String sourceProfileId)
             throws IOException;
 

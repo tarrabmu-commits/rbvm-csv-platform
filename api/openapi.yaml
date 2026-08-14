@@ -1,7 +1,7 @@
 openapi: 3.1.1
 info:
   title: RBVM CSV Import API
-  version: 0.5.0
+  version: 0.7.0
   description: >-
     Synchronous upload, validation, preview, and canonical-domain materialization
     API for the WAZUH_CSV_V1 positive-observation export, including explicit
@@ -9,9 +9,12 @@ info:
     visibility for a synchronous PostgreSQL canonical projection.
 servers:
   - url: http://127.0.0.1:8080/api/v1
+security:
+  - bearerAuth: []
 paths:
   /health:
     get:
+      security: []
       operationId: getHealth
       summary: Check service and recovery state
       responses:
@@ -21,6 +24,54 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Health'
+  /live:
+    get:
+      security: []
+      operationId: getLiveness
+      summary: Check whether the HTTP process is running
+      responses:
+        '200':
+          description: Process is running
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, startedAt]
+                properties:
+                  status:
+                    const: UP
+                  startedAt:
+                    type: string
+                    format: date-time
+  /ready:
+    get:
+      security: []
+      operationId: getReadiness
+      summary: Check database and projection readiness
+      responses:
+        '200':
+          description: Service dependencies are ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '503':
+          description: A required dependency is unavailable or degraded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+  /metrics:
+    get:
+      operationId: getMetrics
+      summary: Read Prometheus-compatible operational metrics
+      responses:
+        '200':
+          description: Current process and domain gauges
+          content:
+            text/plain:
+              schema:
+                type: string
   /catalog/summary:
     get:
       operationId: getCatalogSummary
@@ -243,6 +294,12 @@ paths:
         '409':
           $ref: '#/components/responses/Problem'
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-api-key
+      description: API key supplied as an opaque bearer token; only its SHA-256 digest is stored.
   parameters:
     ImportId:
       name: importId
@@ -295,7 +352,8 @@ components:
         contractId:
           const: WAZUH_CSV_V1
         catalogBackend:
-          const: LOCAL_MEMORY_REBUILD
+          type: string
+          enum: [LOCAL_MEMORY_REBUILD, POSTGRESQL]
         canonicalProjection:
           $ref: '#/components/schemas/CanonicalProjectionHealth'
         storedImports:

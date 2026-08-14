@@ -35,9 +35,9 @@ import java.util.stream.Stream;
 /**
  * Application service for the local CSV vertical slice.
  *
- * <p>The service keeps live aggregates in memory and stores the raw evidence,
- * analysis report, and small metadata envelope on disk. On restart it rebuilds
- * the in-memory view by validating the stored source again.</p>
+ * <p>The service stores raw evidence and a metadata envelope on disk. It keeps
+ * a reconstructable local command model for validation and recovery; the read
+ * catalog may be local or PostgreSQL.</p>
  */
 public final class CsvImportService implements AutoCloseable {
     private static final String LOCAL_TENANT = "local";
@@ -51,6 +51,7 @@ public final class CsvImportService implements AutoCloseable {
     private final long maximumUploadBytes;
     private final Clock clock;
     private final DomainCatalog domainCatalog;
+    private final DomainCatalog readCatalog;
     private final CanonicalProjection canonicalProjection;
     private final Map<UUID, StoredImport> imports = new ConcurrentHashMap<>();
     private final Map<UUID, DomainMaterializationResult> materializations = new ConcurrentHashMap<>();
@@ -116,6 +117,18 @@ public final class CsvImportService implements AutoCloseable {
             DomainCatalog domainCatalog,
             CanonicalProjection canonicalProjection
     ) throws IOException {
+        this(dataDirectory, maximumUploadBytes, clock, domainCatalog, domainCatalog,
+                canonicalProjection);
+    }
+
+    CsvImportService(
+            Path dataDirectory,
+            long maximumUploadBytes,
+            Clock clock,
+            DomainCatalog domainCatalog,
+            DomainCatalog readCatalog,
+            CanonicalProjection canonicalProjection
+    ) throws IOException {
         Objects.requireNonNull(dataDirectory, "dataDirectory");
         if (maximumUploadBytes < 1) {
             throw new IllegalArgumentException("maximumUploadBytes must be positive");
@@ -123,6 +136,7 @@ public final class CsvImportService implements AutoCloseable {
         this.maximumUploadBytes = maximumUploadBytes;
         this.clock = Objects.requireNonNull(clock, "clock");
         this.domainCatalog = Objects.requireNonNull(domainCatalog, "domainCatalog");
+        this.readCatalog = Objects.requireNonNull(readCatalog, "readCatalog");
         this.canonicalProjection = Objects.requireNonNull(
                 canonicalProjection,
                 "canonicalProjection"
@@ -267,19 +281,19 @@ public final class CsvImportService implements AutoCloseable {
     }
 
     public Map<String, Object> catalogSummary() {
-        return domainCatalog.snapshot().toMap();
+        return readCatalog.snapshot().toMap();
     }
 
     public Map<String, Object> casePreview(int limit) {
-        return domainCatalog.queryCases(CaseQuery.firstPage(limit)).toMap();
+        return readCatalog.queryCases(CaseQuery.firstPage(limit)).toMap();
     }
 
     public Map<String, Object> queryCases(CaseQuery query) {
-        return domainCatalog.queryCases(query).toMap();
+        return readCatalog.queryCases(query).toMap();
     }
 
     public Optional<Map<String, Object>> caseDetail(String caseId) {
-        return domainCatalog.caseDetail(caseId);
+        return readCatalog.caseDetail(caseId);
     }
 
     public CaseActionResult actOnCase(
@@ -287,14 +301,24 @@ public final class CsvImportService implements AutoCloseable {
             CaseActionCommand command,
             String idempotencyKey
     ) throws IOException {
+        return actOnCase(caseId, command, idempotencyKey, LOCAL_ACTOR, LOCAL_ACTOR_ASSURANCE);
+    }
+
+    public CaseActionResult actOnCase(
+            String caseId,
+            CaseActionCommand command,
+            String idempotencyKey,
+            String actorId,
+            String actorAssurance
+    ) throws IOException {
         synchronized (mutationLock) {
             PreparedCaseAction prepared = domainCatalog.prepareCaseAction(
                     nextWorkflowSequence,
                     caseId,
                     command,
                     idempotencyKey,
-                    LOCAL_ACTOR,
-                    LOCAL_ACTOR_ASSURANCE,
+                    actorId,
+                    actorAssurance,
                     clock.instant()
             );
             if (!prepared.replayed()) {
@@ -303,6 +327,7 @@ public final class CsvImportService implements AutoCloseable {
             }
             Map<String, Object> caseView = domainCatalog.applyCaseEvent(prepared.event());
             canonicalProjection.synchronizeCaseEvent(prepared.event());
+            caseView = readCatalog.caseDetail(caseId).orElse(caseView);
             return new CaseActionResult(caseView, prepared.event().toMap(), prepared.replayed());
         }
     }
@@ -315,12 +340,12 @@ public final class CsvImportService implements AutoCloseable {
         Map<String, Object> health = new LinkedHashMap<>();
         health.put("status", recoveryWarnings.isEmpty() && projectionHealthy ? "UP" : "DEGRADED");
         health.put("contractId", CsvContractV1.ID);
-        health.put("catalogBackend", "LOCAL_MEMORY_REBUILD");
+        health.put("catalogBackend", readCatalog.backend());
         health.put("canonicalProjection", projectionHealth);
         health.put("storedImports", imports.size());
         health.put("recoveryWarningCount", recoveryWarnings.size());
         health.put("maximumUploadBytes", maximumUploadBytes);
-        CatalogSnapshot catalog = domainCatalog.snapshot();
+        CatalogSnapshot catalog = readCatalog.snapshot();
         health.put("materializedImports", catalog.materializedImports());
         health.put("observations", catalog.observations());
         health.put("cases", catalog.cases());

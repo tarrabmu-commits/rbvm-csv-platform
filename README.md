@@ -1,9 +1,9 @@
-# RBVM CSV Platform — Increment 5
+# RBVM CSV Platform — Increment 6
 
 منصة محلية قابلة للتشغيل لإدخال `WAZUH_CSV_V1` وتحويل مشاهداته الإيجابية إلى
 نموذج RBVM موحّد: Assets وVulnerabilities وComponents وObservations وExposures
 وCases، مع حفظ الدليل الخام وإدارة قرارات الحالة بسجل تدقيق قابل لإعادة البناء،
-وإسقاط كانونـي اختياري إلى PostgreSQL.
+وقراءة وكتابة كانونـية اختيارية عبر PostgreSQL.
 
 ## ما الذي يعمل الآن؟
 
@@ -27,8 +27,14 @@
 - إعادة تحقق وبناء الكاتالوج من الأدلة المحفوظة عند إعادة التشغيل.
 - PostgreSQL projection متزامنة: Import لا يكتمل قبل Commit معاملة قاعدة البيانات.
 - إعادة إرسال آمنة للـImports وأحداث Workflow من الأدلة المحلية بعد الانقطاع.
-- Migration runner بتدقيق SHA-256 وقفل PostgreSQL advisory وتسلسل V1–V4.
-- Health صريح يفصل Local Read Catalog عن حالة PostgreSQL reconciliation.
+- PostgreSQL Read Catalog لملخص الكاتالوج والبحث وتفاصيل الحالات.
+- Migration runner بتدقيق SHA-256 وقفل PostgreSQL advisory وتسلسل V1–V5.
+- دور Runtime محدود، وحارس append-only يمنع تعديل أوحذف Audit Events.
+- TLS `verify-full` وأدوات Backup/Restore واختبار قطع الاتصال.
+- Health يصرّح بمصدر القراءة وحالة PostgreSQL reconciliation.
+- Bearer API keys ببصمات SHA-256 فقط وRBAC لأدوار Viewer/Operator/Admin.
+- هوية Actor موثقة في Audit Trail، مع liveness/readiness وPrometheus metrics.
+- GitHub Actions للتحقق والبناء، واختبار تعافي حي بعد إعادة تشغيل PostgreSQL.
 - OpenAPI، PostgreSQL migrations، واختبارات contract/domain/HTTP.
 
 ## التشغيل المحلي
@@ -51,7 +57,7 @@ http://127.0.0.1:8080
 
 ```bash
 ./scripts/build-distribution.sh
-java -jar dist/rbvm-csv-platform-0.5.0.jar
+java -jar dist/rbvm-csv-platform-0.7.0.jar
 ```
 
 ولتشغيل الاختبارات ثم تحليل ملف من CLI:
@@ -74,6 +80,19 @@ java -jar dist/rbvm-csv-platform-0.5.0.jar
 | `RBVM_DB_PASSWORD` | — | كلمة المرور؛ لا تظهر في Health أوLogs |
 | `RBVM_DB_MIGRATE` | `true` | تطبيق migrations المفقودة عند الإقلاع |
 | `RBVM_POSTGRES_DRIVER_JAR` | — | مسار pgJDBC المستخدم بواسطة script التشغيل |
+| `RBVM_AUTH_MODE` | `DISABLED` | استخدم `API_KEY` لرفض الوصول غير الموثق |
+| `RBVM_API_KEYS_FILE` | — | ملف `digest=actor-id\|ROLE` ببصمات SHA-256، وصلاحية 600 موصى بها |
+
+أنشئ مفتاحاً من دون وضع القيمة الخام في environment أوGit:
+
+```bash
+./scripts/create-api-key.sh ~/.config/rbvm/api-keys.conf \
+  ~/.config/rbvm/operator.token soc-operator OPERATOR
+```
+
+الأدوار متدرجة: `VIEWER` للقراءة وmetrics، و`OPERATOR` يضيف الاستيراد والقرارات،
+و`ADMIN` يحتفظ بكل صلاحيات API. صفحة الويب تطلب القيمة الخام وتحفظها في
+`sessionStorage` فقط طوال نافذة المتصفح.
 
 ## API الأساسية
 
@@ -81,6 +100,7 @@ java -jar dist/rbvm-csv-platform-0.5.0.jar
 
 ```bash
 curl -X POST http://127.0.0.1:8080/api/v1/csv-imports \
+  -H "Authorization: Bearer $RBVM_API_TOKEN" \
   -H 'Content-Type: text/csv' \
   -H 'X-Source-Profile-Id: accepted-wazuh-csv' \
   -H 'Idempotency-Key: upload-20260720-0001' \
@@ -92,21 +112,23 @@ curl -X POST http://127.0.0.1:8080/api/v1/csv-imports \
 ```bash
 curl -X POST \
   http://127.0.0.1:8080/api/v1/csv-imports/IMPORT_ID/confirm \
+  -H "Authorization: Bearer $RBVM_API_TOKEN" \
   -H 'Idempotency-Key: confirm-20260720-0001'
 ```
 
 قراءة الكاتالوج:
 
 ```bash
-curl http://127.0.0.1:8080/api/v1/catalog/summary
-curl 'http://127.0.0.1:8080/api/v1/cases?limit=20&severity=CRITICAL,HIGH&status=OPEN'
-curl http://127.0.0.1:8080/api/v1/cases/CASE_ID
+curl -H "Authorization: Bearer $RBVM_API_TOKEN" http://127.0.0.1:8080/api/v1/catalog/summary
+curl -H "Authorization: Bearer $RBVM_API_TOKEN" 'http://127.0.0.1:8080/api/v1/cases?limit=20&severity=CRITICAL,HIGH&status=OPEN'
+curl -H "Authorization: Bearer $RBVM_API_TOKEN" http://127.0.0.1:8080/api/v1/cases/CASE_ID
 ```
 
 تسجيل قرار قبول مخاطر:
 
 ```bash
 curl -X POST http://127.0.0.1:8080/api/v1/cases/CASE_ID/actions \
+  -H "Authorization: Bearer $RBVM_API_TOKEN" \
   -H 'Content-Type: application/x-www-form-urlencoded' \
   -H 'Idempotency-Key: case-action-20260720-0001' \
   --data-urlencode 'action=ACCEPT_RISK' \
@@ -115,6 +137,10 @@ curl -X POST http://127.0.0.1:8080/api/v1/cases/CASE_ID/actions \
 ```
 
 العقد الكامل في [`api/openapi.yaml`](api/openapi.yaml).
+
+المسارات `/api/v1/live` و`/api/v1/ready` عامة لكي تستخدمها probes، بينما
+`/api/v1/metrics` يحتاج دور `VIEWER` أوأعلى. الخدمة الافتراضية تستمع على loopback؛
+عند نشرها خارج الجهاز يجب وضع TLS reverse proxy موثوق أمامها وعدم إرسال Bearer token عبر HTTP.
 
 ## نتيجة CSV المرجعية
 
@@ -146,8 +172,9 @@ data/
   staging/
 ```
 
-الكاتالوج المحلي Projection مشتقة في الذاكرة، ويعاد بناؤها من `source.csv` لكل
-Import مكتمل عند التشغيل. الملفات الخام هي الدليل وليست Cache قابلة للحذف.
+عند تعطيل PostgreSQL، الكاتالوج المحلي Projection مشتقة في الذاكرة ويعاد بناؤها من
+`source.csv`. عند تفعيله، تقرأ API الملخص والحالات والتفاصيل من PostgreSQL، بينما
+تبقى الملفات الخام وCase Event journal دليل التعافي وليست Cache قابلة للحذف.
 
 ## PostgreSQL
 
@@ -157,6 +184,7 @@ Import مكتمل عند التشغيل. الملفات الخام هي الدل
 - [`db/migration/V2__dashboard_views.sql`](db/migration/V2__dashboard_views.sql)
 - [`db/migration/V3__case_workflow_audit.sql`](db/migration/V3__case_workflow_audit.sql)
 - [`db/migration/V4__postgres_projection_runtime.sql`](db/migration/V4__postgres_projection_runtime.sql)
+- [`db/migration/V5__postgres_read_catalog.sql`](db/migration/V5__postgres_read_catalog.sql)
 
 لتفعيل الإسقاط، ضع pgJDBC على الـclasspath من دون تضمينه داخل حزمة التطبيق:
 
@@ -171,22 +199,30 @@ export RBVM_DB_PASSWORD='from-a-secret-manager'
 ```
 
 المخطط يثبت Tenant boundaries والمفاتيح الطبيعية والـforeign keys والـindexes
-وسياسة `POSITIVE_ONLY_NO_AUTO_CLOSE`. يكتب Increment 5 البيانات والأحداث إلى
-PostgreSQL داخل معاملات Serializable، لكنه يستمر بالقراءة من الكاتالوج المحلي.
-راجع حدود الاتساق وخطة التحويل في وثيقة PostgreSQL.
+وسياسة `POSITIVE_ONLY_NO_AUTO_CLOSE`. يكتب Increment 6 البيانات والأحداث داخل
+معاملات Serializable ويقرأ الكاتالوج من PostgreSQL. استخدم دور مالك للمigrations
+ودور Runtime محدود للتشغيل اليومي؛ راجع وثيقة PostgreSQL وسجل التحقق الحي.
+
+للنسخ الاحتياطي المجدول، يشغّل `scripts/scheduled-backup.sh` نسخة custom مضغوطة،
+ويكتب checksum، ثم يعيدها إلى قاعدة تحقق مؤقتة قبل اعتبارها ناجحة. يحتفظ افتراضياً
+بآخر 14 نسخة مطابقة للاسم الآمن فقط؛ يمكن تغيير العدد عبر `RBVM_BACKUP_KEEP` (حده
+الأدنى 2). وحدتا systemd المحليتان هما `rbvm-backup.service` و`rbvm-backup.timer`.
+قوالب الوحدات وملف البيئة الآمن موجودة تحت [`deploy/`](deploy/).
 
 راجع [`docs/DOMAIN_MODEL.md`](docs/DOMAIN_MODEL.md) لقواعد الهوية والزمن والمادية،
 و[`docs/CASE_WORKFLOW.md`](docs/CASE_WORKFLOW.md) لآلة الحالات والتدقيق،
 و[`docs/WAZUH_CSV_V1.md`](docs/WAZUH_CSV_V1.md) لعقد المصدر،
 و[`docs/POSTGRES_PROJECTION.md`](docs/POSTGRES_PROJECTION.md) لحدود الإسقاط والتشغيل،
 و[`docs/VALIDATION.md`](docs/VALIDATION.md) لنتائج الاختبار الكامل وحدوده.
+وسجل [`docs/INCREMENT_6_VALIDATION.md`](docs/INCREMENT_6_VALIDATION.md) لنتائج المحرك الحي.
+وسجل [`docs/INCREMENT_7_VALIDATION.md`](docs/INCREMENT_7_VALIDATION.md) للمصادقة والتشغيل الصلب والتعافي.
 
 ## الحدود الحالية
 
-- لا يوجد Login أوRBAC أوعزل تنفيذي لعدة Tenants بعد.
-- الفاعل الحالي `local-operator` ومستوى ثقته `UNAUTHENTICATED_LOCAL`؛ لا يُسوَّق كهوية موثّقة.
+- يوجد API-key RBAC محلي، لكن لا يوجد SSO/OIDC أوMFA أوعزل تنفيذي لعدة Tenants بعد.
+- عند `RBVM_AUTH_MODE=DISABLED` يبقى الفاعل `local-operator` غير موثّق؛ وضع الإنتاج هو `API_KEY`.
 - لا يوجد CVSS/EPSS أوThreat Intelligence لأن CSV لا يحملها.
 - لا يوجد package version، ولذلك لا نثبت remediation لحزمة.
 - لا يوجد Auto-close لأن الملف Positive-only وليس Complete Snapshot.
-- PostgreSQL حالياً Write Projection وليست Read Backend أوHA cluster.
-- مخطط PostgreSQL وJDBC مدقّقان تعاقدياً، لكن تشغيلهما على محرك PostgreSQL فعلي شرط قبل النشر.
+- تعافي single-node بعد restart مختبر، لكن لا يوجد HA أوMulti-writer؛ مسار الكتابة يستخدم advisory lock واحداً عن قصد.
+- TLS المحلي وBackup/Restore مختبران، لكن إدارة الشهادات وRPO/RTO الإنتاجية تعتمد بيئة النشر.
