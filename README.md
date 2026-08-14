@@ -1,4 +1,4 @@
-# RBVM CSV Platform — Increment 8
+# RBVM CSV Platform — Increment 9
 
 منصة محلية قابلة للتشغيل لإدخال `WAZUH_CSV_V1` وتحويل مشاهداته الإيجابية إلى
 نموذج RBVM موحّد: Assets وVulnerabilities وComponents وObservations وExposures
@@ -36,6 +36,8 @@
 - هوية Actor موثقة في Audit Trail، مع liveness/readiness وPrometheus metrics.
 - انتهاء اختياري لمفاتيح API وحدود طلبات مستقلة للـActors ومحاولات الدخول الفاشلة.
 - Readiness عامة قليلة المعلومات، بينما Health التفصيلية محمية بدور Viewer.
+- JAR reproducible مع SHA-256 وSPDX 2.3 SBOM وGitHub artifact attestations.
+- كل GitHub Action مثبت على commit SHA كامل، مع CodeQL وجدول release موثّق.
 - GitHub Actions للتحقق والبناء، واختبار تعافي حي بعد إعادة تشغيل PostgreSQL.
 - OpenAPI، PostgreSQL migrations، واختبارات contract/domain/HTTP.
 
@@ -59,7 +61,7 @@ http://127.0.0.1:8080
 
 ```bash
 ./scripts/build-distribution.sh
-java -jar dist/rbvm-csv-platform-0.8.0.jar
+java -jar dist/rbvm-csv-platform-0.9.0.jar
 ```
 
 ولتشغيل الاختبارات ثم تحليل ملف من CLI:
@@ -67,6 +69,17 @@ java -jar dist/rbvm-csv-platform-0.8.0.jar
 ```bash
 ./scripts/verify.sh /absolute/path/to/test.csv
 ```
+
+للتحقق أن البنية قابلة لإعادة الإنتاج byte-for-byte، مع checksum وSBOM:
+
+```bash
+./scripts/verify-reproducible-build.sh
+sha256sum --check dist/rbvm-csv-platform-0.9.0.jar.sha256
+```
+
+ينشر tag مطابق مثل `v0.9.0` Release يحتوي JAR وchecksum وSPDX SBOM، ويولد
+GitHub build-provenance وSBOM attestations. يتحقق workflow من تطابق tag مع
+Gradle وOpenAPI واسم الحزمة قبل النشر.
 
 ## الإعدادات
 
@@ -233,6 +246,7 @@ export RBVM_DB_PASSWORD='from-a-secret-manager'
 وسجل [`docs/INCREMENT_6_VALIDATION.md`](docs/INCREMENT_6_VALIDATION.md) لنتائج المحرك الحي.
 وسجل [`docs/INCREMENT_7_VALIDATION.md`](docs/INCREMENT_7_VALIDATION.md) للمصادقة والتشغيل الصلب والتعافي.
 وسجل [`docs/INCREMENT_8_VALIDATION.md`](docs/INCREMENT_8_VALIDATION.md) لانتهاء المفاتيح وحدود الطلبات وتقليل probe exposure.
+وسجل [`docs/INCREMENT_9_VALIDATION.md`](docs/INCREMENT_9_VALIDATION.md) للبناء القابل لإعادة الإنتاج وCodeQL وprovenance.
 
 ## الحدود الحالية
 

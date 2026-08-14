@@ -2,4 +2,6 @@
 /data/
 /runtime-data/
 /dist/*.jar
+/dist/*.jar.sha256
+/dist/*.spdx.json
 *.log
