@@ -19,6 +19,7 @@ public final class CsvContractSelfTest {
         rejectsMalformedUtf8();
         rejectsInvalidCveAndTimestampIntoQuarantine();
         validatesExplicitV2LifecycleEvidence();
+        validatesProvenanceBoundVulnerabilityIntelligence();
         enforcesImportRunTransitions();
         System.out.println("CsvContractSelfTest: PASS");
     }
@@ -160,6 +161,35 @@ public final class CsvContractSelfTest {
             assert report.quarantinedRows() == 1;
             assert report.issueSamples().stream()
                     .anyMatch(issue -> issue.code().equals("ACTIVE_WITH_RESOLVED_AT"));
+        } finally {
+            Files.deleteIfExists(file);
+        }
+    }
+
+    private static void validatesProvenanceBoundVulnerabilityIntelligence() throws Exception {
+        String header = "Agent,Agent_ID,CVE_ID,Severity,CVE_Description,Affected_Product,"
+                + "Package_Version,Package_Architecture,References,OS_name,Finding_Status,"
+                + "Detected_At,Resolved_At,CVSS_Version,CVSS_Base_Score,CVSS_Vector,"
+                + "EPSS_Probability,EPSS_Percentile,Known_Exploited,KEV_Date_Added,"
+                + "KEV_Due_Date,Intel_Observed_At,Intel_Source_References\r\n";
+        String valid = "agent,agent-1,CVE-2026-7000,Critical,description,pkg,1.0,amd64,"
+                + "https://example.test/cve,Ubuntu,ACTIVE,2026-08-01T00:00:00Z,,3.1,9.8,"
+                + "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H,0.42,0.97,true,"
+                + "2026-08-02,2026-08-20,2026-08-14T00:00:00Z,"
+                + "https://www.cisa.gov/known-exploited-vulnerabilities-catalog\r\n";
+        String invalid = "agent,agent-2,CVE-2026-7001,High,description,pkg,1.0,amd64,"
+                + "https://example.test/cve,Ubuntu,ACTIVE,2026-08-01T00:00:00Z,,3.1,11.0,"
+                + "vector,1.2,0.4,false,,,2026-08-14T00:00:00Z,http://insecure.test\r\n";
+        Path file = Files.createTempFile("wazuh-intel-v2-", ".csv");
+        try {
+            Files.writeString(file, header + valid + invalid, StandardCharsets.UTF_8);
+            AnalysisReport report = new WazuhCsvAnalyzer("intel-profile", CsvContractV2.ID)
+                    .analyze(file, 10);
+            assert report.acceptedRows() == 1;
+            assert report.quarantinedRows() == 1;
+            assert report.preview().get(0).get("priorityTier").equals("IMMEDIATE");
+            assert report.issueSamples().stream()
+                    .anyMatch(issue -> issue.code().equals("INVALID_INTELLIGENCE"));
         } finally {
             Files.deleteIfExists(file);
         }

@@ -21,6 +21,7 @@ public final class DomainCatalogSelfTest {
         queriesAndPaginatesCases();
         enforcesWorkflowAndIdempotency();
         closesAndReopensOnlyFromExplicitV2Evidence();
+        materializesVulnerabilityPriorityIntelligence();
         System.out.println("DomainCatalogSelfTest: PASS");
     }
 
@@ -319,6 +320,39 @@ public final class DomainCatalogSelfTest {
             Files.deleteIfExists(absent);
             Files.deleteIfExists(resolved);
             Files.deleteIfExists(reopened);
+        }
+    }
+
+    private static void materializesVulnerabilityPriorityIntelligence() throws Exception {
+        InMemoryDomainCatalog catalog = catalog();
+        String header = "Agent,Agent_ID,CVE_ID,Severity,CVE_Description,Affected_Product,"
+                + "Package_Version,Package_Architecture,References,OS_name,Finding_Status,"
+                + "Detected_At,Resolved_At,CVSS_Version,CVSS_Base_Score,CVSS_Vector,"
+                + "EPSS_Probability,EPSS_Percentile,Known_Exploited,KEV_Date_Added,"
+                + "KEV_Due_Date,Intel_Observed_At,Intel_Source_References\r\n";
+        String row = "agent,stable-1,CVE-2026-7777,High,description,pkg,2.0,amd64,"
+                + "https://example.test/cve,Ubuntu,ACTIVE,2026-08-01T00:00:00Z,,3.1,8.1,"
+                + "CVSS:3.1/AV:N,0.25,0.94,true,2026-08-02,2026-08-22,"
+                + "2026-08-14T00:00:00Z,https://www.cisa.gov/known-exploited-vulnerabilities-catalog\r\n";
+        Path csv = csv(header + row);
+        try {
+            catalog.materialize(UUID.randomUUID(), csv, "intel-profile", "WAZUH_CSV_V2");
+            Map<?, ?> intel = (Map<?, ?>) catalog.casePreview(1).get(0)
+                    .get("vulnerabilityIntelligence");
+            assert intel.get("priorityTier").equals("IMMEDIATE");
+            assert intel.get("knownExploited").equals(true);
+            assert intel.get("epssProbability").equals(0.25);
+            assert intel.get("cvssBaseScore").equals(8.1);
+            CasePage filtered = catalog.queryCases(new CaseQuery(
+                    10, null, Set.of(), Set.of(), null, null,
+                    Set.of(VulnerabilityPriorityTier.IMMEDIATE), true));
+            assert filtered.cases().size() == 1;
+            CasePage excluded = catalog.queryCases(new CaseQuery(
+                    10, null, Set.of(), Set.of(), null, null,
+                    Set.of(VulnerabilityPriorityTier.STANDARD), null));
+            assert excluded.cases().isEmpty();
+        } finally {
+            Files.deleteIfExists(csv);
         }
     }
 

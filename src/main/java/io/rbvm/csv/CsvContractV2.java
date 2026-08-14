@@ -23,6 +23,13 @@ public final class CsvContractV2 {
             "Package_Architecture", "Finding_Status", "Detected_At"
     );
 
+    public static final List<String> INTELLIGENCE_HEADERS = List.of(
+            "CVSS_Version", "CVSS_Base_Score", "CVSS_Vector",
+            "EPSS_Probability", "EPSS_Percentile", "Known_Exploited",
+            "KEV_Date_Added", "KEV_Due_Date", "Intel_Observed_At",
+            "Intel_Source_References"
+    );
+
     private CsvContractV2() {
     }
 

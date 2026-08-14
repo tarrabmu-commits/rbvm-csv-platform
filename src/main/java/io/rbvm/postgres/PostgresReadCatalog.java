@@ -182,6 +182,10 @@ public final class PostgresReadCatalog implements DomainCatalog {
                        a.public_id AS asset_id, a.observed_name AS asset_name,
                        a.os_name_raw AS os_name, sp.external_key AS source_profile_id,
                        v.cve_id, v.description_current, c.status, c.current_severity,
+                       v.cvss_version, v.cvss_base_score, v.cvss_vector,
+                       v.epss_probability, v.epss_percentile, v.known_exploited,
+                       v.kev_date_added, v.kev_due_date, v.intelligence_observed_at,
+                       v.intelligence_source_references, v.priority_tier,
                        c.first_observed_at, c.last_observed_at,
                        (SELECT count(*) FROM rbvm.exposure e
                           WHERE e.tenant_id = c.tenant_id AND e.case_id = c.id) AS exposure_count,
@@ -207,6 +211,11 @@ public final class PostgresReadCatalog implements DomainCatalog {
     private static void appendFilters(StringBuilder sql, List<Object> parameters, CaseQuery query) {
         appendEnumFilter(sql, parameters, "c.current_severity", query.severities());
         appendEnumFilter(sql, parameters, "c.status", query.statuses());
+        appendEnumFilter(sql, parameters, "v.priority_tier", query.priorityTiers());
+        if (query.knownExploited() != null) {
+            sql.append(" AND v.known_exploited = ?");
+            parameters.add(query.knownExploited());
+        }
         if (query.cveContains() != null) {
             sql.append(" AND v.cve_id LIKE ?");
             parameters.add('%' + query.cveContains().toUpperCase(Locale.ROOT) + '%');
@@ -261,7 +270,33 @@ public final class PostgresReadCatalog implements DomainCatalog {
         Instant workflowAt = optionalInstant(rows, "last_workflow_at");
         output.put("lastWorkflowAt", workflowAt == null ? null : workflowAt.toString());
         output.put("closurePolicy", rows.getString("closure_policy"));
+        Instant intelligenceAt = optionalInstant(rows, "intelligence_observed_at");
+        if (intelligenceAt == null) {
+            output.put("vulnerabilityIntelligence", null);
+        } else {
+            Map<String, Object> intelligence = new LinkedHashMap<>();
+            intelligence.put("priorityTier", rows.getString("priority_tier"));
+            intelligence.put("cvssVersion", rows.getString("cvss_version"));
+            intelligence.put("cvssBaseScore", optionalDouble(rows, "cvss_base_score"));
+            intelligence.put("cvssVector", rows.getString("cvss_vector"));
+            intelligence.put("epssProbability", optionalDouble(rows, "epss_probability"));
+            intelligence.put("epssPercentile", optionalDouble(rows, "epss_percentile"));
+            Object exploited = rows.getObject("known_exploited");
+            intelligence.put("knownExploited", exploited == null ? null : rows.getBoolean("known_exploited"));
+            Object added = rows.getObject("kev_date_added");
+            Object due = rows.getObject("kev_due_date");
+            intelligence.put("kevDateAdded", added == null ? null : added.toString());
+            intelligence.put("kevDueDate", due == null ? null : due.toString());
+            intelligence.put("observedAt", intelligenceAt.toString());
+            intelligence.put("sourceReferences", rows.getString("intelligence_source_references"));
+            output.put("vulnerabilityIntelligence", intelligence);
+        }
         return output;
+    }
+
+    private static Double optionalDouble(ResultSet rows, String column) throws SQLException {
+        double value = rows.getDouble(column);
+        return rows.wasNull() ? null : value;
     }
 
     private static List<Map<String, Object>> exposures(Connection connection, UUID tenantId,

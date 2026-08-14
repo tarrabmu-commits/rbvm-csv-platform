@@ -193,12 +193,18 @@
       <label>Asset
         <input id="caseAsset" placeholder="اسم الجهاز">
       </label>
+      <label>Priority
+        <select id="casePriority"><option value="">الكل</option><option>IMMEDIATE</option><option>URGENT</option><option>HIGH</option><option>STANDARD</option><option>UNENRICHED</option></select>
+      </label>
+      <label>Known exploited
+        <select id="caseKnownExploited"><option value="">الكل</option><option value="true">نعم</option><option value="false">لا</option></select>
+      </label>
       <button id="caseSearch">بحث</button>
     </div>
     <h2 style="margin-top: 24px">الحالات الحالية</h2>
     <div class="scroll">
       <table>
-        <thead><tr><th>CVE</th><th>Asset</th><th>Severity</th><th>Exposures</th><th>آخر مشاهدة</th><th>Status</th></tr></thead>
+        <thead><tr><th>CVE</th><th>Asset</th><th>Priority</th><th>Severity</th><th>Exposures</th><th>آخر مشاهدة</th><th>Status</th></tr></thead>
         <tbody id="cases"></tbody>
       </table>
     </div>
@@ -361,6 +367,8 @@
       if (byId('caseStatus').value) parameters.set('status', byId('caseStatus').value);
       if (byId('caseCve').value.trim()) parameters.set('cve', byId('caseCve').value.trim());
       if (byId('caseAsset').value.trim()) parameters.set('asset', byId('caseAsset').value.trim());
+      if (byId('casePriority').value) parameters.set('priority', byId('casePriority').value);
+      if (byId('caseKnownExploited').value) parameters.set('knownExploited', byId('caseKnownExploited').value);
       const response = await apiFetch(`/api/v1/cases?${parameters}`);
       if (!response.ok) throw new Error(await errorFrom(response));
       const data = await response.json();
@@ -377,7 +385,9 @@
         const tr = document.createElement('tr');
         tr.className = 'case-row';
         tr.addEventListener('click', () => loadCase(item.caseId));
-        for (const value of [item.cveId, item.assetName, item.currentSeverity, item.exposureCount, item.lastObservedAt, item.status]) {
+        for (const value of [item.cveId, item.assetName,
+          item.vulnerabilityIntelligence?.priorityTier ?? 'UNENRICHED', item.currentSeverity,
+          item.exposureCount, item.lastObservedAt, item.status]) {
           const td = document.createElement('td');
           td.textContent = String(value ?? '');
           tr.appendChild(td);
@@ -405,6 +415,11 @@
       for (const [label, value] of [
         ['Status', item.status], ['Severity', item.currentSeverity], ['First seen', item.firstObservedAt],
         ['Last seen', item.lastObservedAt], ['Workflow version', item.workflowVersion],
+        ['Priority', item.vulnerabilityIntelligence?.priorityTier],
+        ['CVSS', item.vulnerabilityIntelligence?.cvssBaseScore],
+        ['EPSS', item.vulnerabilityIntelligence?.epssProbability],
+        ['Known exploited', item.vulnerabilityIntelligence?.knownExploited],
+        ['Intel observed', item.vulnerabilityIntelligence?.observedAt],
         ['Risk accepted until', item.riskAcceptedUntil], ['Decision reason', item.decisionReason]
       ]) {
         const div = document.createElement('div');

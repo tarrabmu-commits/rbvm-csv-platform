@@ -10,8 +10,15 @@ public record CaseQuery(
         Set<CsvSeverity> severities,
         Set<CaseStatus> statuses,
         String cveContains,
-        String assetContains
+        String assetContains,
+        Set<VulnerabilityPriorityTier> priorityTiers,
+        Boolean knownExploited
 ) {
+    public CaseQuery(int limit, String cursor, Set<CsvSeverity> severities,
+                     Set<CaseStatus> statuses, String cveContains, String assetContains) {
+        this(limit, cursor, severities, statuses, cveContains, assetContains, Set.of(), null);
+    }
+
     public CaseQuery {
         if (limit < 0 || limit > 100) {
             throw new IllegalArgumentException("limit must be between 0 and 100");
@@ -21,10 +28,11 @@ public record CaseQuery(
         statuses = statuses == null ? Set.of() : Set.copyOf(statuses);
         cveContains = normalize(cveContains);
         assetContains = normalize(assetContains);
+        priorityTiers = priorityTiers == null ? Set.of() : Set.copyOf(priorityTiers);
     }
 
     public static CaseQuery firstPage(int limit) {
-        return new CaseQuery(limit, null, Set.of(), Set.of(), null, null);
+        return new CaseQuery(limit, null, Set.of(), Set.of(), null, null, Set.of(), null);
     }
 
     private static String normalize(String value) {

@@ -153,6 +153,7 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
                 .filter(item -> query.severities().isEmpty()
                         || query.severities().contains(item.currentSeverity))
                 .filter(item -> query.statuses().isEmpty() || query.statuses().contains(item.status))
+                .filter(item -> intelligenceMatches(item, query))
                 .filter(item -> cveFilter == null || item.cveId.contains(cveFilter))
                 .filter(item -> assetMatches(item, assetFilter))
                 .sorted(caseComparator())
@@ -164,7 +165,12 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
         int end = Math.min(matching.size(), offset + query.limit());
         List<Map<String, Object>> page = new ArrayList<>();
         for (CaseEntry item : matching.subList(offset, end)) {
-            page.add(item.toMap(projection.assets.get(item.assetKey), now));
+            Map<String, Object> view = item.toMap(projection.assets.get(item.assetKey), now);
+            VulnerabilityEntry vulnerability = projection.vulnerabilities.get(item.cveId);
+            view.put("vulnerabilityIntelligence", vulnerability == null
+                    || vulnerability.intelligence == null
+                    ? null : vulnerability.intelligence.toMap());
+            page.add(view);
         }
         String next = query.limit() > 0 && end < matching.size() ? encodeCursor(end) : null;
         return new CasePage(revision, snapshot(), page, next);
@@ -307,6 +313,9 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
                 item.toMap(projection.assets.get(item.assetKey), now));
         VulnerabilityEntry vulnerability = projection.vulnerabilities.get(item.cveId);
         output.put("description", vulnerability == null ? "" : vulnerability.description);
+        output.put("vulnerabilityIntelligence", vulnerability == null
+                || vulnerability.intelligence == null
+                ? null : vulnerability.intelligence.toMap());
 
         List<Map<String, Object>> exposures = item.exposureKeys.stream()
                 .map(projection.exposures::get)
@@ -342,6 +351,19 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
         AssetEntry asset = projection.assets.get(item.assetKey);
         return asset != null && (asset.observedName.toLowerCase(Locale.ROOT).contains(filter)
                 || asset.normalizedObservedName.contains(filter));
+    }
+
+    private boolean intelligenceMatches(CaseEntry item, CaseQuery query) {
+        VulnerabilityEntry vulnerability = projection.vulnerabilities.get(item.cveId);
+        io.rbvm.csv.VulnerabilityIntelligenceEvidence intel = vulnerability == null
+                ? null : vulnerability.intelligence;
+        String tier = intel == null ? "UNENRICHED" : intel.priorityTier();
+        if (!query.priorityTiers().isEmpty()
+                && query.priorityTiers().stream().noneMatch(value -> value.name().equals(tier))) {
+            return false;
+        }
+        return query.knownExploited() == null || (intel != null
+                && query.knownExploited().equals(intel.knownExploited()));
     }
 
     private static Comparator<CaseEntry> caseComparator() {
@@ -700,17 +722,20 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
         private final String cveId;
         private String description;
         private Instant descriptionObservedAt;
+        private io.rbvm.csv.VulnerabilityIntelligenceEvidence intelligence;
 
         private VulnerabilityEntry(WazuhObservation observation) {
             cveId = observation.cveId();
             description = observation.descriptionSnapshot();
             descriptionObservedAt = observation.detectedAt();
+            intelligence = observation.intelligence();
         }
 
         private VulnerabilityEntry(VulnerabilityEntry source) {
             cveId = source.cveId;
             description = source.description;
             descriptionObservedAt = source.descriptionObservedAt;
+            intelligence = source.intelligence;
         }
 
         private void observe(WazuhObservation observation) {
@@ -718,6 +743,10 @@ public final class InMemoryDomainCatalog implements DomainCatalog {
                     && observation.detectedAt().isAfter(descriptionObservedAt)) {
                 description = observation.descriptionSnapshot();
                 descriptionObservedAt = observation.detectedAt();
+            }
+            if (observation.intelligence() != null && (intelligence == null
+                    || observation.intelligence().observedAt().isAfter(intelligence.observedAt()))) {
+                intelligence = observation.intelligence();
             }
         }
     }

@@ -68,12 +68,14 @@ def main() -> None:
     v4_path = root / "db/migration/V4__postgres_projection_runtime.sql"
     v5_path = root / "db/migration/V5__postgres_read_catalog.sql"
     v6_path = root / "db/migration/V6__explicit_finding_lifecycle.sql"
+    v7_path = root / "db/migration/V7__vulnerability_intelligence.sql"
     v1 = lexical_check(v1_path)
     v2 = lexical_check(v2_path)
     v3 = lexical_check(v3_path)
     v4 = lexical_check(v4_path)
     v5 = lexical_check(v5_path)
     v6 = lexical_check(v6_path)
+    v7 = lexical_check(v7_path)
 
     required_tables = {
         "tenant",
@@ -144,6 +146,12 @@ def main() -> None:
     ):
         if invariant not in v6:
             raise AssertionError(f"V6 is missing lifecycle invariant {invariant}")
+    for invariant in (
+        "CVSS_BASE_SCORE", "EPSS_PROBABILITY", "KNOWN_EXPLOITED",
+        "INTELLIGENCE_OBSERVED_AT", "PRIORITY_TIER", "VULNERABILITY_PRIORITY_IDX",
+    ):
+        if invariant not in v7:
+            raise AssertionError(f"V7 is missing intelligence invariant {invariant}")
     for invariant in (
         "POSITIVE_ONLY_NO_AUTO_CLOSE",
         "SOURCE_NAME_ONLY",
