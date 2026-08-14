@@ -17,7 +17,8 @@ public record CatalogSnapshot(
         long exposuresWithSeverityChanges,
         long exposuresWithTimestampConflicts,
         Map<String, Long> currentCaseSeverityDistribution,
-        Map<String, Long> caseStatusDistribution
+        Map<String, Long> caseStatusDistribution,
+        VulnerabilityIntelligenceSummary vulnerabilityIntelligence
 ) {
     public Map<String, Object> toMap() {
         Map<String, Object> output = new LinkedHashMap<>();
@@ -36,6 +37,7 @@ public record CatalogSnapshot(
         output.put("exposuresWithTimestampConflicts", exposuresWithTimestampConflicts);
         output.put("currentCaseSeverityDistribution", currentCaseSeverityDistribution);
         output.put("caseStatusDistribution", caseStatusDistribution);
+        output.put("vulnerabilityIntelligence", vulnerabilityIntelligence.toMap());
         output.put("closurePolicy", "EXPLICIT_SOURCE_EVIDENCE_ONLY_NO_ABSENCE_CLOSE");
         return output;
     }

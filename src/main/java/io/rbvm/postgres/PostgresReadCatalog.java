@@ -12,6 +12,8 @@ import io.rbvm.domain.DomainMaterializationResult;
 import io.rbvm.domain.InvalidCaseActionException;
 import io.rbvm.domain.PreparedCaseAction;
 import io.rbvm.domain.StaleCaseCursorException;
+import io.rbvm.domain.VulnerabilityIntelligenceSummary;
+import io.rbvm.domain.VulnerabilityPriorityTier;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -394,7 +396,7 @@ public final class PostgresReadCatalog implements DomainCatalog {
         return output;
     }
 
-    private static CatalogSnapshot snapshot(Connection connection, UUID tenantId)
+    private CatalogSnapshot snapshot(Connection connection, UUID tenantId)
             throws SQLException {
         long materialized = count(connection,
                 "SELECT count(*) FROM rbvm.domain_materialization WHERE tenant_id = ?", tenantId);
@@ -430,9 +432,60 @@ public final class PostgresReadCatalog implements DomainCatalog {
         fillCounts(connection, tenantId, "current_severity", severities);
         Map<String, Long> statuses = enumCounts(CaseStatus.values());
         fillCounts(connection, tenantId, "status", statuses);
+        VulnerabilityIntelligenceSummary intelligence = intelligenceSummary(
+                connection, tenantId, clock.instant());
         return new CatalogSnapshot(materialized, observations, links, assets, vulnerabilities,
                 components, exposures, cases, openCases, sourceResolvedCases, changed, conflicts,
-                severities, statuses);
+                severities, statuses, intelligence);
+    }
+
+    private static VulnerabilityIntelligenceSummary intelligenceSummary(
+            Connection connection, UUID tenantId, Instant now
+    ) throws SQLException {
+        Map<String, Long> priorities = enumCounts(VulnerabilityPriorityTier.values());
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT v.priority_tier, count(*)
+                FROM rbvm.vulnerability v
+                WHERE EXISTS (
+                    SELECT 1 FROM rbvm.observation o
+                    WHERE o.tenant_id = ? AND o.vulnerability_id = v.id
+                )
+                GROUP BY priority_tier
+                """)) {
+            statement.setObject(1, tenantId);
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) priorities.put(rows.getString(1), rows.getLong(2));
+            }
+        }
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT
+                    count(*) FILTER (WHERE intelligence_observed_at IS NOT NULL),
+                    count(*) FILTER (WHERE intelligence_observed_at IS NULL),
+                    count(*) FILTER (WHERE intelligence_observed_at < ?),
+                    count(*) FILTER (WHERE known_exploited IS TRUE),
+                    min(intelligence_observed_at),
+                    max(intelligence_observed_at)
+                FROM rbvm.vulnerability v
+                WHERE EXISTS (
+                    SELECT 1 FROM rbvm.observation o
+                    WHERE o.tenant_id = ? AND o.vulnerability_id = v.id
+                )
+                """)) {
+            statement.setTimestamp(1, Timestamp.from(
+                    now.minus(VulnerabilityIntelligenceSummary.FRESHNESS_WINDOW)));
+            statement.setObject(2, tenantId);
+            try (ResultSet rows = statement.executeQuery()) {
+                rows.next();
+                Timestamp oldest = rows.getTimestamp(5);
+                Timestamp newest = rows.getTimestamp(6);
+                return new VulnerabilityIntelligenceSummary(
+                        rows.getLong(1), rows.getLong(2), rows.getLong(3), rows.getLong(4),
+                        oldest == null ? null : oldest.toInstant(),
+                        newest == null ? null : newest.toInstant(),
+                        priorities
+                );
+            }
+        }
     }
 
     private static void fillCounts(Connection connection, UUID tenantId, String column,
@@ -459,7 +512,9 @@ public final class PostgresReadCatalog implements DomainCatalog {
 
     private static CatalogSnapshot emptySnapshot() {
         return new CatalogSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                enumCounts(CsvSeverity.values()), enumCounts(CaseStatus.values()));
+                enumCounts(CsvSeverity.values()), enumCounts(CaseStatus.values()),
+                new VulnerabilityIntelligenceSummary(0, 0, 0, 0, null, null,
+                        enumCounts(VulnerabilityPriorityTier.values())));
     }
 
     private static UUID tenantId(Connection connection) throws SQLException {

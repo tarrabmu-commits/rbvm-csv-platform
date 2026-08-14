@@ -326,6 +326,9 @@ public final class CsvHttpSelfTest {
                     client, server.baseUri().resolve("/api/v1/cases?status=SOURCE_RESOLVED"));
             assert cases.statusCode() == 200;
             assert cases.body().contains("\"status\": \"SOURCE_RESOLVED\"");
+            assert cases.body().contains("\"vulnerabilityIntelligence\"");
+            assert cases.body().contains("\"unenrichedVulnerabilities\": 1");
+            assert cases.body().contains("\"freshnessWindowHours\": 168");
         } finally {
             deleteTree(data);
         }

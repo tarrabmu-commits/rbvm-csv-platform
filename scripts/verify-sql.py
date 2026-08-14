@@ -152,6 +152,13 @@ def main() -> None:
     ):
         if invariant not in v7:
             raise AssertionError(f"V7 is missing intelligence invariant {invariant}")
+    read_catalog = (root / "src/main/java/io/rbvm/postgres/PostgresReadCatalog.java").read_text(
+        encoding="utf-8")
+    if "intel_observed_at" in read_catalog:
+        raise AssertionError("PostgreSQL reads must use the V7 intelligence_observed_at column")
+    for column in ("intelligence_observed_at", "known_exploited", "priority_tier"):
+        if column not in read_catalog:
+            raise AssertionError(f"PostgreSQL intelligence summary is missing V7 column {column}")
     for invariant in (
         "POSITIVE_ONLY_NO_AUTO_CLOSE",
         "SOURCE_NAME_ONLY",

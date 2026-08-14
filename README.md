@@ -1,4 +1,4 @@
-# RBVM CSV Platform — Increment 11
+# RBVM CSV Platform — Increment 12
 
 منصة محلية قابلة للتشغيل لإدخال `WAZUH_CSV_V1` أوعقد `WAZUH_CSV_V2` الاختياري وتحويل الأدلة إلى
 نموذج RBVM موحّد: Assets وVulnerabilities وComponents وObservations وExposures
@@ -13,6 +13,8 @@
 - تحقق من headers وCVE والتوقيت والحقول المطلوبة.
 - V2 يضيف Agent ID ثابتاً وإصدار/معمارية الحزمة و`ACTIVE|RESOLVED` مع وقت حل صريح.
 - أعمدة V2 اختيارية لـCVSS وEPSS وCISA KEV مع provenance ووقت snapshot وسياسة أولوية معلنة.
+- ملخص coverage وfreshness للاستخبارات مع حد stale معلن قدره 7 أيام وتوزيع الأولوية.
+- تحديث استخبارات مجدول وآمن مع cache مربوط ببصمة CVE ولقطات ذرية قابلة للعمل offline.
 - حل تقني وإعادة فتح من دليل V2 صريح فقط؛ لا يوجد أي إغلاق مبني على غياب الصف.
 - Fingerprint دلالية ثابتة لا تتغير عند إعادة ترتيب الأعمدة.
 - Idempotency على مفتاح الطلب و`source profile + file SHA-256`.
@@ -64,7 +66,7 @@ http://127.0.0.1:8080
 
 ```bash
 ./scripts/build-distribution.sh
-java -jar dist/rbvm-csv-platform-0.11.0.jar
+java -jar dist/rbvm-csv-platform-0.12.0.jar
 ```
 
 ولتشغيل الاختبارات ثم تحليل ملف من CLI:
@@ -77,10 +79,10 @@ java -jar dist/rbvm-csv-platform-0.11.0.jar
 
 ```bash
 ./scripts/verify-reproducible-build.sh
-sha256sum --check dist/rbvm-csv-platform-0.11.0.jar.sha256
+sha256sum --check dist/rbvm-csv-platform-0.12.0.jar.sha256
 ```
 
-ينشر tag مطابق مثل `v0.11.0` Release يحتوي JAR وchecksum وSPDX SBOM، ويولد
+ينشر tag مطابق مثل `v0.12.0` Release يحتوي JAR وchecksum وSPDX SBOM، ويولد
 GitHub build-provenance وSBOM attestations. يتحقق workflow من تطابق tag مع
 Gradle وOpenAPI واسم الحزمة قبل النشر.
 
@@ -102,6 +104,21 @@ Gradle وOpenAPI واسم الحزمة قبل النشر.
 | `RBVM_API_KEYS_FILE` | — | ملف `digest=actor-id\|ROLE` ببصمات SHA-256؛ يمنع التشغيل أي POSIX group/other permissions |
 | `RBVM_RATE_LIMIT_PER_MINUTE` | `600` | الحد الثابت لكل Actor موثّق؛ القيمة `0` تعطل الحد |
 | `RBVM_AUTH_FAILURE_LIMIT_PER_MINUTE` | `60` | حد محاولات الدخول الفاشلة لكل عنوان مصدر |
+
+## تحديث استخبارات الثغرات المجدول
+
+ينشئ `scripts/scheduled-intelligence-refresh.sh` لقطة enriched ذرية من ملف V2
+حالي، مع checksum وتقرير JSON وروابط `latest.csv` و`latest.csv.sha256` و`latest.json`. يربط cache
+ببصمة مجموعة CVE كي لا يعيد وضع offline بيانات دفعة سابقة مختلفة، ويحتفظ افتراضياً
+بآخر 14 لقطة. لا يرفع المشغّل الناتج إلى API تلقائياً، لأن إعادة استيراد تصدير
+قديم قد تعيد حالة finding من دليل lifecycle متقادم؛ يظل الاعتماد خطوة صريحة على
+تصدير Wazuh الحالي.
+
+انسخ `deploy/intelligence-refresh.example` إلى
+`~/.config/rbvm-platform/intelligence-refresh.env` بصلاحية `0600`، ثم ثبّت وحدتي
+`rbvm-intelligence-refresh.service` و`rbvm-intelligence-refresh.timer` من
+`deploy/systemd/` وفعّل المؤقت. مفتاح `NVD_API_KEY` اختياري ولا يوضع في URL أو
+ملف الناتج.
 
 أنشئ مفتاحاً من دون وضع القيمة الخام في environment أوGit:
 
@@ -258,12 +275,14 @@ export RBVM_DB_PASSWORD='from-a-secret-manager'
 وسجل [`docs/INCREMENT_9_VALIDATION.md`](docs/INCREMENT_9_VALIDATION.md) للبناء القابل لإعادة الإنتاج وCodeQL وprovenance.
 وسجل [`docs/INCREMENT_10_VALIDATION.md`](docs/INCREMENT_10_VALIDATION.md) لدورة حياة V2 والترحيل V6.
 وسجل [`docs/INCREMENT_11_VALIDATION.md`](docs/INCREMENT_11_VALIDATION.md) لـCVSS/EPSS/KEV وسياسة الأولوية.
+وسجل [`docs/INCREMENT_12_VALIDATION.md`](docs/INCREMENT_12_VALIDATION.md) لمراقبة freshness والتحديث المجدول.
 
 ## الحدود الحالية
 
 - يوجد API-key RBAC محلي، لكن لا يوجد SSO/OIDC أوMFA أوعزل تنفيذي لعدة Tenants بعد.
 - عند `RBVM_AUTH_MODE=DISABLED` يبقى الفاعل `local-operator` غير موثّق؛ وضع الإنتاج هو `API_KEY`.
 - Intelligence اختيارية وتحتاج snapshot حديثاً؛ لا يدعي النظام freshness بعد وقت `Intel_Observed_At`.
+- مؤقت enrichment ينتج لقطة جاهزة ومدققة لكنه لا يعتمدها تلقائياً، حفاظاً على دلالة lifecycle الصريحة.
 - V1 لا يحمل package version ولا يثبت remediation؛ V2 يثبتها فقط من الحقول الصريحة.
 - لا يوجد إغلاق من الغياب؛ `SOURCE_RESOLVED` يحتاج صف V2 صريحاً ومطابقاً.
 - تعافي single-node بعد restart مختبر، لكن لا يوجد HA أوMulti-writer؛ مسار الكتابة يستخدم advisory lock واحداً عن قصد.

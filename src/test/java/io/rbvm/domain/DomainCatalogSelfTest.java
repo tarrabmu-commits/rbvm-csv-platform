@@ -333,7 +333,7 @@ public final class DomainCatalogSelfTest {
         String row = "agent,stable-1,CVE-2026-7777,High,description,pkg,2.0,amd64,"
                 + "https://example.test/cve,Ubuntu,ACTIVE,2026-08-01T00:00:00Z,,3.1,8.1,"
                 + "CVSS:3.1/AV:N,0.25,0.94,true,2026-08-02,2026-08-22,"
-                + "2026-08-14T00:00:00Z,https://www.cisa.gov/known-exploited-vulnerabilities-catalog\r\n";
+                + "2026-07-10T00:00:00Z,https://www.cisa.gov/known-exploited-vulnerabilities-catalog\r\n";
         Path csv = csv(header + row);
         try {
             catalog.materialize(UUID.randomUUID(), csv, "intel-profile", "WAZUH_CSV_V2");
@@ -343,6 +343,13 @@ public final class DomainCatalogSelfTest {
             assert intel.get("knownExploited").equals(true);
             assert intel.get("epssProbability").equals(0.25);
             assert intel.get("cvssBaseScore").equals(8.1);
+            VulnerabilityIntelligenceSummary summary = catalog.snapshot()
+                    .vulnerabilityIntelligence();
+            assert summary.enrichedVulnerabilities() == 1;
+            assert summary.unenrichedVulnerabilities() == 0;
+            assert summary.staleVulnerabilities() == 1;
+            assert summary.knownExploitedVulnerabilities() == 1;
+            assert summary.priorityDistribution().get("IMMEDIATE") == 1;
             CasePage filtered = catalog.queryCases(new CaseQuery(
                     10, null, Set.of(), Set.of(), null, null,
                     Set.of(VulnerabilityPriorityTier.IMMEDIATE), true));
