@@ -1,0 +1,18 @@
+[Unit]
+Description=RBVM PostgreSQL verified backup
+After=rbvm-postgresql.service
+Requires=rbvm-postgresql.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/rbvm-csv-platform
+ExecStart=%h/rbvm-csv-platform/scripts/scheduled-backup.sh
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true

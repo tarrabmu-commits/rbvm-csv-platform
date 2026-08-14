@@ -1,0 +1,25 @@
+[Unit]
+Description=RBVM CSV Platform
+After=rbvm-postgresql.service
+Wants=rbvm-postgresql.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/rbvm-csv-platform
+EnvironmentFile=%h/.config/rbvm-platform/environment
+ExecStart=%h/rbvm-csv-platform/scripts/run-server.sh
+Restart=on-failure
+RestartSec=3
+SuccessExitStatus=143
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=default.target

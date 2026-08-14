@@ -1,5 +1,8 @@
 # سجل تحقق Increment 5
 
+> هذا السجل تاريخي. تحقق المحرك الحي والـread cutover اللاحق موثق في
+> [`INCREMENT_6_VALIDATION.md`](INCREMENT_6_VALIDATION.md).
+
 تاريخ التنفيذ: 2026-07-20
 
 ## عينة المصدر

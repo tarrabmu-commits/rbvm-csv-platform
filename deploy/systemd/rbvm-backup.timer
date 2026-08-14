@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily RBVM verified backup schedule
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=15m
+Persistent=true
+Unit=rbvm-backup.service
+
+[Install]
+WantedBy=timers.target

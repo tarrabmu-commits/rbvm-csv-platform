@@ -98,7 +98,7 @@ public final class PostgresProjectionJdbcSelfTest {
 
             Map<String, Object> health = projection.health();
             assert health.get("status").equals("UP") : health;
-            assert health.get("schemaVersion").equals(4);
+            assert health.get("schemaVersion").equals(5);
             assert database.commits == 2;
             assert database.rollbacks == 0;
             assert database.verifiedExecutions >= 30 : database.verifiedExecutions;
@@ -142,7 +142,7 @@ public final class PostgresProjectionJdbcSelfTest {
 
         private Statement statement() {
             return proxy(Statement.class, (proxy, method, arguments) -> switch (method.getName()) {
-                case "executeQuery" -> rows(new Object[]{4});
+                case "executeQuery" -> rows(new Object[]{5});
                 case "close" -> null;
                 default -> defaultValue(method.getReturnType());
             });

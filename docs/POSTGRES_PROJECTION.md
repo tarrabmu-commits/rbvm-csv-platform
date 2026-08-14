@@ -1,27 +1,28 @@
-# PostgreSQL Canonical Projection — Increment 5
+# PostgreSQL Runtime — Increment 6
 
 ## الهدف والحدود
 
-Increment 5 يضيف مسار كتابة PostgreSQL فعلياً إلى المنصة، من دون تغيير مصدر القراءة
-بعد. الهدف هو تثبيت المخطط، معاملات الكتابة، idempotency، migrations والتعافي قبل
-تحويل API إلى قراءة قاعدة البيانات.
+Increment 6 يثبت PostgreSQL كمصدر قراءة API عند تفعيل Backend، مع بقاء Evidence
+journal المحلي كـOutbox ومصدر إعادة إرسال. الكتابة متزامنة والقراءة تستخدم
+`PostgresReadCatalog` للملخص والبحث وتفاصيل الحالات.
 
 ```mermaid
 flowchart TD
     CSV["Wazuh CSV خام"] --> Journal["Evidence journal محلي"]
-    Journal --> Local["Local read catalog"]
+    Journal --> Local["Local command/recovery model"]
     Journal --> Pg["PostgreSQL transaction"]
     Action["Case action"] --> Events["Append-only event journal"]
     Events --> Local
     Events --> Pg
+    Pg --> API["API read catalog"]
 ```
 
 هذا يعني بوضوح:
 
 - `source.csv` وملفات Case Events هي سجل إعادة الإرسال.
-- الـAPI تقرأ حالياً من Projection الذاكرة المعاد بناؤها.
+- الـAPI تقرأ من PostgreSQL عند تفعيل Backend، وإلا تستخدم الوضع المحلي.
 - PostgreSQL تستقبل Canonical write projection متزامنة.
-- هذا ليس بعد HA ولا Multi-writer ولا PostgreSQL read backend.
+- هذا ليس HA ولاMulti-writer؛ مسار الكتابة ما زال serialized بقفل advisory.
 
 ## معاملة Import
 
@@ -91,9 +92,8 @@ V4 يضيف `public_id` من SHA-256 إلى Asset وComponent وCase وExposure 
 | إعادة تشغيل بعد Import مكتمل | يعاد بناء Local ثم فحص `domain_materialization` | DB replay بلا إعادة كتابة |
 | Migration checksum مختلف | Fail-fast قبل فتح HTTP | تحقيق سبب تغيير migration؛ لا تجاوز صامت |
 
-بسبب وجود نموذجي كتابة في Increment 5، قد تظهر بيانات Local مؤقتاً بعد فشل DB وقبل
-إعادة المحاولة، رغم بقاء Import غير مكتمل. Health يصرّح بالمشكلة. إزالة هذه النافذة
-تتطلب أن تصبح PostgreSQL مصدر القراءة/الكتابة الوحيد، وهي بوابة Increment 6.
+لا تعرض API تغييرات النموذج المحلي قبل PostgreSQL Commit لأن قراءة API أصبحت من
+PostgreSQL. يبقى النموذج المحلي مستخدماً للتحقق المسبق وإعادة بناء أوامر التعافي.
 
 ## migrations
 
@@ -132,15 +132,17 @@ export RBVM_DB_MIGRATE=true
 `sslmode=verify-full` يتحقق من الشهادة واسم المضيف. لا تطبع المنصة URL أوPassword في
 Health أوlogs.
 
-## بوابات الانتقال إلى PostgreSQL read backend
+## بوابات PostgreSQL read backend
 
-لا يجوز إعلان Increment 6 قبل تحقق الآتي على محرك حي:
+تحققت البوابات التالية على المحرك المحلي الحي بتاريخ 2026-08-14:
 
-1. تطبيق V1–V4 مرتين وإثبات migration replay/checksum.
+1. تطبيق V1–V5 وإثبات migration replay/checksum.
 2. ملف 10,001 صف: تطابق كل العدادات مع Local baseline.
 3. قطع الاتصال قبل Commit وإثبات عدم وجود Domain جزئي.
 4. إعادة Import وCase Events وإثبات idempotency.
 5. تحليل خطط استعلام Dashboard والبحث والفلاتر.
 6. اختبار صلاحيات تمنع UPDATE/DELETE على Audit Event.
 7. اختبار TLS ونسخ احتياطي واستعادة وقياس RPO/RTO.
-8. بعدها فقط نقل Reads ثم إزالة نافذة dual-model المعروفة.
+8. نقل Reads إلى PostgreSQL وإثبات Health=`UP` و`catalogBackend=POSTGRESQL`.
+
+النتائج والأرقام والأوامر موثقة في [`INCREMENT_6_VALIDATION.md`](INCREMENT_6_VALIDATION.md).

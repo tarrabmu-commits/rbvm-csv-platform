@@ -33,9 +33,9 @@
 11. حفظ Materialization ledger وربطه بـImport Run.
 
 التشغيل المحلي ينفذ الخطوات 6–10 بأسلوب copy-on-write: لا يتم تبديل الكاتالوج
-الحالي إلا بعد انتهاء الملف. عند تفعيل Increment 5، يعاد إسقاط الدليل نفسه إلى
-PostgreSQL داخل معاملة Serializable قبل اعتماد Import كـ`COMPLETED`. تبقى القراءة
-محلية في هذه المرحلة؛ راجع [`POSTGRES_PROJECTION.md`](POSTGRES_PROJECTION.md).
+الحالي إلا بعد انتهاء الملف. عند تفعيل PostgreSQL، يعاد إسقاط الدليل نفسه داخل
+معاملة Serializable قبل اعتماد Import كـ`COMPLETED`، ثم تقرأ API من PostgreSQL.
+يبقى النموذج المحلي للتحقق والتعافي؛ راجع [`POSTGRES_PROJECTION.md`](POSTGRES_PROJECTION.md).
 
 ## الزمن والخطورة
 

@@ -65,10 +65,12 @@ def main() -> None:
     v2_path = root / "db/migration/V2__dashboard_views.sql"
     v3_path = root / "db/migration/V3__case_workflow_audit.sql"
     v4_path = root / "db/migration/V4__postgres_projection_runtime.sql"
+    v5_path = root / "db/migration/V5__postgres_read_catalog.sql"
     v1 = lexical_check(v1_path)
     v2 = lexical_check(v2_path)
     v3 = lexical_check(v3_path)
     v4 = lexical_check(v4_path)
+    v5 = lexical_check(v5_path)
 
     required_tables = {
         "tenant",
@@ -120,6 +122,14 @@ def main() -> None:
     ):
         if invariant not in v4:
             raise AssertionError(f"V4 is missing projection invariant {invariant}")
+    for invariant in (
+        "VULNERABILITY_CASE_CATALOG_ORDER_IDX",
+        "EXPOSURE_CASE_CATALOG_ORDER_IDX",
+        "CASE_AUDIT_EVENT_APPEND_ONLY",
+        "REJECT_CASE_AUDIT_EVENT_MUTATION",
+    ):
+        if invariant not in v5:
+            raise AssertionError(f"V5 is missing read-cutover invariant {invariant}")
     for invariant in (
         "POSITIVE_ONLY_NO_AUTO_CLOSE",
         "SOURCE_NAME_ONLY",

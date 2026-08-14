@@ -89,11 +89,12 @@
     .workflow-grid { display: grid; grid-template-columns: 1fr 2fr 1fr 1fr auto; gap: 10px; align-items: end; }
     .subtle { color: var(--muted); font-size: .88rem; }
     .note { border-inline-start: 3px solid var(--accent); padding-inline-start: 14px; margin-top: 18px; }
+    .auth-grid { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: end; }
     @media (max-width: 850px) {
       header { display: block; }
       .badge { display: inline-block; margin-top: 18px; }
       .runtime-stack { justify-items: start; }
-      .upload-grid, .split, .filters, .workflow-grid { grid-template-columns: 1fr; }
+      .upload-grid, .auth-grid, .split, .filters, .workflow-grid { grid-template-columns: 1fr; }
       .cards { grid-template-columns: repeat(2, 1fr); }
     }
     @media (max-width: 480px) { .cards { grid-template-columns: 1fr; } }
@@ -111,6 +112,18 @@
       <div id="runtimeHealth" role="status" aria-live="polite">Runtime status…</div>
     </div>
   </header>
+
+  <section class="panel">
+    <h2>الدخول الآمن</h2>
+    <div class="auth-grid">
+      <label>API access token
+        <input id="apiToken" type="password" autocomplete="off" spellcheck="false"
+               placeholder="الصق مفتاح الوصول هنا">
+      </label>
+      <button id="saveToken" class="secondary">استخدام المفتاح</button>
+    </div>
+    <p id="authMessage" class="subtle" role="status" aria-live="polite">المفتاح يبقى في ذاكرة هذه النافذة فقط ولا يُحفظ بشكل دائم.</p>
+  </section>
 
   <section class="panel">
     <h2>1. ارفع الملف وحلّله</h2>
@@ -231,6 +244,13 @@
   let currentImportId = null;
   let currentCaseId = null;
   let nextCaseCursor = null;
+  let apiToken = sessionStorage.getItem('rbvmApiToken') || '';
+
+  function apiFetch(resource, options = {}) {
+    const headers = new Headers(options.headers || {});
+    if (apiToken) headers.set('Authorization', `Bearer ${apiToken}`);
+    return fetch(resource, {...options, headers});
+  }
 
   function uuid() {
     return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -338,7 +358,7 @@
       if (byId('caseStatus').value) parameters.set('status', byId('caseStatus').value);
       if (byId('caseCve').value.trim()) parameters.set('cve', byId('caseCve').value.trim());
       if (byId('caseAsset').value.trim()) parameters.set('asset', byId('caseAsset').value.trim());
-      const response = await fetch(`/api/v1/cases?${parameters}`);
+      const response = await apiFetch(`/api/v1/cases?${parameters}`);
       if (!response.ok) throw new Error(await errorFrom(response));
       const data = await response.json();
       const summary = data.summary;
@@ -372,7 +392,7 @@
 
   async function loadCase(caseId) {
     try {
-      const response = await fetch(`/api/v1/cases/${caseId}`);
+      const response = await apiFetch(`/api/v1/cases/${caseId}`);
       if (!response.ok) throw new Error(await errorFrom(response));
       const item = await response.json();
       currentCaseId = item.caseId;
@@ -431,7 +451,7 @@
     button.disabled = true;
     setMessage(`جاري رفع وتحليل ${file.name}…`);
     try {
-      const response = await fetch('/api/v1/csv-imports', {
+      const response = await apiFetch('/api/v1/csv-imports', {
         method: 'POST',
         headers: {
           'Content-Type': 'text/csv; charset=utf-8',
@@ -459,7 +479,7 @@
     button.disabled = true;
     byId('confirmMessage').textContent = 'جاري الاعتماد…';
     try {
-      const response = await fetch(`/api/v1/csv-imports/${currentImportId}/confirm`, {
+      const response = await apiFetch(`/api/v1/csv-imports/${currentImportId}/confirm`, {
         method: 'POST',
         headers: { 'Idempotency-Key': uuid() }
       });
@@ -492,7 +512,7 @@
     button.disabled = true;
     byId('caseActionMessage').textContent = 'جاري تسجيل القرار…';
     try {
-      const response = await fetch(`/api/v1/cases/${currentCaseId}/actions`, {
+      const response = await apiFetch(`/api/v1/cases/${currentCaseId}/actions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
@@ -520,6 +540,19 @@
     byId('caseExpires').disabled = !acceptsRisk;
     if (!acceptsRisk) byId('caseExpires').value = '';
   });
+  byId('saveToken').addEventListener('click', () => {
+    const supplied = byId('apiToken').value.trim();
+    if (!supplied) {
+      byId('authMessage').textContent = 'ألصق مفتاح الوصول أولاً.';
+      return;
+    }
+    apiToken = supplied;
+    sessionStorage.setItem('rbvmApiToken', supplied);
+    byId('apiToken').value = '';
+    byId('authMessage').textContent = 'تم تفعيل المفتاح لهذه النافذة. يمكنك الآن تحميل البيانات والعمل عليها.';
+    loadCatalog();
+  });
+  if (apiToken) byId('authMessage').textContent = 'مفتاح وصول مفعّل لهذه النافذة.';
   byId('caseExpires').disabled = true;
   loadHealth();
 </script>

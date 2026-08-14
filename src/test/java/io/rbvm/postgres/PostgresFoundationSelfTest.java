@@ -94,22 +94,28 @@ public final class PostgresFoundationSelfTest {
                 INSERT INTO example(value) VALUES ('semi;colon');
                 /* outer ; /* nested ; */ still comment */
                 COMMENT ON TABLE example IS 'quoted '' value;';
+                CREATE FUNCTION example_fn() RETURNS trigger AS $body$
+                BEGIN
+                    RAISE EXCEPTION 'blocked;';
+                END;
+                $body$ LANGUAGE plpgsql;
                 COMMIT;
                 """;
         List<String> statements = SqlScriptParser.statements(script);
-        assert statements.size() == 2 : statements;
+        assert statements.size() == 3 : statements;
         assert statements.get(0).contains("semi;colon");
         assert statements.get(1).contains("quoted '' value;");
     }
 
     private static void bundlesEveryMigrationInTheRuntime() throws Exception {
-        for (int version = 1; version <= 4; version++) {
+        for (int version = 1; version <= 5; version++) {
             String prefix = "/db/migration/V" + version + "__";
             String name = switch (version) {
                 case 1 -> prefix + "canonical_rbvm.sql";
                 case 2 -> prefix + "dashboard_views.sql";
                 case 3 -> prefix + "case_workflow_audit.sql";
                 case 4 -> prefix + "postgres_projection_runtime.sql";
+                case 5 -> prefix + "postgres_read_catalog.sql";
                 default -> throw new AssertionError(version);
             };
             try (InputStream input = PostgresFoundationSelfTest.class.getResourceAsStream(name)) {

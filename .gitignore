@@ -1,4 +1,5 @@
 /build/
 /data/
 /runtime-data/
+/dist/*.jar
 *.log
