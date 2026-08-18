@@ -3,6 +3,8 @@
 V2 عقد opt-in لمن يملك دليلاً صريحاً عن هوية الأصل والحزمة ودورة حياة الـfinding.
 يُختار عبر `X-CSV-Contract: WAZUH_CSV_V2`؛ حذف الـheader يبقي V1 كما هو.
 
+> **Project direction:** WAZUH_CSV_V1 remains the primary CSV input for the current product. V2 is optional and must never be synthesized from missing V1 fields. Missing Agent ID, package version/architecture, or lifecycle evidence remains unknown rather than being invented.
+
 ## الأعمدة
 
 ```text

@@ -37,7 +37,17 @@ GRANT SELECT ON
     rbvm.case_dashboard,
     rbvm.import_reconciliation,
     rbvm.case_workflow_reconciliation,
-    rbvm.postgres_projection_reconciliation
+    rbvm.postgres_projection_reconciliation,
+    rbvm.operational_finding,
+    rbvm.analytics_overview,
+    rbvm.analytics_severity_distribution,
+    rbvm.analytics_asset_severity,
+    rbvm.analytics_product_severity,
+    rbvm.analytics_age_distribution,
+    rbvm.analytics_asset_age,
+    rbvm.finding_lifecycle_event,
+    rbvm.analytics_lifecycle_daily,
+    rbvm.analytics_lifecycle_weekly
 TO rbvm_runtime;
 
 GRANT USAGE, SELECT ON SEQUENCE rbvm.case_audit_event_database_sequence TO rbvm_runtime;
