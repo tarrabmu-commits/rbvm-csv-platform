@@ -7,6 +7,17 @@ import java.util.List;
 import java.util.Map;
 
 public final class PostgresFoundationSelfTest {
+    private static final List<String> MIGRATION_RESOURCES = List.of(
+            "/db/migration/V1__canonical_rbvm.sql",
+            "/db/migration/V2__dashboard_views.sql",
+            "/db/migration/V3__case_workflow_audit.sql",
+            "/db/migration/V4__postgres_projection_runtime.sql",
+            "/db/migration/V5__postgres_read_catalog.sql",
+            "/db/migration/V6__explicit_finding_lifecycle.sql",
+            "/db/migration/V7__vulnerability_intelligence.sql",
+            "/db/migration/V8__operational_analytics.sql"
+    );
+
     private PostgresFoundationSelfTest() {
     }
 
@@ -16,6 +27,7 @@ public final class PostgresFoundationSelfTest {
         sanitizesDatabaseErrors();
         splitsMigrationScriptsLexically();
         bundlesEveryMigrationInTheRuntime();
+        operationalAnalyticsPreservesEvidenceSemantics();
         PostgresMigratorSelfTest.main(args);
         PostgresProjectionJdbcSelfTest.main(args);
         System.out.println("PostgresFoundationSelfTest: PASS");
@@ -108,24 +120,29 @@ public final class PostgresFoundationSelfTest {
     }
 
     private static void bundlesEveryMigrationInTheRuntime() throws Exception {
-        for (int version = 1; version <= 5; version++) {
-            String prefix = "/db/migration/V" + version + "__";
-            String name = switch (version) {
-                case 1 -> prefix + "canonical_rbvm.sql";
-                case 2 -> prefix + "dashboard_views.sql";
-                case 3 -> prefix + "case_workflow_audit.sql";
-                case 4 -> prefix + "postgres_projection_runtime.sql";
-                case 5 -> prefix + "postgres_read_catalog.sql";
-                default -> throw new AssertionError(version);
-            };
-            try (InputStream input = PostgresFoundationSelfTest.class.getResourceAsStream(name)) {
-                assert input != null : name;
-                String script = new String(input.readAllBytes(), StandardCharsets.UTF_8);
-                List<String> statements = SqlScriptParser.statements(script);
-                assert !statements.isEmpty();
-                assert statements.stream().noneMatch(sql -> sql.equalsIgnoreCase("BEGIN"));
-                assert statements.stream().noneMatch(sql -> sql.equalsIgnoreCase("COMMIT"));
-            }
+        for (String name : MIGRATION_RESOURCES) {
+            String script = resource(name);
+            List<String> statements = SqlScriptParser.statements(script);
+            assert !statements.isEmpty() : name;
+            assert statements.stream().noneMatch(sql -> sql.equalsIgnoreCase("BEGIN")) : name;
+            assert statements.stream().noneMatch(sql -> sql.equalsIgnoreCase("COMMIT")) : name;
+        }
+    }
+
+    private static void operationalAnalyticsPreservesEvidenceSemantics() throws Exception {
+        String script = resource("/db/migration/V8__operational_analytics.sql");
+        assert script.contains("OBSERVED_ONLY");
+        assert script.contains("sp.contract_id = 'WAZUH_CSV_V2'");
+        assert script.contains("No event is created from snapshot absence");
+        assert !script.contains("remediated = active_keys - current_keys");
+        assert !script.contains("priority_tier");
+        assert !script.contains("SLA_Days");
+    }
+
+    private static String resource(String name) throws Exception {
+        try (InputStream input = PostgresFoundationSelfTest.class.getResourceAsStream(name)) {
+            assert input != null : name;
+            return new String(input.readAllBytes(), StandardCharsets.UTF_8);
         }
     }
 }
