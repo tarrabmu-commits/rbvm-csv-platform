@@ -30,20 +30,27 @@ public final class PostgresMigratorSelfTest {
     private static void appliesAndReplaysVersionedMigrations() throws Exception {
         FakeDatabase database = new FakeDatabase();
         PostgresMigrator migrator = new PostgresMigrator(database::connection);
-        assert migrator.migrate() == 7;
-        assert database.checksums.size() == 7;
-        assert database.commits == 7;
+        assert migrator.migrate() == 8;
+        assert database.checksums.size() == 8;
+        assert database.commits == 8;
         assert database.rollbacks == 0;
         assert database.executedSql.stream()
                 .anyMatch(sql -> sql.contains("CREATE TABLE rbvm.observation"));
+        assert database.executedSql.stream()
+                .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.operational_finding"));
         long observationCreates = database.executedSql.stream()
                 .filter(sql -> sql.contains("CREATE TABLE rbvm.observation (")).count();
+        long operationalFindingCreates = database.executedSql.stream()
+                .filter(sql -> sql.contains("CREATE VIEW rbvm.operational_finding")).count();
 
-        assert migrator.migrate() == 7;
-        assert database.commits == 7 : "replay must not reapply migrations";
+        assert migrator.migrate() == 8;
+        assert database.commits == 8 : "replay must not reapply migrations";
         assert database.executedSql.stream()
                 .filter(sql -> sql.contains("CREATE TABLE rbvm.observation (")).count()
                 == observationCreates;
+        assert database.executedSql.stream()
+                .filter(sql -> sql.contains("CREATE VIEW rbvm.operational_finding")).count()
+                == operationalFindingCreates;
         assert database.advisoryLocks == 2;
         assert database.advisoryUnlocks == 2;
     }
