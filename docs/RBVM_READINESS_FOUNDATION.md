@@ -189,7 +189,28 @@ evaluatedAt = assessment time
 
 Applicability does not change source lifecycle state and does not calculate CVSS, exploitability, remediation priority, SLA, or organizational risk.
 
-The current applicability increment defines the domain evidence model and validation only. Persistence and a dedicated applicability CSV import contract are intentionally separate follow-up steps so the Wazuh V1 input contract stays unchanged.
+### Applicability CSV boundary
+
+`APPLICABILITY_CSV_V1` is now a dedicated second CSV contract. It does not add fields to the Wazuh vulnerability CSV.
+
+```text
+Finding_ID,Applicability_Status,Applicability_Reason,Evidence_Source,Evaluated_At
+```
+
+`Finding_ID` is the platform-generated canonical finding identifier. In the current PostgreSQL model it is backed by the finding/exposure UUID. This avoids trying to reconstruct the finding from a secondary CSV using incomplete Wazuh V1 identity fields.
+
+Row semantics are explicit:
+
+```text
+no row for finding       -> UNKNOWN / unassessed
+APPLICABLE row           -> assessed APPLICABLE
+NOT_APPLICABLE row       -> assessed NOT_APPLICABLE
+UNKNOWN row              -> assessed but inconclusive
+```
+
+Multiple historical assessments for one finding are allowed when `Evaluated_At` differs. Exact replay of the same `Finding_ID + Evaluated_At` assessment is deduplicated; conflicting content at the same timestamp is quarantined so current applicability can never depend on arbitrary row ordering.
+
+The current increment validates and parses this contract. Tenant-scoped `Finding_ID` lookup and durable assessment history are intentionally the next persistence step.
 
 ## Current implementation status
 
@@ -208,8 +229,11 @@ Completed:
 - finding-scoped applicability evidence model;
 - unassessed `UNKNOWN` applicability semantics;
 - provenance-required assessed applicability semantics;
+- dedicated `APPLICABILITY_CSV_V1` contract;
+- UUID-based canonical `Finding_ID` assessment targeting;
+- applicability CSV validation, exact-replay deduplication, and equal-time conflict quarantine;
 - self-tests for the above behavior.
 
 ## Next implementation step
 
-Define how applicability evidence enters the CSV-centric platform without changing `WAZUH_CSV_V1`. The preferred boundary is a separate applicability CSV contract keyed to canonical finding identity, with explicit status, reason, evidence source, and evaluation time. Persistence and import validation must remain independent from CVSS and future RBVM decision logic.
+Persist applicability assessments as immutable tenant-scoped history. Import must resolve `Finding_ID` inside the selected tenant, reject unknown or cross-tenant findings, preserve every assessment timestamp/provenance record, and expose one deterministic current-applicability projection using the latest assessment. This persistence layer must remain independent from CVSS and future RBVM decision logic.
