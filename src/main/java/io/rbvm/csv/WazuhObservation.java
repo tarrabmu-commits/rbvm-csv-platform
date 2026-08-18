@@ -67,4 +67,12 @@ public record WazuhObservation(
     public WazuhEvidenceCapabilities evidenceCapabilities() {
         return WazuhEvidenceCapabilities.forContract(contractId);
     }
+
+    /**
+     * Groups repeated source observations into one logical vulnerability finding without inventing
+     * source facts that are unavailable from the selected contract.
+     */
+    public CanonicalFindingIdentity canonicalFindingIdentity() {
+        return CanonicalFindingIdentity.from(this);
+    }
 }
