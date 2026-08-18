@@ -21,7 +21,7 @@ These facts must remain explicitly unavailable rather than being inferred from u
 
 ## Evidence capability model
 
-The platform now exposes source capabilities as facts, not as a confidence score.
+The platform exposes source capabilities as facts, not as a confidence score.
 
 | Capability | WAZUH_CSV_V1 | WAZUH_CSV_V2 |
 |---|---:|---:|
@@ -32,7 +32,7 @@ The platform now exposes source capabilities as facts, not as a confidence score
 | RBVM finding identity ready | No | Yes |
 | RBVM lifecycle ready | No | Yes |
 
-`WAZUH_CSV_V1` remains valid evidence. The new capability boundary does **not** reject it and does not weaken the existing ingestion path. It prevents downstream RBVM stages from silently treating unavailable evidence as known facts.
+`WAZUH_CSV_V1` remains valid evidence. The capability boundary does **not** reject it and does not weaken the existing ingestion path. It prevents downstream RBVM stages from silently treating unavailable evidence as known facts.
 
 ## Canonical direction
 
@@ -48,7 +48,10 @@ Validation + immutable Observation
 Source evidence capability boundary
         |
         v
-Canonical finding construction
+Canonical finding identity
+        |
+        v
+Canonical finding state
         |
         v
 Applicability / lifecycle / technical severity
@@ -57,7 +60,7 @@ Applicability / lifecycle / technical severity
 RBVM-ready evidence
 ```
 
-The canonical finding layer must preserve provenance and distinguish:
+The canonical finding layer preserves provenance and distinguishes:
 
 1. facts directly observed in Wazuh;
 2. facts obtained from an additional trusted Wazuh source such as the Indexer/API;
@@ -66,6 +69,49 @@ The canonical finding layer must preserve provenance and distinguish:
 
 No RBVM risk equation or priority policy belongs in this foundation layer.
 
+## Canonical finding identity
+
+A CSV row is an immutable **Observation**. A logical finding may have many observations.
+
+The platform now derives a `CanonicalFindingIdentity` from each observation.
+
+For `WAZUH_CSV_V1` the grouping identity is deliberately source-limited:
+
+```text
+Source Profile
++ normalized Agent name
++ CVE
++ normalized Affected_Product
+```
+
+Its identity strength is `SOURCE_LIMITED` because the source does not provide stable `Agent_ID`, package version, or architecture.
+
+For `WAZUH_CSV_V2` the grouping identity is stronger:
+
+```text
+Source Profile
++ stable Agent_ID
++ CVE
++ normalized Product + Package_Version + Package_Architecture
+```
+
+Its identity strength is `SOURCE_STABLE`.
+
+Two observations can therefore share one canonical finding identity while keeping distinct observation fingerprints and timestamps. Changing a V2 package version produces a different canonical finding identity.
+
+This identity is only a grouping key. It does **not** assert that the vulnerability is applicable, exploitable, remediated, or high risk.
+
+## Current implementation status
+
+Completed:
+
+- source evidence capability boundary;
+- canonical finding identity model;
+- V1 repeated-observation grouping semantics;
+- V2 stable-agent grouping semantics;
+- V2 package-version separation semantics;
+- self-tests for the above behavior.
+
 ## Next implementation step
 
-The next change is to make canonical finding construction consume these capabilities explicitly, so a V1 observation cannot accidentally be treated as if it contained stable asset identity, package coordinates, or remediation lifecycle evidence.
+Build canonical finding **state** on top of this identity: first/last observation time, source lifecycle evidence, and explicit identity limitations. This state must not infer remediation from absence and must remain separate from future applicability, CVSS, KEV, EPSS, or RBVM decisions.
