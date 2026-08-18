@@ -54,7 +54,10 @@ Canonical finding identity
 Canonical finding state
         |
         v
-Applicability / lifecycle / technical severity
+Applicability
+        |
+        v
+Technical severity
         |
         v
 RBVM-ready evidence
@@ -73,7 +76,7 @@ No RBVM risk equation or priority policy belongs in this foundation layer.
 
 A CSV row is an immutable **Observation**. A logical finding may have many observations.
 
-The platform now derives a `CanonicalFindingIdentity` from each observation.
+The platform derives a `CanonicalFindingIdentity` from each observation.
 
 For `WAZUH_CSV_V1` the grouping identity is deliberately source-limited:
 
@@ -101,6 +104,46 @@ Two observations can therefore share one canonical finding identity while keepin
 
 This identity is only a grouping key. It does **not** assert that the vulnerability is applicable, exploitable, remediated, or high risk.
 
+## Canonical finding state
+
+`CanonicalFindingState` aggregates distinct immutable observations that share one `CanonicalFindingIdentity`.
+
+It records only evidence-derived state:
+
+- `firstObservedAt`: earliest `Detected_At` seen for the finding;
+- `lastObservedAt`: latest `Detected_At` seen for the finding;
+- `observationCount`: count of distinct observation fingerprints;
+- `stateEvidenceAt`: timestamp of the evidence currently determining source state;
+- `sourceState`;
+- whether lifecycle evidence is explicit in the source contract.
+
+### V1 lifecycle semantics
+
+`WAZUH_CSV_V1` cannot prove remediation. Its canonical state is therefore:
+
+```text
+sourceState = OBSERVED_ONLY
+explicitLifecycle = false
+```
+
+A later file that does not contain the finding does not change this state. Absence is not a lifecycle event.
+
+### V2 lifecycle semantics
+
+`WAZUH_CSV_V2` carries explicit `ACTIVE` / `RESOLVED` evidence. The canonical state uses the latest source evidence timestamp (`Detected_At` for ACTIVE, `Resolved_At` for RESOLVED).
+
+```text
+ACTIVE evidence   -> ACTIVE
+RESOLVED evidence -> RESOLVED
+newer ACTIVE      -> ACTIVE again (reopened at source)
+```
+
+If ACTIVE and RESOLVED evidence conflict at the exact same evidence timestamp, ACTIVE wins conservatively. This prevents a same-time conflict from creating a false closure.
+
+Duplicate observation fingerprints are idempotent and do not increase `observationCount`.
+
+The state layer still does **not** determine applicability, exploitability, CVSS severity, remediation priority, SLA, or organizational risk.
+
 ## Current implementation status
 
 Completed:
@@ -110,8 +153,13 @@ Completed:
 - V1 repeated-observation grouping semantics;
 - V2 stable-agent grouping semantics;
 - V2 package-version separation semantics;
+- canonical finding state aggregation;
+- V1 `OBSERVED_ONLY` semantics without inferred remediation;
+- V2 explicit resolution and reopen semantics;
+- conservative same-timestamp ACTIVE/RESOLVED conflict handling;
+- idempotent observation counting;
 - self-tests for the above behavior.
 
 ## Next implementation step
 
-Build canonical finding **state** on top of this identity: first/last observation time, source lifecycle evidence, and explicit identity limitations. This state must not infer remediation from absence and must remain separate from future applicability, CVSS, KEV, EPSS, or RBVM decisions.
+Add a separate **applicability evidence** model. Applicability must answer whether the detected CVE applies to the actual component/deployment using explicit evidence and an `APPLICABLE / NOT_APPLICABLE / UNKNOWN` state. It must remain separate from CVSS severity and from any future RBVM decision model.
