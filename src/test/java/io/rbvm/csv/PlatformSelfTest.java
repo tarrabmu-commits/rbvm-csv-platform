@@ -13,6 +13,7 @@ public final class PlatformSelfTest {
         CsvContractSelfTest.main(args);
         CanonicalFindingIdentitySelfTest.main(args);
         CanonicalFindingStateSelfTest.main(args);
+        ApplicabilityEvidenceSelfTest.main(args);
         DomainCatalogSelfTest.main(args);
         ApiSecuritySelfTest.main(args);
         CsvHttpSelfTest.main(args);

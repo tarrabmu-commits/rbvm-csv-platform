@@ -146,6 +146,51 @@ Duplicate observation fingerprints are idempotent and do not increase `observati
 
 The state layer still does **not** determine applicability, exploitability, CVSS severity, remediation priority, SLA, or organizational risk.
 
+## Applicability evidence
+
+Applicability is a separate finding-scoped assessment. A scanner observation proves that the scanner detected a candidate vulnerability relationship; it does not independently prove that every deployment condition required by the vulnerability is satisfied.
+
+The canonical applicability states are:
+
+```text
+APPLICABLE
+NOT_APPLICABLE
+UNKNOWN
+```
+
+A newly constructed finding is **unassessed** and therefore starts as:
+
+```text
+status = UNKNOWN
+assessed = false
+```
+
+No reason, source, or evaluation timestamp is invented for this state.
+
+An explicit applicability assessment is represented by `ApplicabilityEvidence` and must include:
+
+```text
+CanonicalFindingIdentity
+status
+reason
+evidenceSource
+evaluatedAt
+```
+
+`UNKNOWN` can also be an explicit assessed result. This is useful when an analyst or trusted evidence source was consulted but the available CSV/context is still insufficient to establish applicability or non-applicability. In that case:
+
+```text
+status = UNKNOWN
+assessed = true
+reason = explicit inconclusive reason
+evidenceSource = explicit source reference
+evaluatedAt = assessment time
+```
+
+Applicability does not change source lifecycle state and does not calculate CVSS, exploitability, remediation priority, SLA, or organizational risk.
+
+The current applicability increment defines the domain evidence model and validation only. Persistence and a dedicated applicability CSV import contract are intentionally separate follow-up steps so the Wazuh V1 input contract stays unchanged.
+
 ## Current implementation status
 
 Completed:
@@ -160,8 +205,11 @@ Completed:
 - V2 explicit resolution and reopen semantics;
 - conservative same-timestamp ACTIVE/RESOLVED conflict handling;
 - idempotent observation counting;
+- finding-scoped applicability evidence model;
+- unassessed `UNKNOWN` applicability semantics;
+- provenance-required assessed applicability semantics;
 - self-tests for the above behavior.
 
 ## Next implementation step
 
-Add a separate **applicability evidence** model. Applicability must answer whether the detected CVE applies to the actual component/deployment using explicit evidence and an `APPLICABLE / NOT_APPLICABLE / UNKNOWN` state. It must remain separate from CVSS severity and from any future RBVM decision model.
+Define how applicability evidence enters the CSV-centric platform without changing `WAZUH_CSV_V1`. The preferred boundary is a separate applicability CSV contract keyed to canonical finding identity, with explicit status, reason, evidence source, and evaluation time. Persistence and import validation must remain independent from CVSS and future RBVM decision logic.
