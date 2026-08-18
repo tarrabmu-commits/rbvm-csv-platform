@@ -60,4 +60,11 @@ public record WazuhObservation(
     public Instant evidenceAt() {
         return resolvedAt == null ? detectedAt : resolvedAt;
     }
+
+    /**
+     * Describes only what the source contract can prove. It must not be treated as a risk score.
+     */
+    public WazuhEvidenceCapabilities evidenceCapabilities() {
+        return WazuhEvidenceCapabilities.forContract(contractId);
+    }
 }
