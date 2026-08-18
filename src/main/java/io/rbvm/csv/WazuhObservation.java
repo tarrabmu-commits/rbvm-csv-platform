@@ -60,4 +60,19 @@ public record WazuhObservation(
     public Instant evidenceAt() {
         return resolvedAt == null ? detectedAt : resolvedAt;
     }
+
+    /**
+     * Describes only what the source contract can prove. It must not be treated as a risk score.
+     */
+    public WazuhEvidenceCapabilities evidenceCapabilities() {
+        return WazuhEvidenceCapabilities.forContract(contractId);
+    }
+
+    /**
+     * Groups repeated source observations into one logical vulnerability finding without inventing
+     * source facts that are unavailable from the selected contract.
+     */
+    public CanonicalFindingIdentity canonicalFindingIdentity() {
+        return CanonicalFindingIdentity.from(this);
+    }
 }
