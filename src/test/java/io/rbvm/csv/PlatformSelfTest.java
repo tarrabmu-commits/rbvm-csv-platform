@@ -12,6 +12,7 @@ public final class PlatformSelfTest {
     public static void main(String[] args) throws Exception {
         CsvContractSelfTest.main(args);
         CanonicalFindingIdentitySelfTest.main(args);
+        CanonicalFindingStateSelfTest.main(args);
         DomainCatalogSelfTest.main(args);
         ApiSecuritySelfTest.main(args);
         CsvHttpSelfTest.main(args);
