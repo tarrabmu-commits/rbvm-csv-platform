@@ -187,6 +187,14 @@ The main health response now includes an explicit capability object:
 
 If PostgreSQL V10 is unavailable, these capabilities are false and the CVSS API endpoints return `503` rather than falling back to the legacy combined intelligence model.
 
+## Official NVD collection
+
+`scripts/collect-nvd-cvss-v31.py` is the first automated producer for this contract. It accepts any CSV with a `CVE_ID` column, including `WAZUH_CSV_V1`, queries the NVD CVE API 2.0, and writes a separate `CVSS_V31_CSV_V1` file.
+
+The collector is deliberately narrower than the NVD response. It emits only `metrics.cvssMetricV31` entries whose `cvssData.version` is exactly `3.1` and whose metric `source` is exactly `nvd@nist.gov`. It never falls back to v4.0, v3.0, or another provider merely because that provider is marked `Primary`.
+
+The resulting CSV still goes through the existing contract analyzer and transactional importer; the collector does not write directly to PostgreSQL. See [`NVD_CVSS_V31_COLLECTOR.md`](NVD_CVSS_V31_COLLECTOR.md) for source policy, caching, rate-limit behavior, ambiguity handling, and usage.
+
 ## Relationship to current platform intelligence
 
 The existing `VulnerabilityIntelligenceEvidence` and PostgreSQL V7 fields combine CVSS, EPSS, KEV, shared provenance, and a local priority heuristic. They remain compatibility/legacy behavior for now. This new evidence boundary does not call `priorityTier()` and does not use shared `Intel_Observed_At` or `Intel_Source_References` as the canonical CVSS model.
@@ -201,6 +209,9 @@ Wazuh observation / canonical finding
         +---- Applicability evidence
         |
         +---- CVE_ID
+                |
+                v
+        NVD CVSS v3.1 collector
                 |
                 v
         CVSS_V31_CSV_V1
@@ -254,14 +265,18 @@ Implemented:
 - authenticated current-evidence read API;
 - explicit V10 runtime capability reporting;
 - dedicated operator UI at `/cvss`;
+- official NVD CVSS v3.1 collector producing this contract from a CSV `CVE_ID` set;
+- offline batch-fingerprint cache verification for collector replay/testing;
+- collector tests proving no v4.0, v3.0, CNA/vendor, priority, risk, EPSS/KEV, or SLA fallback;
 - HTTP and JDBC self-tests for the workflow;
 - tests proving no priority, risk score, EPSS/KEV, or SLA is derived.
 
 Not implemented yet:
 
-- official-source NVD collector feeding this canonical contract/importer;
-- explicit source-precedence policy, if one is later required;
+- automatic scheduling/import of newly collected NVD CVSS evidence;
+- vendor/CNA-specific CVSS collectors;
+- explicit cross-source precedence policy, if one is later required;
 - EPSS or CISA KEV redesign;
 - RBVM priority, risk score, or SLA.
 
-The next CVSS increment should automate official-source collection into this same evidence contract without bypassing validation, provenance, freshness, or tenant/CVE resolution.
+The next CVSS increment can automate scheduling and safe handoff of the generated `CVSS_V31_CSV_V1` into the existing importer without weakening validation, provenance, freshness, or tenant/CVE resolution.
