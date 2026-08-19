@@ -21,7 +21,8 @@ public final class PostgresFoundationSelfTest {
             "/db/migration/V11__cisa_kev_persistence.sql",
             "/db/migration/V12__epss_persistence.sql",
             "/db/migration/V13__asset_context_persistence.sql",
-            "/db/migration/V14__network_reachability_persistence.sql"
+            "/db/migration/V14__network_reachability_persistence.sql",
+            "/db/migration/V15__business_impact_persistence.sql"
     );
 
     private PostgresFoundationSelfTest() {
@@ -40,6 +41,7 @@ public final class PostgresFoundationSelfTest {
         epssPersistencePreservesSnapshotBoundEvidenceSemantics();
         assetContextPersistencePreservesEvidenceSemantics();
         networkReachabilityPersistencePreservesEvidenceSemantics();
+        businessImpactPersistencePreservesEvidenceSemantics();
         PostgresMigratorSelfTest.main(args);
         PostgresProjectionJdbcSelfTest.main(args);
         PostgresApplicabilityImporterSelfTest.main(args);
@@ -48,6 +50,7 @@ public final class PostgresFoundationSelfTest {
         PostgresEpssImporterSelfTest.main(args);
         PostgresAssetContextImporterSelfTest.main(args);
         PostgresNetworkReachabilityImporterSelfTest.main(args);
+        PostgresBusinessImpactImporterSelfTest.main(args);
         PostgresNetworkReachabilityEvidenceReaderSelfTest.main(args);
         PostgresCvssV31EvidenceReaderSelfTest.main(args);
         PostgresCisaKevEvidenceReaderSelfTest.main(args);
@@ -276,6 +279,31 @@ public final class PostgresFoundationSelfTest {
         assert !script.contains("business_criticality");
         assert !script.contains("epss_probability");
         assert !script.contains("known_exploited");
+    }
+
+    private static void businessImpactPersistencePreservesEvidenceSemantics() throws Exception {
+        String script = resource("/db/migration/V15__business_impact_persistence.sql");
+        assert script.contains("CREATE TABLE rbvm.business_impact_snapshot");
+        assert script.contains("CREATE TABLE rbvm.business_impact_evidence");
+        assert script.contains("UNIQUE (tenant_id, impact_source, observed_at)");
+        assert script.contains("business_service_normalized");
+        assert script.contains("impact_level IN ('SEVERE', 'HIGH', 'MODERATE', 'LOW', 'NEGLIGIBLE', 'UNKNOWN')");
+        assert script.contains("REFERENCES rbvm.asset(tenant_id, id)");
+        assert script.contains("REFERENCES rbvm.business_impact_snapshot(tenant_id, id)");
+        assert script.contains("CREATE VIEW rbvm.current_business_impact_evidence");
+        assert script.contains("CREATE VIEW rbvm.finding_business_impact_evidence");
+        assert script.contains("s.impact_source");
+        assert script.contains("s.observed_at DESC");
+        assert script.contains("(i.id IS NOT NULL) AS business_impact_observed");
+        assert script.contains("never fabricated as LOW, NEGLIGIBLE, or UNKNOWN");
+        assert !script.contains("impact_weight");
+        assert !script.contains("risk_score");
+        assert !script.contains("priority_tier");
+        assert !script.contains("sla_days");
+        assert !script.contains("cvss_base_score");
+        assert !script.contains("epss_probability");
+        assert !script.contains("known_exploited");
+        assert !script.contains("internet_exposed");
     }
 
     private static String resource(String name) throws Exception {

@@ -79,6 +79,7 @@ def main() -> None:
             (12, "V12__epss_persistence.sql"),
             (13, "V13__asset_context_persistence.sql"),
             (14, "V14__network_reachability_persistence.sql"),
+            (15, "V15__business_impact_persistence.sql"),
         )
     }
     v1, v2, v3, v4, v5, v6, v7 = (migrations[index] for index in range(1, 8))
@@ -86,6 +87,7 @@ def main() -> None:
     v12 = migrations[12]
     v13 = migrations[13]
     v14 = migrations[14]
+    v15 = migrations[15]
 
     required_tables = {
         "tenant",
@@ -250,6 +252,29 @@ def main() -> None:
         if forbidden in v14:
             raise AssertionError(f"V14 must not derive {forbidden}")
 
+    for invariant in (
+        "CREATE TABLE RBVM.BUSINESS_IMPACT_SNAPSHOT",
+        "CREATE TABLE RBVM.BUSINESS_IMPACT_EVIDENCE",
+        "UNIQUE (TENANT_ID, IMPACT_SOURCE, OBSERVED_AT)",
+        "BUSINESS_SERVICE_NORMALIZED",
+        "IMPACT_LEVEL IN ('SEVERE', 'HIGH', 'MODERATE', 'LOW', 'NEGLIGIBLE', 'UNKNOWN')",
+        "REFERENCES RBVM.ASSET(TENANT_ID, ID)",
+        "REFERENCES RBVM.BUSINESS_IMPACT_SNAPSHOT(TENANT_ID, ID)",
+        "CREATE VIEW RBVM.CURRENT_BUSINESS_IMPACT_EVIDENCE",
+        "CREATE VIEW RBVM.FINDING_BUSINESS_IMPACT_EVIDENCE",
+        "S.IMPACT_SOURCE",
+        "S.OBSERVED_AT DESC",
+        "(I.ID IS NOT NULL) AS BUSINESS_IMPACT_OBSERVED",
+    ):
+        if invariant not in v15:
+            raise AssertionError(f"V15 is missing Business Impact persistence invariant {invariant}")
+    for forbidden in (
+        "IMPACT_WEIGHT", "RISK_SCORE", "PRIORITY_TIER", "SLA_DAYS", "CVSS_BASE_SCORE",
+        "EPSS_PROBABILITY", "KNOWN_EXPLOITED", "INTERNET_EXPOSED"
+    ):
+        if forbidden in v15:
+            raise AssertionError(f"V15 must not derive {forbidden}")
+
     runtime_role = " ".join(
         (root / "db/security/runtime-role.sql").read_text(encoding="utf-8").split()
     ).upper()
@@ -270,6 +295,10 @@ def main() -> None:
         "RBVM.NETWORK_REACHABILITY_EVIDENCE",
         "RBVM.CURRENT_NETWORK_REACHABILITY_EVIDENCE",
         "RBVM.FINDING_NETWORK_REACHABILITY_EVIDENCE",
+        "RBVM.BUSINESS_IMPACT_SNAPSHOT",
+        "RBVM.BUSINESS_IMPACT_EVIDENCE",
+        "RBVM.CURRENT_BUSINESS_IMPACT_EVIDENCE",
+        "RBVM.FINDING_BUSINESS_IMPACT_EVIDENCE",
     ):
         if relation not in runtime_role:
             raise AssertionError(f"runtime role is missing intelligence/context relation {relation}")
@@ -282,6 +311,8 @@ def main() -> None:
         "RBVM.ASSET_CONTEXT_EVIDENCE",
         "RBVM.NETWORK_REACHABILITY_SNAPSHOT",
         "RBVM.NETWORK_REACHABILITY_EVIDENCE",
+        "RBVM.BUSINESS_IMPACT_SNAPSHOT",
+        "RBVM.BUSINESS_IMPACT_EVIDENCE",
     ):
         marker = f"REVOKE UPDATE, DELETE, TRUNCATE ON {relation} FROM RBVM_RUNTIME"
         if marker not in runtime_role:
