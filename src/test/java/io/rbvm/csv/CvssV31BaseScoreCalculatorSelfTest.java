@@ -8,6 +8,7 @@ public final class CvssV31BaseScoreCalculatorSelfTest {
 
     public static void main(String[] args) {
         matchesFirstPublishedExamplesAndScopeRules();
+        appliesScopeDependentPrivilegesRequiredWeights();
         handlesZeroImpact();
         rejectsScoreVectorMismatchAtEvidenceBoundary();
         System.out.println("CvssV31BaseScoreCalculatorSelfTest: PASS");
@@ -29,6 +30,25 @@ public final class CvssV31BaseScoreCalculatorSelfTest {
         assertScore(
                 "10.0",
                 "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H"
+        );
+    }
+
+    private static void appliesScopeDependentPrivilegesRequiredWeights() {
+        assertScore(
+                "8.8",
+                "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H"
+        );
+        assertScore(
+                "9.9",
+                "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H"
+        );
+        assertScore(
+                "7.2",
+                "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:H"
+        );
+        assertScore(
+                "9.1",
+                "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:C/C:H/I:H/A:H"
         );
     }
 
