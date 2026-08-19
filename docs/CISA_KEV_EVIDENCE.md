@@ -103,7 +103,7 @@ Both `CisaKevEvidence.listed(...)` and `CisaKevEvidence.notListed(...)` require 
 
 ## Official source acquisition
 
-The official-source adapter is now implemented before the CSV/persistence layer:
+The official-source adapter is implemented before the persistence boundary:
 
 ```text
 https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
@@ -123,7 +123,7 @@ A failed or incomplete acquisition produces no usable snapshot and therefore can
 
 `KEV_Observed_At` records when the platform successfully observed the catalog bytes. It is independent from CISA `dateAdded` and from CVSS/EPSS observation timestamps.
 
-This foundation does not hard-code a freshness window. Freshness policy must remain explicit and must not silently rewrite historical `LISTED` or `NOT_LISTED` observations.
+The scheduled collector refreshes evidence operationally, but the evidence model still does not hard-code an RBVM freshness window. Freshness policy must remain explicit and must not silently rewrite historical `LISTED` or `NOT_LISTED` observations.
 
 ## Ransomware campaign field
 
@@ -163,21 +163,21 @@ Implemented:
 - `LISTED / NOT_LISTED / UNKNOWN` semantics;
 - explicit distinction between missing evidence and negative catalog membership;
 - SHA-256 and declared/parsed-count proof for a complete snapshot;
-- official fixed-origin CISA JSON acquisition adapter;
-- fail-closed source and catalog validation;
-- CISA listing metadata and ransomware-campaign-use semantics;
+- official fixed-origin CISA JSON acquisition adapter and fail-closed validation;
+- `CISA_KEV_CSV_V1` exchange contract and LISTED/NOT_LISTED mapping;
+- PostgreSQL V11 snapshot/evidence history plus current and finding views;
+- transactional tenant-scoped importer with replay and conflict quarantine;
+- import/read HTTP API and independent operator UI;
+- OpenAPI/release-contract alignment for the KEV endpoints;
+- authenticated CSV-to-API safe handoff with no direct database path;
+- scheduled daily acquisition/build/handoff workflow with atomic publication and bounded retention;
 - tests proving incomplete snapshots cannot back `NOT_LISTED` and that no priority/risk/SLA/EPSS is derived.
 
 Not implemented yet:
 
-- `CISA_KEV_CSV_V1` exchange contract;
-- mapping validated snapshots into explicit LISTED/NOT_LISTED rows;
-- PostgreSQL KEV history/current views;
-- transactional importer;
-- platform API/UI;
-- scheduling;
-- freshness policy;
-- EPSS;
+- an explicit RBVM freshness decision policy for KEV;
+- EPSS independent evidence;
+- asset/business context stages;
 - RBVM decision logic.
 
-The next increment should define `CISA_KEV_CSV_V1` from the validated acquisition artifact so every explicit `LISTED` or `NOT_LISTED` row carries the exact same snapshot identity and provenance.
+See [`CISA_KEV_AUTOMATION.md`](CISA_KEV_AUTOMATION.md) for the scheduled trust boundary and operational workflow.
