@@ -2,9 +2,10 @@
 # Must be a regular non-symlink file.
 RBVM_KEV_INPUT=/var/lib/rbvm-platform/current-wazuh-v1.csv
 
-# Immutable published refresh snapshots are retained here.
-# The supplied user service allows writes to this default location.
-RBVM_KEV_OUTPUT_DIR=%h/.local/share/rbvm-platform/cisa-kev
+# Immutable refresh snapshots default to:
+#   $HOME/.local/share/rbvm-platform/cisa-kev
+# Leave RBVM_KEV_OUTPUT_DIR unset when using the supplied user service, or change the
+# service ReadWritePaths setting if you intentionally choose another protected path.
 RBVM_KEV_KEEP=14
 
 # Local HTTP is accepted. Any non-local API base must use HTTPS.
