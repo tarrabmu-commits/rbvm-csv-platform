@@ -2,10 +2,12 @@ package io.rbvm.postgres;
 
 import java.io.IOException;
 import java.sql.Connection;
+import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -65,11 +67,13 @@ public final class PostgresCisaKevEvidenceReader implements CisaKevEvidenceReade
             statement.setInt(4, limit);
             try (ResultSet rows = statement.executeQuery()) {
                 while (rows.next()) {
+                    Date dateAdded = rows.getDate(3);
+                    Date dueDate = rows.getDate(4);
                     Map<String, Object> item = new LinkedHashMap<>();
                     item.put("cveId", rows.getString(1));
                     item.put("kevStatus", rows.getString(2));
-                    item.put("kevDateAdded", rows.getDate(3) == null ? null : rows.getDate(3).toLocalDate().toString());
-                    item.put("kevDueDate", rows.getDate(4) == null ? null : rows.getDate(4).toLocalDate().toString());
+                    item.put("kevDateAdded", dateAdded == null ? null : dateAdded.toLocalDate().toString());
+                    item.put("kevDueDate", dueDate == null ? null : dueDate.toLocalDate().toString());
                     item.put("knownRansomwareCampaignUse", rows.getString(5));
                     item.put("kevCatalogVersion", rows.getString(6));
                     item.put("kevCatalogSha256", rows.getString(7).trim());
@@ -78,7 +82,7 @@ public final class PostgresCisaKevEvidenceReader implements CisaKevEvidenceReade
                     item.put("kevObservedAt", rows.getTimestamp(10).toInstant().toString());
                     item.put("evidenceIngestedAt", rows.getTimestamp(11).toInstant().toString());
                     item.put("snapshotIngestedAt", rows.getTimestamp(12).toInstant().toString());
-                    items.add(Map.copyOf(item));
+                    items.add(Collections.unmodifiableMap(new LinkedHashMap<>(item)));
                 }
             }
         } catch (SQLException exception) {
@@ -91,7 +95,7 @@ public final class PostgresCisaKevEvidenceReader implements CisaKevEvidenceReade
         output.put("cvePrefix", normalizedPrefix);
         output.put("count", items.size());
         output.put("items", List.copyOf(items));
-        return Map.copyOf(output);
+        return Collections.unmodifiableMap(output);
     }
 
     private static String normalizePrefix(String value) {
