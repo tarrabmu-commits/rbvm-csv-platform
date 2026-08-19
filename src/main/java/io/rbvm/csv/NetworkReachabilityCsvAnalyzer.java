@@ -122,7 +122,7 @@ public final class NetworkReachabilityCsvAnalyzer {
                     item.put("originScope", evidence.originScope().name());
                     item.put("originLabel", evidence.originLabel());
                     item.put("transportProtocol", evidence.transportProtocol().name());
-                    item.put("targetPort", evidence.targetPort());
+                    item.put("targetPort", evidence.targetPort() == null ? "" : evidence.targetPort());
                     item.put("targetService", evidence.targetService());
                     item.put("reachabilityStatus", evidence.reachabilityStatus().name());
                     item.put("reachabilityMethod", evidence.reachabilityMethod().name());
