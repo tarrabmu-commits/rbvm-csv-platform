@@ -119,7 +119,7 @@ public final class PostgresMigratorSelfTest {
                 .filter(sql -> sql.contains("CREATE TABLE rbvm.business_impact_evidence")).count();
 
         assert migrator.migrate() == 15;
-        assert database.commits == 13 : "replay must not reapply migrations";
+        assert database.commits == 15 : "replay must not reapply migrations";
         assert database.executedSql.stream()
                 .filter(sql -> sql.contains("CREATE TABLE rbvm.observation (")).count()
                 == observationCreates;

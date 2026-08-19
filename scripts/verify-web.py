@@ -55,6 +55,7 @@ def main():
         (root / "src/main/resources/web/epss.html", True),
         (root / "src/main/resources/web/asset-context.html", True),
         (root / "src/main/resources/web/network-reachability.html", True),
+        (root / "src/main/resources/web/business-impact.html", True),
     ]
     total_ids = sum(verify_page(path, requires_session_token=token) for path, token in pages)
     print(f"Web structural checks: PASS ({len(pages)} pages, {total_ids} unique page ids)")
