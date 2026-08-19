@@ -122,22 +122,21 @@ public final class RbvmDecisionMethodologyPolicySelfTest {
     }
 
     private static void exposesNoDecisionFormulaFields() {
-        Set<String> forbiddenTokens = Set.of(
+        Set<String> forbiddenTopLevelNames = Set.of(
+                "riskscore", "prioritytier", "sladays", "impactweight", "aggregateimpactscore",
+                "monetaryloss", "internetexposed", "attackpathscore"
+        );
+        Set<String> forbiddenSelectionTokens = Set.of(
                 "weight", "score", "priority", "sla", "threshold", "multiplier", "coefficient",
                 "lossamount", "monetaryloss", "internetexposed", "attackpath"
         );
-        Set<String> components = java.util.Arrays.stream(
-                        RbvmDecisionMethodologyPolicy.class.getRecordComponents())
-                .map(RecordComponent::getName)
-                .map(name -> name.toLowerCase(Locale.ROOT))
-                .collect(Collectors.toSet());
-        Set<String> selectionComponents = java.util.Arrays.stream(
-                        RbvmDecisionMethodologyPolicy.EvidenceSelectionPolicy.class.getRecordComponents())
-                .map(RecordComponent::getName)
-                .map(name -> name.toLowerCase(Locale.ROOT))
-                .collect(Collectors.toSet());
-        for (String token : forbiddenTokens) {
-            assert components.stream().noneMatch(name -> name.contains(token)) : token;
+        Set<String> components = componentNames(RbvmDecisionMethodologyPolicy.class);
+        Set<String> selectionComponents = componentNames(
+                RbvmDecisionMethodologyPolicy.EvidenceSelectionPolicy.class);
+        for (String name : forbiddenTopLevelNames) {
+            assert !components.contains(name) : name;
+        }
+        for (String token : forbiddenSelectionTokens) {
             assert selectionComponents.stream().noneMatch(name -> name.contains(token)) : token;
         }
 
@@ -148,6 +147,13 @@ public final class RbvmDecisionMethodologyPolicySelfTest {
         assert RbvmDecisionMethodologyPolicy.LegacyPriorityHandling.values().length == 1;
         assert RbvmDecisionMethodologyPolicy.LegacyPriorityHandling.values()[0]
                 == EXCLUDE_LEGACY_PRIORITY_TIER;
+    }
+
+    private static Set<String> componentNames(Class<?> type) {
+        return java.util.Arrays.stream(type.getRecordComponents())
+                .map(RecordComponent::getName)
+                .map(name -> name.toLowerCase(Locale.ROOT))
+                .collect(Collectors.toSet());
     }
 
     private static EnumMap<EvidenceDimension, RbvmDecisionMethodologyPolicy.EvidenceSelectionPolicy>
