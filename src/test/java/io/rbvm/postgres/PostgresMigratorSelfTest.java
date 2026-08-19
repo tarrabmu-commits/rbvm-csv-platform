@@ -30,9 +30,9 @@ public final class PostgresMigratorSelfTest {
     private static void appliesAndReplaysVersionedMigrations() throws Exception {
         FakeDatabase database = new FakeDatabase();
         PostgresMigrator migrator = new PostgresMigrator(database::connection);
-        assert migrator.migrate() == 11;
-        assert database.checksums.size() == 11;
-        assert database.commits == 11;
+        assert migrator.migrate() == 12;
+        assert database.checksums.size() == 12;
+        assert database.commits == 12;
         assert database.rollbacks == 0;
         assert database.executedSql.stream()
                 .anyMatch(sql -> sql.contains("CREATE TABLE rbvm.observation"));
@@ -56,6 +56,15 @@ public final class PostgresMigratorSelfTest {
                 .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.current_cisa_kev_evidence"));
         assert database.executedSql.stream()
                 .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.finding_cisa_kev_evidence"));
+        assert database.executedSql.stream()
+                .anyMatch(sql -> sql.contains("CREATE TABLE rbvm.epss_score_snapshot"));
+        assert database.executedSql.stream()
+                .anyMatch(sql -> sql.contains("CREATE TABLE rbvm.epss_evidence"));
+        assert database.executedSql.stream()
+                .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.current_epss_evidence"));
+        assert database.executedSql.stream()
+                .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.finding_epss_evidence"));
+
         long observationCreates = database.executedSql.stream()
                 .filter(sql -> sql.contains("CREATE TABLE rbvm.observation (")).count();
         long operationalFindingCreates = database.executedSql.stream()
@@ -68,9 +77,13 @@ public final class PostgresMigratorSelfTest {
                 .filter(sql -> sql.contains("CREATE TABLE rbvm.cisa_kev_catalog_snapshot")).count();
         long kevEvidenceCreates = database.executedSql.stream()
                 .filter(sql -> sql.contains("CREATE TABLE rbvm.cisa_kev_evidence")).count();
+        long epssSnapshotCreates = database.executedSql.stream()
+                .filter(sql -> sql.contains("CREATE TABLE rbvm.epss_score_snapshot")).count();
+        long epssEvidenceCreates = database.executedSql.stream()
+                .filter(sql -> sql.contains("CREATE TABLE rbvm.epss_evidence")).count();
 
-        assert migrator.migrate() == 11;
-        assert database.commits == 11 : "replay must not reapply migrations";
+        assert migrator.migrate() == 12;
+        assert database.commits == 12 : "replay must not reapply migrations";
         assert database.executedSql.stream()
                 .filter(sql -> sql.contains("CREATE TABLE rbvm.observation (")).count()
                 == observationCreates;
@@ -89,6 +102,12 @@ public final class PostgresMigratorSelfTest {
         assert database.executedSql.stream()
                 .filter(sql -> sql.contains("CREATE TABLE rbvm.cisa_kev_evidence")).count()
                 == kevEvidenceCreates;
+        assert database.executedSql.stream()
+                .filter(sql -> sql.contains("CREATE TABLE rbvm.epss_score_snapshot")).count()
+                == epssSnapshotCreates;
+        assert database.executedSql.stream()
+                .filter(sql -> sql.contains("CREATE TABLE rbvm.epss_evidence")).count()
+                == epssEvidenceCreates;
         assert database.advisoryLocks == 2;
         assert database.advisoryUnlocks == 2;
     }
