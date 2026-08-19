@@ -26,6 +26,7 @@ public final class CanonicalProjectionFactory {
             return new RuntimeComponents(
                     new NoopCanonicalProjection(),
                     new InMemoryDomainCatalog(),
+                    Optional.empty(),
                     Optional.empty()
             );
         }
@@ -41,24 +42,30 @@ public final class CanonicalProjectionFactory {
         PostgresReadCatalog readCatalog = new PostgresReadCatalog(connections);
         int installedVersion = new PostgresMigrator(connections).installedVersion();
         Optional<ApplicabilityImporter> applicabilityImporter = Optional.empty();
+        Optional<ApplicabilityFindingExporter> applicabilityFindingExporter = Optional.empty();
         if (installedVersion >= 9) {
             PostgresApplicabilityImporter importer = new PostgresApplicabilityImporter(
                     connections,
                     false
             );
             applicabilityImporter = Optional.of(importer::importFile);
+            applicabilityFindingExporter = Optional.of(
+                    new PostgresApplicabilityFindingExporter(connections)
+            );
         }
         return new RuntimeComponents(
                 projection,
                 readCatalog,
-                applicabilityImporter
+                applicabilityImporter,
+                applicabilityFindingExporter
         );
     }
 
     public record RuntimeComponents(
             CanonicalProjection canonicalProjection,
             DomainCatalog readCatalog,
-            Optional<ApplicabilityImporter> applicabilityImporter
+            Optional<ApplicabilityImporter> applicabilityImporter,
+            Optional<ApplicabilityFindingExporter> applicabilityFindingExporter
     ) {
         public RuntimeComponents {
             Objects.requireNonNull(canonicalProjection, "canonicalProjection");
@@ -67,13 +74,22 @@ public final class CanonicalProjectionFactory {
                     applicabilityImporter,
                     "applicabilityImporter"
             );
+            applicabilityFindingExporter = Objects.requireNonNull(
+                    applicabilityFindingExporter,
+                    "applicabilityFindingExporter"
+            );
         }
 
         public RuntimeComponents(
                 CanonicalProjection canonicalProjection,
                 DomainCatalog readCatalog
         ) {
-            this(canonicalProjection, readCatalog, Optional.empty());
+            this(
+                    canonicalProjection,
+                    readCatalog,
+                    Optional.empty(),
+                    Optional.empty()
+            );
         }
     }
 }
