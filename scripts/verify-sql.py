@@ -77,11 +77,13 @@ def main() -> None:
             (10, "V10__cvss_v31_base_persistence.sql"),
             (11, "V11__cisa_kev_persistence.sql"),
             (12, "V12__epss_persistence.sql"),
+            (13, "V13__asset_context_persistence.sql"),
         )
     }
     v1, v2, v3, v4, v5, v6, v7 = (migrations[index] for index in range(1, 8))
     v11 = migrations[11]
     v12 = migrations[12]
+    v13 = migrations[13]
 
     required_tables = {
         "tenant",
@@ -198,6 +200,27 @@ def main() -> None:
     if "COALESCE(E.EPSS_PROBABILITY" in v12:
         raise AssertionError("V12 must preserve missing EPSS as absence, not probability zero")
 
+    for invariant in (
+        "CREATE TABLE RBVM.ASSET_CONTEXT_SNAPSHOT",
+        "CREATE TABLE RBVM.ASSET_CONTEXT_EVIDENCE",
+        "UNIQUE (TENANT_ID, CONTEXT_SOURCE, OBSERVED_AT)",
+        "UNIQUE (TENANT_ID, ASSET_ID, SNAPSHOT_ID)",
+        "REFERENCES RBVM.ASSET(TENANT_ID, ID)",
+        "REFERENCES RBVM.ASSET_CONTEXT_SNAPSHOT(TENANT_ID, ID)",
+        "ASSET_IDENTITY_BASIS IN ('SOURCE_NAME_ONLY', 'SOURCE_STABLE_ID')",
+        "BUSINESS_CRITICALITY IN ('MISSION_CRITICAL', 'HIGH', 'MODERATE', 'LOW', 'UNKNOWN')",
+        "CREATE VIEW RBVM.CURRENT_ASSET_CONTEXT_EVIDENCE",
+        "CREATE VIEW RBVM.FINDING_ASSET_CONTEXT_EVIDENCE",
+        "DISTINCT ON (E.TENANT_ID, E.ASSET_ID, S.CONTEXT_SOURCE)",
+        "S.OBSERVED_AT DESC",
+        "(C.ID IS NOT NULL) AS ASSET_CONTEXT_OBSERVED",
+    ):
+        if invariant not in v13:
+            raise AssertionError(f"V13 is missing asset-context persistence invariant {invariant}")
+    for forbidden in ("PRIORITY_TIER", "RISK_SCORE", "SLA_DAYS", "EPSS_PROBABILITY", "KNOWN_EXPLOITED"):
+        if forbidden in v13:
+            raise AssertionError(f"V13 must not derive {forbidden}")
+
     runtime_role = " ".join(
         (root / "db/security/runtime-role.sql").read_text(encoding="utf-8").split()
     ).upper()
@@ -210,14 +233,20 @@ def main() -> None:
         "RBVM.FINDING_CISA_KEV_EVIDENCE",
         "RBVM.CURRENT_EPSS_EVIDENCE",
         "RBVM.FINDING_EPSS_EVIDENCE",
+        "RBVM.ASSET_CONTEXT_SNAPSHOT",
+        "RBVM.ASSET_CONTEXT_EVIDENCE",
+        "RBVM.CURRENT_ASSET_CONTEXT_EVIDENCE",
+        "RBVM.FINDING_ASSET_CONTEXT_EVIDENCE",
     ):
         if relation not in runtime_role:
-            raise AssertionError(f"runtime role is missing intelligence relation {relation}")
+            raise AssertionError(f"runtime role is missing intelligence/context relation {relation}")
     for relation in (
         "RBVM.CISA_KEV_CATALOG_SNAPSHOT",
         "RBVM.CISA_KEV_EVIDENCE",
         "RBVM.EPSS_SCORE_SNAPSHOT",
         "RBVM.EPSS_EVIDENCE",
+        "RBVM.ASSET_CONTEXT_SNAPSHOT",
+        "RBVM.ASSET_CONTEXT_EVIDENCE",
     ):
         marker = f"REVOKE UPDATE, DELETE, TRUNCATE ON {relation} FROM RBVM_RUNTIME"
         if marker not in runtime_role:
