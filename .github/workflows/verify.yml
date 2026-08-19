@@ -25,6 +25,8 @@ jobs:
           python-version: '3.12'
       - name: Install OpenAPI verifier dependency
         run: python -m pip install --require-hashes -r scripts/verification-requirements.txt
+      - name: Verify 0.13.0 release contract
+        run: ./scripts/verify-release-version.sh v0.13.0
       - name: Verify code, API, SQL, web, and scripts
         run: ./scripts/verify.sh
       - name: Verify reproducible distribution
