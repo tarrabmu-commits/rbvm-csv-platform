@@ -17,6 +17,9 @@ import io.rbvm.domain.VulnerabilityPriorityTier;
 import io.rbvm.postgres.ApplicabilityFindingExporter;
 import io.rbvm.postgres.ApplicabilityImportResult;
 import io.rbvm.postgres.ApplicabilityImporter;
+import io.rbvm.postgres.AssetContextEvidenceReader;
+import io.rbvm.postgres.AssetContextImportResult;
+import io.rbvm.postgres.AssetContextImporter;
 import io.rbvm.postgres.CanonicalProjectionFactory;
 import io.rbvm.postgres.CanonicalProjectionFactory.RuntimeComponents;
 import io.rbvm.postgres.CisaKevEvidenceReader;
@@ -68,6 +71,7 @@ public final class CsvPlatformServer implements AutoCloseable {
     private static final Pattern CASE_PATH = Pattern.compile(
             "^/api/v1/cases/([a-f0-9]{64})(/actions)?$");
     private static final Pattern CVE_PREFIX = Pattern.compile("^CVE-[0-9A-Z-]+$");
+    private static final Pattern SOURCE_PROFILE_KEY = Pattern.compile("^[A-Za-z0-9._:-]+$");
     private static final long DEFAULT_MAXIMUM_UPLOAD_BYTES = 100L * 1024L * 1024L;
     private static final int MAXIMUM_ACTION_BODY_BYTES = 16 * 1024;
 
@@ -78,6 +82,7 @@ public final class CsvPlatformServer implements AutoCloseable {
     private final byte[] cvssUi;
     private final byte[] kevUi;
     private final byte[] epssUi;
+    private final byte[] assetContextUi;
     private final ApiKeyAuthenticator authenticator;
     private final RequestRateLimiter rateLimiter;
     private final long maximumUploadBytes;
@@ -89,6 +94,8 @@ public final class CsvPlatformServer implements AutoCloseable {
     private final Optional<CisaKevEvidenceReader> cisaKevEvidenceReader;
     private final Optional<EpssImporter> epssImporter;
     private final Optional<EpssEvidenceReader> epssEvidenceReader;
+    private final Optional<AssetContextImporter> assetContextImporter;
+    private final Optional<AssetContextEvidenceReader> assetContextEvidenceReader;
     private final Instant startedAt = Instant.now();
     private final AtomicLong requestsTotal = new AtomicLong();
     private final AtomicLong problemsTotal = new AtomicLong();
@@ -133,10 +140,13 @@ public final class CsvPlatformServer implements AutoCloseable {
         this.cisaKevEvidenceReader = Optional.empty();
         this.epssImporter = Optional.empty();
         this.epssEvidenceReader = Optional.empty();
+        this.assetContextImporter = Optional.empty();
+        this.assetContextEvidenceReader = Optional.empty();
         this.webUi = loadResource("/web/index.html");
         this.cvssUi = loadResource("/web/cvss-v31.html");
         this.kevUi = loadResource("/web/cisa-kev.html");
         this.epssUi = loadResource("/web/epss.html");
+        this.assetContextUi = loadResource("/web/asset-context.html");
         this.server = HttpServer.create(new InetSocketAddress(host, port), 32);
         int workers = Math.max(4, Math.min(16, Runtime.getRuntime().availableProcessors()));
         this.executor = Executors.newFixedThreadPool(workers);
@@ -292,6 +302,7 @@ public final class CsvPlatformServer implements AutoCloseable {
         );
     }
 
+    /** Backward-compatible runtime constructor through the EPSS V12 capability layer. */
     public CsvPlatformServer(
             String host,
             int port,
@@ -307,6 +318,48 @@ public final class CsvPlatformServer implements AutoCloseable {
             Optional<CisaKevEvidenceReader> cisaKevEvidenceReader,
             Optional<EpssImporter> epssImporter,
             Optional<EpssEvidenceReader> epssEvidenceReader,
+            ApiKeyAuthenticator authenticator,
+            RequestRateLimiter rateLimiter
+    ) throws IOException {
+        this(
+                host,
+                port,
+                dataDirectory,
+                maximumUploadBytes,
+                canonicalProjection,
+                readCatalog,
+                applicabilityImporter,
+                applicabilityFindingExporter,
+                cvssV31Importer,
+                cvssV31EvidenceReader,
+                cisaKevImporter,
+                cisaKevEvidenceReader,
+                epssImporter,
+                epssEvidenceReader,
+                Optional.empty(),
+                Optional.empty(),
+                authenticator,
+                rateLimiter
+        );
+    }
+
+    public CsvPlatformServer(
+            String host,
+            int port,
+            Path dataDirectory,
+            long maximumUploadBytes,
+            CanonicalProjection canonicalProjection,
+            DomainCatalog readCatalog,
+            Optional<ApplicabilityImporter> applicabilityImporter,
+            Optional<ApplicabilityFindingExporter> applicabilityFindingExporter,
+            Optional<CvssV31Importer> cvssV31Importer,
+            Optional<CvssV31EvidenceReader> cvssV31EvidenceReader,
+            Optional<CisaKevImporter> cisaKevImporter,
+            Optional<CisaKevEvidenceReader> cisaKevEvidenceReader,
+            Optional<EpssImporter> epssImporter,
+            Optional<EpssEvidenceReader> epssEvidenceReader,
+            Optional<AssetContextImporter> assetContextImporter,
+            Optional<AssetContextEvidenceReader> assetContextEvidenceReader,
             ApiKeyAuthenticator authenticator,
             RequestRateLimiter rateLimiter
     ) throws IOException {
@@ -347,10 +400,19 @@ public final class CsvPlatformServer implements AutoCloseable {
         );
         this.epssImporter = Objects.requireNonNull(epssImporter, "epssImporter");
         this.epssEvidenceReader = Objects.requireNonNull(epssEvidenceReader, "epssEvidenceReader");
+        this.assetContextImporter = Objects.requireNonNull(
+                assetContextImporter,
+                "assetContextImporter"
+        );
+        this.assetContextEvidenceReader = Objects.requireNonNull(
+                assetContextEvidenceReader,
+                "assetContextEvidenceReader"
+        );
         this.webUi = loadResource("/web/index.html");
         this.cvssUi = loadResource("/web/cvss-v31.html");
         this.kevUi = loadResource("/web/cisa-kev.html");
         this.epssUi = loadResource("/web/epss.html");
+        this.assetContextUi = loadResource("/web/asset-context.html");
         this.server = HttpServer.create(new InetSocketAddress(host, port), 32);
         int workers = Math.max(4, Math.min(16, Runtime.getRuntime().availableProcessors()));
         this.executor = Executors.newFixedThreadPool(workers);
@@ -404,6 +466,11 @@ public final class CsvPlatformServer implements AutoCloseable {
             if ("/epss".equals(path) || "/epss/".equals(path)) {
                 requireMethod(exchange, method, "GET");
                 sendBytes(exchange, 200, "text/html; charset=utf-8", epssUi);
+                return;
+            }
+            if ("/asset-context".equals(path) || "/asset-context/".equals(path)) {
+                requireMethod(exchange, method, "GET");
+                sendBytes(exchange, 200, "text/html; charset=utf-8", assetContextUi);
                 return;
             }
             if ("/api/v1/health".equals(path)) {
@@ -491,6 +558,18 @@ public final class CsvPlatformServer implements AutoCloseable {
                 requireMethod(exchange, method, "POST");
                 authorize(exchange, ApiRole.OPERATOR);
                 createEpssImport(exchange);
+                return;
+            }
+            if ("/api/v1/asset-context-evidence".equals(path)) {
+                requireMethod(exchange, method, "GET");
+                authorize(exchange, ApiRole.VIEWER);
+                readAssetContextEvidence(exchange);
+                return;
+            }
+            if ("/api/v1/asset-context-imports".equals(path)) {
+                requireMethod(exchange, method, "POST");
+                authorize(exchange, ApiRole.OPERATOR);
+                createAssetContextImport(exchange);
                 return;
             }
             if ("/api/v1/csv-imports".equals(path)) {
@@ -595,6 +674,10 @@ public final class CsvPlatformServer implements AutoCloseable {
         health.put("epss", Map.of(
                 "importEnabled", epssImporter.isPresent(),
                 "evidenceReadEnabled", epssEvidenceReader.isPresent()
+        ));
+        health.put("assetContext", Map.of(
+                "importEnabled", assetContextImporter.isPresent(),
+                "evidenceReadEnabled", assetContextEvidenceReader.isPresent()
         ));
         return health;
     }
@@ -789,6 +872,59 @@ public final class CsvPlatformServer implements AutoCloseable {
                 copyBounded(body, output, maximumUploadBytes, "EPSS CSV");
             }
             EpssImportResult result = importer.importFile(staged);
+            sendJson(exchange, 200, result.toMap());
+        } finally {
+            Files.deleteIfExists(staged);
+        }
+    }
+
+    private void readAssetContextEvidence(HttpExchange exchange) throws IOException {
+        AssetContextEvidenceReader reader = assetContextEvidenceReader.orElseThrow(() ->
+                new HttpProblem(
+                        503,
+                        "ASSET_CONTEXT_PERSISTENCE_UNAVAILABLE",
+                        "Asset context evidence reads require PostgreSQL schema version 13 or newer"
+                ));
+        AssetContextEvidenceQuery query = parseAssetContextEvidenceQuery(exchange.getRequestURI());
+        sendJson(exchange, 200, reader.currentEvidence(
+                query.limit(),
+                query.assetPrefix(),
+                query.sourceProfileKey(),
+                query.contextSource()
+        ));
+    }
+
+    private void createAssetContextImport(HttpExchange exchange) throws IOException {
+        AssetContextImporter importer = assetContextImporter.orElseThrow(() ->
+                new HttpProblem(
+                        503,
+                        "ASSET_CONTEXT_PERSISTENCE_UNAVAILABLE",
+                        "Asset context import requires PostgreSQL schema version 13 or newer"
+                ));
+        String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
+        if (!isCsvContentType(contentType)) {
+            throw new HttpProblem(
+                    415,
+                    "UNSUPPORTED_MEDIA_TYPE",
+                    "Content-Type must be text/csv, application/csv, or application/octet-stream"
+            );
+        }
+        long contentLength = parseContentLength(exchange.getRequestHeaders().getFirst("Content-Length"));
+        if (contentLength > maximumUploadBytes) {
+            throw new HttpProblem(
+                    413,
+                    "UPLOAD_TOO_LARGE",
+                    "Asset context CSV exceeds the configured upload limit"
+            );
+        }
+
+        Path staged = Files.createTempFile("rbvm-asset-context-upload-", ".csv");
+        try {
+            try (InputStream body = exchange.getRequestBody();
+                 OutputStream output = Files.newOutputStream(staged)) {
+                copyBounded(body, output, maximumUploadBytes, "Asset context CSV");
+            }
+            AssetContextImportResult result = importer.importFile(staged);
             sendJson(exchange, 200, result.toMap());
         } finally {
             Files.deleteIfExists(staged);
@@ -993,6 +1129,17 @@ public final class CsvPlatformServer implements AutoCloseable {
         return new EpssEvidenceQuery(queryLimit(query), queryCve(query));
     }
 
+    private static AssetContextEvidenceQuery parseAssetContextEvidenceQuery(URI uri) {
+        Map<String, String> query = parseParameters(uri.getRawQuery());
+        rejectUnknownFields(query, Set.of("limit", "asset", "sourceProfile", "contextSource"));
+        return new AssetContextEvidenceQuery(
+                queryLimit(query),
+                queryOptional(query, "asset", 160),
+                querySourceProfile(query),
+                queryOptional(query, "contextSource", 256)
+        );
+    }
+
     private static Map<String, String> parseEvidenceQuery(URI uri) {
         Map<String, String> query = parseParameters(uri.getRawQuery());
         rejectUnknownFields(query, Set.of("limit", "cve"));
@@ -1024,6 +1171,30 @@ public final class CsvPlatformServer implements AutoCloseable {
             return cve;
         }
         return null;
+    }
+
+    private static String querySourceProfile(Map<String, String> query) {
+        String value = queryOptional(query, "sourceProfile", 128);
+        if (value != null && !SOURCE_PROFILE_KEY.matcher(value).matches()) {
+            throw new InvalidCaseActionException("sourceProfile contains unsupported characters");
+        }
+        return value;
+    }
+
+    private static String queryOptional(
+            Map<String, String> query,
+            String field,
+            int maximumLength
+    ) {
+        String value = query.get(field);
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        value = value.trim();
+        if (value.length() > maximumLength || value.indexOf('\u0000') >= 0) {
+            throw new InvalidCaseActionException(field + " is invalid or too long");
+        }
+        return value;
     }
 
     private static Boolean parseOptionalBoolean(String value, String field) {
@@ -1217,6 +1388,10 @@ public final class CsvPlatformServer implements AutoCloseable {
                 + "rbvm_epss_import_enabled " + (epssImporter.isPresent() ? 1 : 0) + "\n"
                 + "# TYPE rbvm_epss_evidence_read_enabled gauge\n"
                 + "rbvm_epss_evidence_read_enabled " + (epssEvidenceReader.isPresent() ? 1 : 0) + "\n"
+                + "# TYPE rbvm_asset_context_import_enabled gauge\n"
+                + "rbvm_asset_context_import_enabled " + (assetContextImporter.isPresent() ? 1 : 0) + "\n"
+                + "# TYPE rbvm_asset_context_evidence_read_enabled gauge\n"
+                + "rbvm_asset_context_evidence_read_enabled " + (assetContextEvidenceReader.isPresent() ? 1 : 0) + "\n"
                 + "# TYPE rbvm_process_uptime_seconds gauge\n"
                 + "rbvm_process_uptime_seconds " + uptime + "\n"
                 + "# TYPE rbvm_imports_stored gauge\n"
@@ -1274,6 +1449,8 @@ public final class CsvPlatformServer implements AutoCloseable {
                 runtime.cisaKevEvidenceReader(),
                 runtime.epssImporter(),
                 runtime.epssEvidenceReader(),
+                runtime.assetContextImporter(),
+                runtime.assetContextEvidenceReader(),
                 authenticator,
                 rateLimiter
         );
@@ -1283,6 +1460,7 @@ public final class CsvPlatformServer implements AutoCloseable {
         System.out.println("CVSS v3.1 operator UI: " + application.baseUri().resolve("/cvss"));
         System.out.println("CISA KEV operator UI: " + application.baseUri().resolve("/kev"));
         System.out.println("EPSS operator UI: " + application.baseUri().resolve("/epss"));
+        System.out.println("Asset Context operator UI: " + application.baseUri().resolve("/asset-context"));
         System.out.println("Data directory: " + configuration.dataDirectory().toAbsolutePath().normalize());
         System.out.println("Canonical projection: "
                 + canonicalProjection.health().get("backend"));
@@ -1294,6 +1472,8 @@ public final class CsvPlatformServer implements AutoCloseable {
                 + (runtime.cisaKevImporter().isPresent() ? "ENABLED" : "DISABLED"));
         System.out.println("EPSS persistence: "
                 + (runtime.epssImporter().isPresent() ? "ENABLED" : "DISABLED"));
+        System.out.println("Asset Context persistence: "
+                + (runtime.assetContextImporter().isPresent() ? "ENABLED" : "DISABLED"));
         System.out.println("API authentication: "
                 + (authenticator.enabled() ? "API_KEY" : "DISABLED"));
         new CountDownLatch(1).await();
@@ -1306,6 +1486,14 @@ public final class CsvPlatformServer implements AutoCloseable {
     }
 
     private record EpssEvidenceQuery(int limit, String cvePrefix) {
+    }
+
+    private record AssetContextEvidenceQuery(
+            int limit,
+            String assetPrefix,
+            String sourceProfileKey,
+            String contextSource
+    ) {
     }
 
     private record ServerConfiguration(
