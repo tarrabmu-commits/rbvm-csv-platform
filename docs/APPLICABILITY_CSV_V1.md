@@ -27,9 +27,20 @@ Finding_ID,Applicability_Status,Applicability_Reason,Evidence_Source,Evaluated_A
 
 ### `Finding_ID`
 
-Platform-generated canonical finding identifier. In the current PostgreSQL implementation it maps to the finding/exposure UUID. The assessment CSV intentionally does not repeat `Agent`, `CVE_ID`, or `Affected_Product` as an identity mechanism.
+Platform-generated canonical finding identifier. In PostgreSQL, `Finding_ID` is the tenant-scoped `rbvm.exposure.id` UUID.
 
-This avoids ambiguous reassociation and avoids pretending that `WAZUH_CSV_V1` provides stable Agent ID, package version, or architecture.
+This is deliberate: `rbvm.exposure` already represents the canonical finding grain used by the platform:
+
+```text
+Source Profile
++ Asset
++ CVE
++ Component
+```
+
+For `WAZUH_CSV_V1`, the component identity is source-limited because package version and architecture are unavailable. For `WAZUH_CSV_V2`, the component identity includes the stronger package evidence provided by that contract.
+
+The applicability CSV intentionally does not repeat `Agent`, `CVE_ID`, or `Affected_Product` as an identity mechanism. This avoids ambiguous reassociation and avoids pretending that `WAZUH_CSV_V1` provides stable Agent ID, package version, or architecture.
 
 ### `Applicability_Status`
 
@@ -80,11 +91,60 @@ For the same `Finding_ID + Evaluated_At`:
 - an exact replay is deduplicated;
 - conflicting content is quarantined as `CONFLICTING_ASSESSMENT_TIMESTAMP`.
 
-This prevents two different applicability states from competing at the same evidence timestamp.
+The PostgreSQL persistence schema enforces one stored assessment per `tenant_id + finding_id + evaluated_at`. The importer is responsible for treating exact replay idempotently and distinguishing it from conflicting same-time content before insert.
+
+## PostgreSQL persistence model
+
+`V9__applicability_persistence.sql` adds immutable historical storage:
+
+```text
+rbvm.applicability_assessment
+    id
+    tenant_id
+    finding_id
+    status
+    reason
+    evidence_source
+    evaluated_at
+    ingested_at
+    evidence_sha256
+```
+
+The `(tenant_id, finding_id)` foreign key points to `rbvm.exposure(tenant_id, id)`. This makes both finding existence and tenant ownership database-enforced properties.
+
+Two read models are defined:
+
+```text
+rbvm.current_applicability_assessment
+```
+
+contains only the latest explicit assessment for findings that have one, while:
+
+```text
+rbvm.finding_applicability
+```
+
+contains every canonical finding and represents findings without an explicit assessment as:
+
+```text
+applicability_status   = UNKNOWN
+applicability_assessed = false
+```
+
+The assessment history is append-only for the runtime role; UPDATE, DELETE, and TRUNCATE are revoked.
 
 ## Current boundary
 
-This increment validates and parses the contract only. It does not yet persist the assessments or verify that a `Finding_ID` exists in the selected tenant. Tenant-scoped lookup and historical persistence are the next implementation step.
+The domain model, CSV contract, validation, persistent Finding_ID mapping, historical schema, tenant/finding foreign-key boundary, and current-state read views are now defined.
+
+The next increment is the transactional applicability importer. It must:
+
+1. parse `APPLICABILITY_CSV_V1`;
+2. resolve each `Finding_ID` in the selected tenant;
+3. treat exact replay idempotently;
+4. reject/quarantine unknown or cross-tenant findings;
+5. reject/quarantine conflicting same-time evidence;
+6. append valid assessments without rewriting history.
 
 Applicability remains independent from:
 
