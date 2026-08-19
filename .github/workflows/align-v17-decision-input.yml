@@ -1,0 +1,41 @@
+name: align-v17-decision-input
+
+on:
+  push:
+    branches:
+      - agent/decision-input-snapshot-postgres
+    paths:
+      - scripts/align-v17-decision-input.py
+      - .github/workflows/align-v17-decision-input.yml
+
+permissions:
+  contents: write
+
+jobs:
+  align:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: agent/decision-input-snapshot-postgres
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.13'
+      - name: Apply V17 wiring
+        run: python3 scripts/align-v17-decision-input.py
+      - name: Verify repository
+        run: ./scripts/verify.sh
+      - name: Commit finalized wiring
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/main/java/io/rbvm/postgres/PostgresMigrator.java \
+                  db/security/runtime-role.sql \
+                  src/test/java/io/rbvm/postgres/PostgresFoundationSelfTest.java \
+                  src/test/java/io/rbvm/postgres/PostgresMigratorSelfTest.java \
+                  scripts/verify.sh
+          git diff --cached --quiet && exit 0
+          git commit -m "Wire V17 Decision Input Snapshot persistence"
+          git push origin HEAD:agent/decision-input-snapshot-postgres
