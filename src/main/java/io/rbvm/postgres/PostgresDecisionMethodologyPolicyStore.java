@@ -25,7 +25,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumMap;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -95,21 +94,6 @@ public final class PostgresDecisionMethodologyPolicyStore implements DecisionMet
                     }
                     connection.commit();
                     return result;
-                }
-
-                StoredPolicy contentMatch = existingBySha(
-                        connection,
-                        tenantId,
-                        policy.policySha256()
-                );
-                if (contentMatch != null) {
-                    connection.commit();
-                    return result(
-                            DecisionMethodologyPolicyInstallResult.Status.CONTENT_ALREADY_REGISTERED,
-                            policy,
-                            contentMatch.revision(),
-                            contentMatch.policySha256()
-                    );
                 }
 
                 UUID policyId = deterministicPolicyId(tenantId, policy.policySha256());
@@ -228,27 +212,6 @@ public final class PostgresDecisionMethodologyPolicyStore implements DecisionMet
             statement.setObject(1, tenantId);
             statement.setString(2, RbvmDecisionMethodologyPolicy.ID);
             statement.setInt(3, revision);
-            try (ResultSet rows = statement.executeQuery()) {
-                return rows.next() ? storedPolicy(rows) : null;
-            }
-        }
-    }
-
-    private static StoredPolicy existingBySha(
-            Connection connection,
-            UUID tenantId,
-            String policySha256
-    ) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement("""
-                SELECT id, contract_id, semantics, revision, policy_sha256,
-                       canonical_payload_format, canonical_payload, subject_scope,
-                       missing_evidence_handling, ambiguity_handling, legacy_priority_handling
-                FROM rbvm.decision_methodology_policy
-                WHERE tenant_id = ? AND contract_id = ? AND policy_sha256 = ?
-                """)) {
-            statement.setObject(1, tenantId);
-            statement.setString(2, RbvmDecisionMethodologyPolicy.ID);
-            statement.setString(3, policySha256);
             try (ResultSet rows = statement.executeQuery()) {
                 return rows.next() ? storedPolicy(rows) : null;
             }
