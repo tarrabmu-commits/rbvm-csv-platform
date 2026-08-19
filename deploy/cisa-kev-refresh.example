@@ -1,0 +1,23 @@
+# Current vulnerability CSV containing CVE_ID (WAZUH_CSV_V1 is supported).
+# Must be a regular non-symlink file.
+RBVM_KEV_INPUT=/var/lib/rbvm-platform/current-wazuh-v1.csv
+
+# Immutable published refresh snapshots are retained here.
+# The supplied user service allows writes to this default location.
+RBVM_KEV_OUTPUT_DIR=%h/.local/share/rbvm-platform/cisa-kev
+RBVM_KEV_KEEP=14
+
+# Local HTTP is accepted. Any non-local API base must use HTTPS.
+RBVM_API_BASE_URL=http://127.0.0.1:8080
+
+# Dedicated OPERATOR API key for POST /api/v1/cisa-kev-imports.
+# Load the real value from protected configuration / secret management.
+RBVM_KEV_API_KEY=replace-me
+
+# Optional bound for the generated evidence handoff (default 32 MiB).
+RBVM_KEV_MAX_BYTES=33554432
+
+# Optional controlled replay/testing input. Leave unset in normal production operation.
+# When configured, the file is parsed through the same source validation logic and the semantic
+# source remains the pinned official CISA KEV feed.
+# RBVM_KEV_OFFLINE_INPUT=/absolute/path/to/known_exploited_vulnerabilities.json
