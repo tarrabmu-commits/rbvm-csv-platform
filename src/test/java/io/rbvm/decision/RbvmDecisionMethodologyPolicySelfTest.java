@@ -3,6 +3,7 @@ package io.rbvm.decision;
 import io.rbvm.decision.RbvmDecisionMethodologyPolicy.EvidenceDimension;
 
 import java.lang.reflect.RecordComponent;
+import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
@@ -19,8 +20,6 @@ import static io.rbvm.decision.RbvmDecisionMethodologyPolicy.SourceSelectionMode
 import static io.rbvm.decision.RbvmDecisionMethodologyPolicy.SubjectScope.FINDING;
 
 public final class RbvmDecisionMethodologyPolicySelfTest {
-    private static final String SHA = "a".repeat(64);
-
     private RbvmDecisionMethodologyPolicySelfTest() {
     }
 
@@ -28,6 +27,7 @@ public final class RbvmDecisionMethodologyPolicySelfTest {
         acceptsCompleteFindingScopedSelectionPolicy();
         requiresEveryIndependentEvidenceDimension();
         validatesAllowlistAndFreshnessRules();
+        canonicalHashIsVerifiableAndOrderIndependent();
         exposesNoDecisionFormulaFields();
         System.out.println("RbvmDecisionMethodologyPolicySelfTest: PASS");
     }
@@ -46,20 +46,13 @@ public final class RbvmDecisionMethodologyPolicySelfTest {
                 )
         );
 
-        RbvmDecisionMethodologyPolicy policy = new RbvmDecisionMethodologyPolicy(
-                RbvmDecisionMethodologyPolicy.ID,
-                1,
-                SHA,
-                FINDING,
-                PRESERVE_UNKNOWN,
-                PRESERVE_AMBIGUOUS,
-                EXCLUDE_LEGACY_PRIORITY_TIER,
-                policies
-        );
+        RbvmDecisionMethodologyPolicy policy = createPolicy(1, policies);
 
         assert policy.contractId().equals("RBVM_DECISION_METHODOLOGY_V1");
         assert policy.semantics().equals("FINDING_SCOPED_EXPLICIT_EVIDENCE_SELECTION_POLICY");
         assert policy.subjectScope() == FINDING;
+        assert policy.policySha256().matches("[a-f0-9]{64}");
+        assert policy.canonicalPayload().length > 0;
         assert policy.evidencePolicies().keySet().equals(Set.of(EvidenceDimension.values()));
         assert policy.evidencePolicies().get(EvidenceDimension.TECHNICAL_SEVERITY)
                 .sourceAllowlist().equals(List.of("nvd-cvss-v31", "vendor-advisory"));
@@ -71,16 +64,7 @@ public final class RbvmDecisionMethodologyPolicySelfTest {
         EnumMap<EvidenceDimension, RbvmDecisionMethodologyPolicy.EvidenceSelectionPolicy> policies =
                 completePolicies();
         policies.remove(EvidenceDimension.BUSINESS_MISSION_IMPACT);
-        assertRejected(() -> new RbvmDecisionMethodologyPolicy(
-                RbvmDecisionMethodologyPolicy.ID,
-                1,
-                SHA,
-                FINDING,
-                PRESERVE_UNKNOWN,
-                PRESERVE_AMBIGUOUS,
-                EXCLUDE_LEGACY_PRIORITY_TIER,
-                policies
-        ));
+        assertRejected(() -> createPolicy(1, policies));
     }
 
     private static void validatesAllowlistAndFreshnessRules() {
@@ -121,6 +105,51 @@ public final class RbvmDecisionMethodologyPolicySelfTest {
         ));
     }
 
+    private static void canonicalHashIsVerifiableAndOrderIndependent() {
+        EnumMap<EvidenceDimension, RbvmDecisionMethodologyPolicy.EvidenceSelectionPolicy> first =
+                completePolicies();
+        first.put(
+                EvidenceDimension.KNOWN_EXPLOITATION,
+                new RbvmDecisionMethodologyPolicy.EvidenceSelectionPolicy(
+                        EvidenceDimension.KNOWN_EXPLOITATION,
+                        EXPLICIT_ALLOWLIST,
+                        List.of("source-b", "source-a"),
+                        NO_AGE_LIMIT,
+                        null
+                )
+        );
+        RbvmDecisionMethodologyPolicy policy = createPolicy(7, first);
+        assert policy.evidencePolicies().get(EvidenceDimension.KNOWN_EXPLOITATION)
+                .sourceAllowlist().equals(List.of("source-a", "source-b"));
+
+        EnumMap<EvidenceDimension, RbvmDecisionMethodologyPolicy.EvidenceSelectionPolicy> second =
+                completePolicies();
+        second.put(
+                EvidenceDimension.KNOWN_EXPLOITATION,
+                new RbvmDecisionMethodologyPolicy.EvidenceSelectionPolicy(
+                        EvidenceDimension.KNOWN_EXPLOITATION,
+                        EXPLICIT_ALLOWLIST,
+                        List.of("source-a", "source-b"),
+                        NO_AGE_LIMIT,
+                        null
+                )
+        );
+        RbvmDecisionMethodologyPolicy sameSemantics = createPolicy(7, second);
+        assert policy.policySha256().equals(sameSemantics.policySha256());
+        assert Arrays.equals(policy.canonicalPayload(), sameSemantics.canonicalPayload());
+
+        assertRejected(() -> new RbvmDecisionMethodologyPolicy(
+                RbvmDecisionMethodologyPolicy.ID,
+                policy.revision(),
+                "0".repeat(64),
+                policy.subjectScope(),
+                policy.missingEvidenceHandling(),
+                policy.ambiguityHandling(),
+                policy.legacyPriorityHandling(),
+                policy.evidencePolicies()
+        ));
+    }
+
     private static void exposesNoDecisionFormulaFields() {
         Set<String> forbiddenTopLevelNames = Set.of(
                 "riskscore", "prioritytier", "sladays", "impactweight", "aggregateimpactscore",
@@ -147,6 +176,20 @@ public final class RbvmDecisionMethodologyPolicySelfTest {
         assert RbvmDecisionMethodologyPolicy.LegacyPriorityHandling.values().length == 1;
         assert RbvmDecisionMethodologyPolicy.LegacyPriorityHandling.values()[0]
                 == EXCLUDE_LEGACY_PRIORITY_TIER;
+    }
+
+    private static RbvmDecisionMethodologyPolicy createPolicy(
+            int revision,
+            EnumMap<EvidenceDimension, RbvmDecisionMethodologyPolicy.EvidenceSelectionPolicy> policies
+    ) {
+        return RbvmDecisionMethodologyPolicy.create(
+                revision,
+                FINDING,
+                PRESERVE_UNKNOWN,
+                PRESERVE_AMBIGUOUS,
+                EXCLUDE_LEGACY_PRIORITY_TIER,
+                policies
+        );
     }
 
     private static Set<String> componentNames(Class<?> type) {
