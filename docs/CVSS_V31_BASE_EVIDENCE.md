@@ -47,10 +47,14 @@ The contract is CVE-scoped rather than finding-scoped because CVSS Base describe
 - Duplicate metrics are rejected.
 - Invalid metric values are rejected.
 - Temporal or Environmental metrics are rejected by this Base-only evidence contract rather than silently accepted into a different score type.
+- The published `CVSS_Base_Score` must equal the Base score calculated from `CVSS_Vector` using the FIRST CVSS v3.1 equations, metric weights, scope-dependent Privileges Required weights, and one-decimal Roundup semantics.
+- A syntactically valid score/vector pair that disagrees mathematically is quarantined as `INVALID_CVSS_BASE_SCORE`; the platform does not silently replace either value.
 - `CVSS_Source` must be an HTTPS URL.
 - `CVSS_Observed_At` must be an ISO-8601 timestamp with timezone.
 
 The platform does not convert CVSS v4.0 or v3.0 into v3.1. If v3.1 Base evidence is unavailable, this stage must remain without v3.1 evidence rather than fabricate a replacement.
+
+The score/vector consistency implementation is documented separately in [`CVSS_V31_SCORE_VALIDATION.md`](CVSS_V31_SCORE_VALIDATION.md).
 
 ## Evidence identity and history
 
@@ -218,6 +222,7 @@ Wazuh observation / canonical finding
                 |
                 v
         Contract validation
+        (syntax + Base score/vector consistency)
                 |
                 v
         Tenant/CVE resolution
@@ -246,6 +251,7 @@ Implemented:
 
 - independent `CvssV31BaseEvidence` domain model;
 - exact v3.1 Base vector validation;
+- FIRST CVSS v3.1 Base-score calculation and score/vector consistency enforcement;
 - dedicated `CVSS_V31_CSV_V1` contract;
 - streaming RFC 4180 / strict UTF-8 analyzer;
 - deterministic within-file replay/conflict handling;
@@ -279,4 +285,4 @@ Not implemented yet:
 - EPSS or CISA KEV redesign;
 - RBVM priority, risk score, or SLA.
 
-The next CVSS increment can automate scheduling and safe handoff of the generated `CVSS_V31_CSV_V1` into the existing importer without weakening validation, provenance, freshness, or tenant/CVE resolution.
+The next CVSS increment can automate scheduling and safe handoff of the generated `CVSS_V31_CSV_V1` into the existing importer without weakening validation, provenance, freshness, tenant/CVE resolution, or score/vector integrity.
