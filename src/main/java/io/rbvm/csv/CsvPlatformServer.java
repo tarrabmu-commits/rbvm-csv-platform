@@ -25,6 +25,9 @@ import io.rbvm.postgres.CisaKevImporter;
 import io.rbvm.postgres.CvssV31EvidenceReader;
 import io.rbvm.postgres.CvssV31ImportResult;
 import io.rbvm.postgres.CvssV31Importer;
+import io.rbvm.postgres.EpssEvidenceReader;
+import io.rbvm.postgres.EpssImportResult;
+import io.rbvm.postgres.EpssImporter;
 import io.rbvm.security.ApiKeyAuthenticator;
 import io.rbvm.security.ApiRole;
 import io.rbvm.security.AuthPrincipal;
@@ -74,6 +77,7 @@ public final class CsvPlatformServer implements AutoCloseable {
     private final byte[] webUi;
     private final byte[] cvssUi;
     private final byte[] kevUi;
+    private final byte[] epssUi;
     private final ApiKeyAuthenticator authenticator;
     private final RequestRateLimiter rateLimiter;
     private final long maximumUploadBytes;
@@ -83,6 +87,8 @@ public final class CsvPlatformServer implements AutoCloseable {
     private final Optional<CvssV31EvidenceReader> cvssV31EvidenceReader;
     private final Optional<CisaKevImporter> cisaKevImporter;
     private final Optional<CisaKevEvidenceReader> cisaKevEvidenceReader;
+    private final Optional<EpssImporter> epssImporter;
+    private final Optional<EpssEvidenceReader> epssEvidenceReader;
     private final Instant startedAt = Instant.now();
     private final AtomicLong requestsTotal = new AtomicLong();
     private final AtomicLong problemsTotal = new AtomicLong();
@@ -125,9 +131,12 @@ public final class CsvPlatformServer implements AutoCloseable {
         this.cvssV31EvidenceReader = Optional.empty();
         this.cisaKevImporter = Optional.empty();
         this.cisaKevEvidenceReader = Optional.empty();
+        this.epssImporter = Optional.empty();
+        this.epssEvidenceReader = Optional.empty();
         this.webUi = loadResource("/web/index.html");
         this.cvssUi = loadResource("/web/cvss-v31.html");
         this.kevUi = loadResource("/web/cisa-kev.html");
+        this.epssUi = loadResource("/web/epss.html");
         this.server = HttpServer.create(new InetSocketAddress(host, port), 32);
         int workers = Math.max(4, Math.min(16, Runtime.getRuntime().availableProcessors()));
         this.executor = Executors.newFixedThreadPool(workers);
@@ -246,6 +255,7 @@ public final class CsvPlatformServer implements AutoCloseable {
         );
     }
 
+    /** Backward-compatible runtime constructor through the CISA KEV V11 capability layer. */
     public CsvPlatformServer(
             String host,
             int port,
@@ -259,6 +269,44 @@ public final class CsvPlatformServer implements AutoCloseable {
             Optional<CvssV31EvidenceReader> cvssV31EvidenceReader,
             Optional<CisaKevImporter> cisaKevImporter,
             Optional<CisaKevEvidenceReader> cisaKevEvidenceReader,
+            ApiKeyAuthenticator authenticator,
+            RequestRateLimiter rateLimiter
+    ) throws IOException {
+        this(
+                host,
+                port,
+                dataDirectory,
+                maximumUploadBytes,
+                canonicalProjection,
+                readCatalog,
+                applicabilityImporter,
+                applicabilityFindingExporter,
+                cvssV31Importer,
+                cvssV31EvidenceReader,
+                cisaKevImporter,
+                cisaKevEvidenceReader,
+                Optional.empty(),
+                Optional.empty(),
+                authenticator,
+                rateLimiter
+        );
+    }
+
+    public CsvPlatformServer(
+            String host,
+            int port,
+            Path dataDirectory,
+            long maximumUploadBytes,
+            CanonicalProjection canonicalProjection,
+            DomainCatalog readCatalog,
+            Optional<ApplicabilityImporter> applicabilityImporter,
+            Optional<ApplicabilityFindingExporter> applicabilityFindingExporter,
+            Optional<CvssV31Importer> cvssV31Importer,
+            Optional<CvssV31EvidenceReader> cvssV31EvidenceReader,
+            Optional<CisaKevImporter> cisaKevImporter,
+            Optional<CisaKevEvidenceReader> cisaKevEvidenceReader,
+            Optional<EpssImporter> epssImporter,
+            Optional<EpssEvidenceReader> epssEvidenceReader,
             ApiKeyAuthenticator authenticator,
             RequestRateLimiter rateLimiter
     ) throws IOException {
@@ -297,9 +345,12 @@ public final class CsvPlatformServer implements AutoCloseable {
                 cisaKevEvidenceReader,
                 "cisaKevEvidenceReader"
         );
+        this.epssImporter = Objects.requireNonNull(epssImporter, "epssImporter");
+        this.epssEvidenceReader = Objects.requireNonNull(epssEvidenceReader, "epssEvidenceReader");
         this.webUi = loadResource("/web/index.html");
         this.cvssUi = loadResource("/web/cvss-v31.html");
         this.kevUi = loadResource("/web/cisa-kev.html");
+        this.epssUi = loadResource("/web/epss.html");
         this.server = HttpServer.create(new InetSocketAddress(host, port), 32);
         int workers = Math.max(4, Math.min(16, Runtime.getRuntime().availableProcessors()));
         this.executor = Executors.newFixedThreadPool(workers);
@@ -348,6 +399,11 @@ public final class CsvPlatformServer implements AutoCloseable {
             if ("/kev".equals(path) || "/kev/".equals(path)) {
                 requireMethod(exchange, method, "GET");
                 sendBytes(exchange, 200, "text/html; charset=utf-8", kevUi);
+                return;
+            }
+            if ("/epss".equals(path) || "/epss/".equals(path)) {
+                requireMethod(exchange, method, "GET");
+                sendBytes(exchange, 200, "text/html; charset=utf-8", epssUi);
                 return;
             }
             if ("/api/v1/health".equals(path)) {
@@ -423,6 +479,18 @@ public final class CsvPlatformServer implements AutoCloseable {
                 requireMethod(exchange, method, "POST");
                 authorize(exchange, ApiRole.OPERATOR);
                 createCisaKevImport(exchange);
+                return;
+            }
+            if ("/api/v1/epss-evidence".equals(path)) {
+                requireMethod(exchange, method, "GET");
+                authorize(exchange, ApiRole.VIEWER);
+                readEpssEvidence(exchange);
+                return;
+            }
+            if ("/api/v1/epss-imports".equals(path)) {
+                requireMethod(exchange, method, "POST");
+                authorize(exchange, ApiRole.OPERATOR);
+                createEpssImport(exchange);
                 return;
             }
             if ("/api/v1/csv-imports".equals(path)) {
@@ -523,6 +591,10 @@ public final class CsvPlatformServer implements AutoCloseable {
         health.put("cisaKev", Map.of(
                 "importEnabled", cisaKevImporter.isPresent(),
                 "evidenceReadEnabled", cisaKevEvidenceReader.isPresent()
+        ));
+        health.put("epss", Map.of(
+                "importEnabled", epssImporter.isPresent(),
+                "evidenceReadEnabled", epssEvidenceReader.isPresent()
         ));
         return health;
     }
@@ -669,6 +741,54 @@ public final class CsvPlatformServer implements AutoCloseable {
                 copyBounded(body, output, maximumUploadBytes, "CISA KEV CSV");
             }
             CisaKevImportResult result = importer.importFile(staged);
+            sendJson(exchange, 200, result.toMap());
+        } finally {
+            Files.deleteIfExists(staged);
+        }
+    }
+
+    private void readEpssEvidence(HttpExchange exchange) throws IOException {
+        EpssEvidenceReader reader = epssEvidenceReader.orElseThrow(() ->
+                new HttpProblem(
+                        503,
+                        "EPSS_PERSISTENCE_UNAVAILABLE",
+                        "EPSS evidence reads require PostgreSQL schema version 12 or newer"
+                ));
+        EpssEvidenceQuery query = parseEpssEvidenceQuery(exchange.getRequestURI());
+        sendJson(exchange, 200, reader.currentEvidence(query.limit(), query.cvePrefix()));
+    }
+
+    private void createEpssImport(HttpExchange exchange) throws IOException {
+        EpssImporter importer = epssImporter.orElseThrow(() ->
+                new HttpProblem(
+                        503,
+                        "EPSS_PERSISTENCE_UNAVAILABLE",
+                        "EPSS import requires PostgreSQL schema version 12 or newer"
+                ));
+        String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
+        if (!isCsvContentType(contentType)) {
+            throw new HttpProblem(
+                    415,
+                    "UNSUPPORTED_MEDIA_TYPE",
+                    "Content-Type must be text/csv, application/csv, or application/octet-stream"
+            );
+        }
+        long contentLength = parseContentLength(exchange.getRequestHeaders().getFirst("Content-Length"));
+        if (contentLength > maximumUploadBytes) {
+            throw new HttpProblem(
+                    413,
+                    "UPLOAD_TOO_LARGE",
+                    "EPSS CSV exceeds the configured upload limit"
+            );
+        }
+
+        Path staged = Files.createTempFile("rbvm-epss-upload-", ".csv");
+        try {
+            try (InputStream body = exchange.getRequestBody();
+                 OutputStream output = Files.newOutputStream(staged)) {
+                copyBounded(body, output, maximumUploadBytes, "EPSS CSV");
+            }
+            EpssImportResult result = importer.importFile(staged);
             sendJson(exchange, 200, result.toMap());
         } finally {
             Files.deleteIfExists(staged);
@@ -859,34 +979,27 @@ public final class CsvPlatformServer implements AutoCloseable {
     }
 
     private static CvssEvidenceQuery parseCvssEvidenceQuery(URI uri) {
-        Map<String, String> query = parseParameters(uri.getRawQuery());
-        rejectUnknownFields(query, Set.of("limit", "cve"));
-        int limit = 100;
-        if (query.containsKey("limit")) {
-            try {
-                limit = Integer.parseInt(query.get("limit"));
-                if (limit < 1 || limit > 500) {
-                    throw new NumberFormatException("out of range");
-                }
-            } catch (NumberFormatException exception) {
-                throw new InvalidCaseActionException("limit must be between 1 and 500");
-            }
-        }
-        String cve = query.get("cve");
-        if (cve != null && !cve.isBlank()) {
-            cve = cve.trim().toUpperCase(Locale.ROOT);
-            if (cve.length() > 32 || !CVE_PREFIX.matcher(cve).matches()) {
-                throw new InvalidCaseActionException("cve must be a CVE identifier or CVE prefix");
-            }
-        } else {
-            cve = null;
-        }
-        return new CvssEvidenceQuery(limit, cve);
+        Map<String, String> query = parseEvidenceQuery(uri);
+        return new CvssEvidenceQuery(queryLimit(query), queryCve(query));
     }
 
     private static CisaKevEvidenceQuery parseCisaKevEvidenceQuery(URI uri) {
+        Map<String, String> query = parseEvidenceQuery(uri);
+        return new CisaKevEvidenceQuery(queryLimit(query), queryCve(query));
+    }
+
+    private static EpssEvidenceQuery parseEpssEvidenceQuery(URI uri) {
+        Map<String, String> query = parseEvidenceQuery(uri);
+        return new EpssEvidenceQuery(queryLimit(query), queryCve(query));
+    }
+
+    private static Map<String, String> parseEvidenceQuery(URI uri) {
         Map<String, String> query = parseParameters(uri.getRawQuery());
         rejectUnknownFields(query, Set.of("limit", "cve"));
+        return query;
+    }
+
+    private static int queryLimit(Map<String, String> query) {
         int limit = 100;
         if (query.containsKey("limit")) {
             try {
@@ -898,16 +1011,19 @@ public final class CsvPlatformServer implements AutoCloseable {
                 throw new InvalidCaseActionException("limit must be between 1 and 500");
             }
         }
+        return limit;
+    }
+
+    private static String queryCve(Map<String, String> query) {
         String cve = query.get("cve");
         if (cve != null && !cve.isBlank()) {
             cve = cve.trim().toUpperCase(Locale.ROOT);
             if (cve.length() > 32 || !CVE_PREFIX.matcher(cve).matches()) {
                 throw new InvalidCaseActionException("cve must be a CVE identifier or CVE prefix");
             }
-        } else {
-            cve = null;
+            return cve;
         }
-        return new CisaKevEvidenceQuery(limit, cve);
+        return null;
     }
 
     private static Boolean parseOptionalBoolean(String value, String field) {
@@ -1097,6 +1213,10 @@ public final class CsvPlatformServer implements AutoCloseable {
                 + "rbvm_cisa_kev_import_enabled " + (cisaKevImporter.isPresent() ? 1 : 0) + "\n"
                 + "# TYPE rbvm_cisa_kev_evidence_read_enabled gauge\n"
                 + "rbvm_cisa_kev_evidence_read_enabled " + (cisaKevEvidenceReader.isPresent() ? 1 : 0) + "\n"
+                + "# TYPE rbvm_epss_import_enabled gauge\n"
+                + "rbvm_epss_import_enabled " + (epssImporter.isPresent() ? 1 : 0) + "\n"
+                + "# TYPE rbvm_epss_evidence_read_enabled gauge\n"
+                + "rbvm_epss_evidence_read_enabled " + (epssEvidenceReader.isPresent() ? 1 : 0) + "\n"
                 + "# TYPE rbvm_process_uptime_seconds gauge\n"
                 + "rbvm_process_uptime_seconds " + uptime + "\n"
                 + "# TYPE rbvm_imports_stored gauge\n"
@@ -1152,6 +1272,8 @@ public final class CsvPlatformServer implements AutoCloseable {
                 runtime.cvssV31EvidenceReader(),
                 runtime.cisaKevImporter(),
                 runtime.cisaKevEvidenceReader(),
+                runtime.epssImporter(),
+                runtime.epssEvidenceReader(),
                 authenticator,
                 rateLimiter
         );
@@ -1160,6 +1282,7 @@ public final class CsvPlatformServer implements AutoCloseable {
         System.out.println("RBVM CSV Platform is running at " + application.baseUri());
         System.out.println("CVSS v3.1 operator UI: " + application.baseUri().resolve("/cvss"));
         System.out.println("CISA KEV operator UI: " + application.baseUri().resolve("/kev"));
+        System.out.println("EPSS operator UI: " + application.baseUri().resolve("/epss"));
         System.out.println("Data directory: " + configuration.dataDirectory().toAbsolutePath().normalize());
         System.out.println("Canonical projection: "
                 + canonicalProjection.health().get("backend"));
@@ -1169,6 +1292,8 @@ public final class CsvPlatformServer implements AutoCloseable {
                 + (runtime.cvssV31Importer().isPresent() ? "ENABLED" : "DISABLED"));
         System.out.println("CISA KEV persistence: "
                 + (runtime.cisaKevImporter().isPresent() ? "ENABLED" : "DISABLED"));
+        System.out.println("EPSS persistence: "
+                + (runtime.epssImporter().isPresent() ? "ENABLED" : "DISABLED"));
         System.out.println("API authentication: "
                 + (authenticator.enabled() ? "API_KEY" : "DISABLED"));
         new CountDownLatch(1).await();
@@ -1178,6 +1303,9 @@ public final class CsvPlatformServer implements AutoCloseable {
     }
 
     private record CisaKevEvidenceQuery(int limit, String cvePrefix) {
+    }
+
+    private record EpssEvidenceQuery(int limit, String cvePrefix) {
     }
 
     private record ServerConfiguration(
