@@ -7,6 +7,8 @@ import io.rbvm.domain.InMemoryDomainCatalog;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 
 public final class CanonicalProjectionFactory {
     private CanonicalProjectionFactory() {
@@ -23,7 +25,8 @@ public final class CanonicalProjectionFactory {
         if (!settings.enabled()) {
             return new RuntimeComponents(
                     new NoopCanonicalProjection(),
-                    new InMemoryDomainCatalog()
+                    new InMemoryDomainCatalog(),
+                    Optional.empty()
             );
         }
         JdbcConnectionFactory connections = new DriverManagerConnectionFactory(
@@ -31,15 +34,46 @@ public final class CanonicalProjectionFactory {
                 settings.user(),
                 settings.password()
         );
+        PostgresCanonicalProjection projection = new PostgresCanonicalProjection(
+                connections,
+                settings.migrate()
+        );
+        PostgresReadCatalog readCatalog = new PostgresReadCatalog(connections);
+        int installedVersion = new PostgresMigrator(connections).installedVersion();
+        Optional<ApplicabilityImporter> applicabilityImporter = Optional.empty();
+        if (installedVersion >= 9) {
+            PostgresApplicabilityImporter importer = new PostgresApplicabilityImporter(
+                    connections,
+                    false
+            );
+            applicabilityImporter = Optional.of(importer::importFile);
+        }
         return new RuntimeComponents(
-                new PostgresCanonicalProjection(connections, settings.migrate()),
-                new PostgresReadCatalog(connections)
+                projection,
+                readCatalog,
+                applicabilityImporter
         );
     }
 
     public record RuntimeComponents(
             CanonicalProjection canonicalProjection,
-            DomainCatalog readCatalog
+            DomainCatalog readCatalog,
+            Optional<ApplicabilityImporter> applicabilityImporter
     ) {
+        public RuntimeComponents {
+            Objects.requireNonNull(canonicalProjection, "canonicalProjection");
+            Objects.requireNonNull(readCatalog, "readCatalog");
+            applicabilityImporter = Objects.requireNonNull(
+                    applicabilityImporter,
+                    "applicabilityImporter"
+            );
+        }
+
+        public RuntimeComponents(
+                CanonicalProjection canonicalProjection,
+                DomainCatalog readCatalog
+        ) {
+            this(canonicalProjection, readCatalog, Optional.empty());
+        }
     }
 }
