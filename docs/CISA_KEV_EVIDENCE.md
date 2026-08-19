@@ -64,14 +64,7 @@ KEV_Observed_At
 not present in this observed KEV snapshot
 ```
 
-It must never be interpreted as:
-
-```text
-not exploited
-safe
-not important
-no exploit exists
-```
+It must never be interpreted as `not exploited`, `safe`, `not important`, or `no exploit exists`.
 
 Listing-only fields are absent for `NOT_LISTED` evidence.
 
@@ -108,7 +101,23 @@ The SHA-256 binds the evidence to exact catalog bytes, while the count equality 
 
 Both `CisaKevEvidence.listed(...)` and `CisaKevEvidence.notListed(...)` require this validated snapshot object. The evidence API therefore has no overload that can create `NOT_LISTED` from only `CVE_ID + timestamp`.
 
-The intended source is the CISA KEV catalog JSON published from the CISA domain. A future collector must validate the complete snapshot before creating `CisaKevCatalogSnapshot`.
+## Official source acquisition
+
+The official-source adapter is now implemented before the CSV/persistence layer:
+
+```text
+https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
+        |
+        v
+scripts/fetch-cisa-kev-snapshot.py
+        |
+        v
+CISA_KEV_VALIDATED_SNAPSHOT
+```
+
+The adapter uses a fixed CISA HTTPS origin, bounds response size, validates UTF-8 JSON, validates catalog metadata and dates, requires the declared count to equal the parsed array length, rejects duplicate/invalid CVE identifiers, validates ransomware-campaign values, and binds the exact source bytes with SHA-256.
+
+A failed or incomplete acquisition produces no usable snapshot and therefore cannot create `NOT_LISTED` evidence. See [`CISA_KEV_SOURCE_ADAPTER.md`](CISA_KEV_SOURCE_ADAPTER.md).
 
 ## Provenance and freshness
 
@@ -126,27 +135,6 @@ UNKNOWN
 ```
 
 This `UNKNOWN` is listing metadata and is distinct from `KEV_Status = UNKNOWN`, which means the platform lacks usable KEV membership evidence.
-
-## Domain model
-
-The foundation consists of:
-
-```text
-CisaKevCatalogSnapshot
-CisaKevEvidence
-```
-
-and explicit evidence constructors:
-
-```text
-CisaKevEvidence.unknown(...)
-CisaKevEvidence.listed(..., validatedSnapshot, ...)
-CisaKevEvidence.notListed(..., validatedSnapshot)
-```
-
-The model enforces valid CVE identity, HTTPS source provenance, complete-snapshot count validation, SHA-256 binding, no provenance on `UNKNOWN`, required listing metadata for `LISTED`, and no listing-only metadata for `NOT_LISTED`.
-
-It deliberately does not expose `knownExploited=false` for negative membership and does not derive priority, risk score, SLA, EPSS, or asset/business context.
 
 ## Relationship to CVSS
 
@@ -166,57 +154,30 @@ The existing compatibility intelligence model contains a `knownExploited` boolea
 
 The canonical replacement is snapshot-bound, provenance-aware KEV evidence with `LISTED / NOT_LISTED / UNKNOWN` semantics. Migration away from the legacy model must remain additive and auditable.
 
-## Pipeline position
-
-```text
-Wazuh observation / canonical finding
-        |
-        +---- Applicability evidence
-        |
-        +---- CVSS v3.1 Technical Severity
-        |
-        +---- CVE_ID
-                |
-                v
-        Validated complete CISA KEV snapshot
-                |
-                v
-        CISA KEV Threat Evidence
-        LISTED / NOT_LISTED / UNKNOWN
-                |
-                v
-        later EPSS probability
-                |
-                v
-        later asset/business context
-                |
-                v
-        RBVM decision
-```
-
 ## Current stage boundary
 
-Implemented in this increment:
+Implemented:
 
 - independent `CisaKevCatalogSnapshot` provenance model;
 - independent `CisaKevEvidence` threat-evidence model;
 - `LISTED / NOT_LISTED / UNKNOWN` semantics;
 - explicit distinction between missing evidence and negative catalog membership;
 - SHA-256 and declared/parsed-count proof for a complete snapshot;
-- CISA listing metadata boundary;
-- source ransomware-campaign-use semantics;
-- tests proving that incomplete snapshots cannot back `NOT_LISTED` and that no priority/risk/SLA/EPSS is derived.
+- official fixed-origin CISA JSON acquisition adapter;
+- fail-closed source and catalog validation;
+- CISA listing metadata and ransomware-campaign-use semantics;
+- tests proving incomplete snapshots cannot back `NOT_LISTED` and that no priority/risk/SLA/EPSS is derived.
 
 Not implemented yet:
 
 - `CISA_KEV_CSV_V1` exchange contract;
-- official complete-snapshot collector/parser;
+- mapping validated snapshots into explicit LISTED/NOT_LISTED rows;
 - PostgreSQL KEV history/current views;
 - transactional importer;
-- API/UI;
+- platform API/UI;
 - scheduling;
 - freshness policy;
 - EPSS;
 - RBVM decision logic.
 
-The next increment should define the separate KEV CSV contract in a way that preserves the validated snapshot identity on every `LISTED` or `NOT_LISTED` row. It must not infer `NOT_LISTED` from an absent row in a partial or failed collection.
+The next increment should define `CISA_KEV_CSV_V1` from the validated acquisition artifact so every explicit `LISTED` or `NOT_LISTED` row carries the exact same snapshot identity and provenance.
