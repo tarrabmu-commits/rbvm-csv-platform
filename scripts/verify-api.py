@@ -55,8 +55,8 @@ def main():
 
     if document.get("openapi") != "3.1.1":
         raise AssertionError("OpenAPI document must declare 3.1.1")
-    if document.get("info", {}).get("version") != "0.12.0":
-        raise AssertionError("OpenAPI info.version must match Increment 12")
+    if document.get("info", {}).get("version") != "0.13.0":
+        raise AssertionError("OpenAPI info.version must match Increment 13")
 
     bearer = document.get("components", {}).get("securitySchemes", {}).get("bearerAuth", {})
     if bearer.get("type") != "http" or bearer.get("scheme") != "bearer":
@@ -91,6 +91,8 @@ def main():
         "/catalog/summary",
         "/applicability-findings.csv",
         "/applicability-imports",
+        "/cvss-v31-evidence",
+        "/cvss-v31-imports",
         "/cases",
         "/cases/{caseId}",
         "/cases/{caseId}/actions",
@@ -105,6 +107,14 @@ def main():
         "OPEN", "SOURCE_RESOLVED", "ACCEPTED_RISK", "FALSE_POSITIVE", "CLOSED_MANUAL"
     }:
         raise AssertionError("Case workflow statuses are incomplete")
+
+    health_required = set(schemas["Health"].get("required", []))
+    if "cvssV31" not in health_required:
+        raise AssertionError("Health schema must expose CVSS v3.1 runtime capability")
+    cvss_capability = schemas.get("CvssV31Capability", {})
+    if set(cvss_capability.get("required", [])) != {"importEnabled", "evidenceReadEnabled"}:
+        raise AssertionError("CVSS v3.1 capability schema is incomplete")
+
     applicability = schemas.get("ApplicabilityImportResult", {})
     required_applicability_fields = {
         "insertedAssessments",
@@ -115,6 +125,46 @@ def main():
     }
     if not required_applicability_fields.issubset(set(applicability.get("required", []))):
         raise AssertionError("Applicability import result schema is incomplete")
+
+    cvss_import = schemas.get("CvssV31ImportResult", {})
+    required_cvss_import_fields = {
+        "insertedEvidence",
+        "replayedEvidence",
+        "persistenceQuarantinedRows",
+        "contractQuarantinedRows",
+        "totalQuarantinedRows",
+        "uniqueCves",
+        "uniqueSources",
+    }
+    if not required_cvss_import_fields.issubset(set(cvss_import.get("required", []))):
+        raise AssertionError("CVSS v3.1 import result schema is incomplete")
+    if cvss_import.get("properties", {}).get("contractId", {}).get("const") != "CVSS_V31_CSV_V1":
+        raise AssertionError("CVSS import result must bind to CVSS_V31_CSV_V1")
+    if cvss_import.get("properties", {}).get("semantics", {}).get("const") != \
+            "CVE_SCOPED_CVSS_V31_BASE_EVIDENCE":
+        raise AssertionError("CVSS import semantics are incorrect")
+
+    cvss_page = schemas.get("CvssV31EvidencePage", {})
+    if cvss_page.get("properties", {}).get("semantics", {}).get("const") != \
+            "CURRENT_PER_SOURCE_CVSS_V31_BASE_EVIDENCE":
+        raise AssertionError("CVSS read semantics must remain current-per-source")
+    cvss_item = schemas.get("CvssV31EvidenceItem", {}).get("properties", {})
+    if cvss_item.get("cvssVersion", {}).get("const") != "3.1":
+        raise AssertionError("CVSS evidence API must remain exact v3.1")
+    if cvss_item.get("cvssBaseScore", {}).get("maximum") != 10:
+        raise AssertionError("CVSS Base score API range is incomplete")
+
+    exposure_properties = schemas.get("ExposureView", {}).get("properties", {})
+    for field in {
+        "findingId",
+        "applicabilityStatus",
+        "applicabilityAssessed",
+        "applicabilityReason",
+        "applicabilityEvidenceSource",
+        "applicabilityEvaluatedAt",
+    }:
+        if field not in exposure_properties:
+            raise AssertionError(f"ExposureView lacks applicability field {field}")
 
     print("OpenAPI structural checks: PASS")
 

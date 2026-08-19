@@ -1,13 +1,13 @@
 openapi: 3.1.1
 info:
   title: RBVM CSV Import API
-  version: 0.12.0
+  version: 0.13.0
   description: >-
     Synchronous upload, validation, preview, and canonical-domain materialization
     API for WAZUH_CSV_V1 positive observations and opt-in WAZUH_CSV_V2 explicit
-    finding lifecycle evidence, including separate finding-scoped applicability
-    assessment import, explicit case decisions, an append-only workflow audit trail,
-    and optional health visibility for a synchronous PostgreSQL canonical projection.
+    finding lifecycle evidence, separate finding-scoped applicability assessment,
+    independent CVSS v3.1 Base technical-severity evidence, explicit case decisions,
+    an append-only workflow audit trail, and optional PostgreSQL canonical persistence.
 servers:
   - url: http://127.0.0.1:8080/api/v1
 security:
@@ -164,6 +164,89 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/Problem'
+  /cvss-v31-evidence:
+    get:
+      operationId: listCvssV31Evidence
+      summary: Read current CVSS v3.1 Base evidence per source
+      description: >-
+        Returns the latest observation independently for every CVSS source attached to
+        tenant CVEs. The API does not select a winning source or derive priority, risk,
+        SLA, EPSS, or KEV conclusions from these records.
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of current source-evidence rows to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+        - name: cve
+          in: query
+          description: Optional case-insensitive CVE identifier or CVE prefix
+          schema:
+            type: string
+            maxLength: 32
+            pattern: '^CVE-[0-9A-Za-z-]+$'
+      responses:
+        '200':
+          description: Current tenant-scoped CVSS v3.1 Base evidence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CvssV31EvidencePage'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /cvss-v31-imports:
+    post:
+      operationId: importCvssV31Csv
+      summary: Validate and persist CVSS_V31_CSV_V1 evidence
+      description: >-
+        Parses independent CVE-scoped CVSS v3.1 Base evidence and appends safe rows to
+        immutable PostgreSQL history. CVEs that are not attached to findings in the
+        current tenant and persisted same-source/same-time conflicts are quarantined.
+      requestBody:
+        required: true
+        content:
+          text/csv:
+            schema:
+              type: string
+              format: binary
+          application/csv:
+            schema:
+              type: string
+              format: binary
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: CVSS v3.1 Base file processed transactionally
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CvssV31ImportResult'
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+        '403':
+          $ref: '#/components/responses/InsufficientRole'
+        '413':
+          $ref: '#/components/responses/Problem'
+        '415':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Problem'
   /cases:
     get:
       operationId: listCases
@@ -205,13 +288,13 @@ paths:
             type: string
         - name: priority
           in: query
-          description: Comma-separated vulnerability priority tiers
+          description: Comma-separated legacy compatibility priority tiers
           schema:
             type: string
             examples: [IMMEDIATE,URGENT]
         - name: knownExploited
           in: query
-          description: Filter by CISA KEV evidence
+          description: Filter by legacy combined CISA KEV evidence
           schema:
             type: boolean
       responses:
@@ -486,6 +569,7 @@ components:
         - catalogBackend
         - canonicalProjection
         - applicability
+        - cvssV31
         - storedImports
         - recoveryWarningCount
         - maximumUploadBytes
@@ -509,6 +593,8 @@ components:
           $ref: '#/components/schemas/CanonicalProjectionHealth'
         applicability:
           $ref: '#/components/schemas/ApplicabilityCapability'
+        cvssV31:
+          $ref: '#/components/schemas/CvssV31Capability'
         storedImports:
           type: integer
           minimum: 0
@@ -536,6 +622,15 @@ components:
         importEnabled:
           type: boolean
         findingReferenceExportEnabled:
+          type: boolean
+    CvssV31Capability:
+      type: object
+      additionalProperties: false
+      required: [importEnabled, evidenceReadEnabled]
+      properties:
+        importEnabled:
+          type: boolean
+        evidenceReadEnabled:
           type: boolean
     CanonicalProjectionHealth:
       type: object
@@ -867,6 +962,7 @@ components:
         closurePolicy:
           const: EXPLICIT_SOURCE_EVIDENCE_ONLY_NO_ABSENCE_CLOSE
     VulnerabilityIntelligenceSummary:
+      description: Legacy combined intelligence summary retained for compatibility.
       type: object
       required:
         - freshnessWindowHours
@@ -891,7 +987,7 @@ components:
           format: int64
           minimum: 0
         staleVulnerabilities:
-          description: Enriched vulnerabilities whose current evidence is older than seven days
+          description: Enriched vulnerabilities whose legacy combined evidence is older than seven days
           type: integer
           format: int64
           minimum: 0
@@ -1006,6 +1102,10 @@ components:
             - $ref: '#/components/schemas/VulnerabilityIntelligence'
             - type: 'null'
     VulnerabilityIntelligence:
+      description: >-
+        Legacy combined CVSS/EPSS/KEV compatibility object. The independent CVSS v3.1
+        Base evidence model is exposed through /cvss-v31-evidence and does not derive
+        priority from CVSS.
       type: object
       required:
         - priorityTier
@@ -1093,6 +1193,10 @@ components:
         exposureId:
           type: string
           pattern: '^[a-f0-9]{64}$'
+        findingId:
+          description: Canonical PostgreSQL finding UUID; present when schema V9+ read decoration is active
+          type: string
+          format: uuid
         assetId:
           type: string
           pattern: '^[a-f0-9]{64}$'
@@ -1137,6 +1241,19 @@ components:
           type: string
           format: date-time
         resolvedAt:
+          type: [string, 'null']
+          format: date-time
+        applicabilityStatus:
+          description: Current explicit applicability status when PostgreSQL schema V9+ is active
+          enum: [APPLICABLE, NOT_APPLICABLE, UNKNOWN]
+        applicabilityAssessed:
+          description: Distinguishes explicit assessed UNKNOWN from absence of an assessment
+          type: boolean
+        applicabilityReason:
+          type: [string, 'null']
+        applicabilityEvidenceSource:
+          type: [string, 'null']
+        applicabilityEvaluatedAt:
           type: [string, 'null']
           format: date-time
     ApplicabilityImportResult:
@@ -1216,6 +1333,156 @@ components:
           items:
             $ref: '#/components/schemas/ApplicabilityIssue'
     ApplicabilityIssue:
+      type: object
+      additionalProperties: false
+      required: [rowNumber, level, code, message]
+      properties:
+        rowNumber:
+          type: integer
+          format: int64
+          minimum: 1
+        level:
+          enum: [WARNING, ERROR]
+        code:
+          type: string
+        message:
+          type: string
+    CvssV31EvidencePage:
+      type: object
+      additionalProperties: false
+      required: [semantics, limit, cvePrefix, count, items]
+      properties:
+        semantics:
+          const: CURRENT_PER_SOURCE_CVSS_V31_BASE_EVIDENCE
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 500
+        cvePrefix:
+          type: [string, 'null']
+        count:
+          type: integer
+          minimum: 0
+          maximum: 500
+        items:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/CvssV31EvidenceItem'
+    CvssV31EvidenceItem:
+      type: object
+      additionalProperties: false
+      required:
+        - cveId
+        - cvssVersion
+        - cvssBaseScore
+        - cvssVector
+        - cvssSource
+        - cvssObservedAt
+        - ingestedAt
+      properties:
+        cveId:
+          type: string
+          pattern: '^CVE-[0-9]{4}-[0-9]{4,}$'
+        cvssVersion:
+          const: '3.1'
+        cvssBaseScore:
+          type: number
+          minimum: 0
+          maximum: 10
+          multipleOf: 0.1
+        cvssVector:
+          type: string
+          pattern: '^CVSS:3\.1/'
+        cvssSource:
+          type: string
+          format: uri
+          pattern: '^https://'
+        cvssObservedAt:
+          type: string
+          format: date-time
+        ingestedAt:
+          type: string
+          format: date-time
+    CvssV31ImportResult:
+      type: object
+      additionalProperties: false
+      required:
+        - contractId
+        - semantics
+        - logicalRows
+        - acceptedRows
+        - insertedEvidence
+        - replayedEvidence
+        - contractDeduplicatedRows
+        - persistenceQuarantinedRows
+        - contractQuarantinedRows
+        - totalDeduplicatedRows
+        - totalQuarantinedRows
+        - uniqueCves
+        - uniqueSources
+        - contractIssues
+        - persistenceIssues
+      properties:
+        contractId:
+          const: CVSS_V31_CSV_V1
+        semantics:
+          const: CVE_SCOPED_CVSS_V31_BASE_EVIDENCE
+        logicalRows:
+          type: integer
+          format: int64
+          minimum: 0
+        acceptedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        insertedEvidence:
+          type: integer
+          format: int64
+          minimum: 0
+        replayedEvidence:
+          type: integer
+          format: int64
+          minimum: 0
+        contractDeduplicatedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        persistenceQuarantinedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        contractQuarantinedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        totalDeduplicatedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        totalQuarantinedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        uniqueCves:
+          type: integer
+          format: int64
+          minimum: 0
+        uniqueSources:
+          type: integer
+          format: int64
+          minimum: 0
+        contractIssues:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/CvssV31Issue'
+        persistenceIssues:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/CvssV31Issue'
+    CvssV31Issue:
       type: object
       additionalProperties: false
       required: [rowNumber, level, code, message]
