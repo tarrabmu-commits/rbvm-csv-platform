@@ -66,7 +66,15 @@ public record CvssV31BaseEvidence(
         }
 
         vector = requireText(vector, "CVSS_Vector");
-        parseBaseMetrics(vector);
+        Map<String, String> metrics = parseBaseMetrics(vector);
+        BigDecimal calculatedScore = CvssV31BaseScoreCalculator.calculate(metrics);
+        if (baseScore.compareTo(calculatedScore) != 0) {
+            throw new IllegalArgumentException(
+                    "CVSS_Base_Score must match CVSS_Vector; expected "
+                            + calculatedScore.toPlainString()
+                            + " but received " + baseScore.toPlainString()
+            );
+        }
 
         source = requireText(source, "CVSS_Source");
         validateHttpsSource(source);
@@ -94,7 +102,7 @@ public record CvssV31BaseEvidence(
         return output;
     }
 
-    private static Map<String, String> parseBaseMetrics(String vector) {
+    static Map<String, String> parseBaseMetrics(String vector) {
         String[] tokens = vector.split("/", -1);
         if (tokens.length == 0 || !tokens[0].equals("CVSS:3.1")) {
             throw new IllegalArgumentException("CVSS_Vector must begin with CVSS:3.1/");
