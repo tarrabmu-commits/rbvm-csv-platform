@@ -50,7 +50,7 @@ public final class PostgresCvssV31ImporterSelfTest {
                     + CVE_A + ",3.1,9.8," + vectorA + "," + SOURCE_A + ",2026-08-18T10:00:00Z\r\n"
                     + CVE_A + ",3.1,9.8," + vectorA + "," + SOURCE_A + ",2026-08-18T10:00:00Z\r\n"
                     + CVE_B + ",3.1,7.5," + vectorB + "," + SOURCE_B + ",2026-08-18T11:00:00Z\r\n"
-                    + FOREIGN_CVE + ",3.1,8.1," + vectorB
+                    + FOREIGN_CVE + ",3.1,7.5," + vectorB
                     + ",https://nvd.nist.gov/vuln/detail/" + FOREIGN_CVE
                     + ",2026-08-18T12:00:00Z\r\n",
                     StandardCharsets.UTF_8);
