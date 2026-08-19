@@ -32,6 +32,42 @@ jobs:
           git show origin/agent/network-reachability-api-contract-v017:scripts/align-v017.py > scripts/_align-v017-catchup.py
           python3 scripts/_align-v017-catchup.py
           rm scripts/_align-v017-catchup.py
+      - name: Seed missing Reachability README API example
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('README.md')
+          text = path.read_text(encoding='utf-8')
+          if '### Network Reachability evidence' not in text:
+              marker = '\n## نتيجة CSV المرجعية\n'
+              block = '''
+### Network Reachability evidence
+
+استيراد evidence تقنية scoped:
+
+```bash
+curl -H "Authorization: Bearer $RBVM_API_KEY" \\
+  -H 'Content-Type: text/csv' \\
+  --data-binary @network-reachability.csv \\
+  http://127.0.0.1:8080/api/v1/network-reachability-imports
+```
+
+قراءة current scoped evidence مع filters تشغيلية فقط:
+
+```bash
+curl -H "Authorization: Bearer $RBVM_API_KEY" \\
+  'http://127.0.0.1:8080/api/v1/network-reachability-evidence?asset=web-&originScope=INTERNET&reachabilityStatus=REACHABLE&limit=100'
+```
+
+القراءة لا تشتق `internetExposed` على مستوى asset ولا تختار source winner ولا تحسب Risk/Priority/SLA.
+
+'''
+              if text.count(marker) != 1:
+                  raise SystemExit(f'README reference-results anchor mismatch: {text.count(marker)}')
+              text = text.replace(marker, '\n' + block + marker.lstrip('\n'), 1)
+              path.write_text(text, encoding='utf-8')
+          PY
       - name: Apply Business Impact and 0.18 alignment
         run: python3 scripts/align-v018-business-impact.py
       - name: Verify 0.18 release contract
