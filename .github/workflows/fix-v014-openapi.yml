@@ -1,0 +1,124 @@
+name: fix-v014-openapi
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix-openapi:
+    if: github.head_ref == 'foundation/cisa-kev-api-contract-v014' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.head_ref }}
+      - name: Repair CISA KEV OpenAPI path indentation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('api/openapi.yaml')
+          text = p.read_text(encoding='utf-8')
+          start_marker = '  /cisa-kev-evidence:\n'
+          end_marker = '  /cases:\n'
+          start = text.index(start_marker)
+          end = text.index(end_marker, start)
+          block = '''  /cisa-kev-evidence:
+    get:
+      operationId: listCisaKevEvidence
+      summary: Read current snapshot-bound CISA KEV membership evidence per source
+      description: >-
+        Returns the latest persisted LISTED or NOT_LISTED membership evidence independently
+        for every KEV source attached to tenant CVEs. Absence of persisted evidence remains
+        UNKNOWN and is not fabricated as a row. NOT_LISTED does not mean safe or not exploited,
+        and CISA due dates remain source evidence rather than organizational SLA.
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of current source-evidence rows to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+        - name: cve
+          in: query
+          description: Optional case-insensitive CVE identifier or CVE prefix
+          schema:
+            type: string
+            maxLength: 32
+            pattern: '^CVE-[0-9A-Za-z-]+$'
+      responses:
+        '200':
+          description: Current tenant-scoped CISA KEV membership evidence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CisaKevEvidencePage'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /cisa-kev-imports:
+    post:
+      operationId: importCisaKevCsv
+      summary: Validate and persist CISA_KEV_CSV_V1 evidence
+      description: >-
+        Parses snapshot-bound CISA KEV membership evidence and appends safe rows through
+        the existing transactional PostgreSQL V11 importer. Snapshot and membership
+        conflicts are quarantined; UNKNOWN is represented by absence of usable evidence.
+      requestBody:
+        required: true
+        content:
+          text/csv:
+            schema:
+              type: string
+              format: binary
+          application/csv:
+            schema:
+              type: string
+              format: binary
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: CISA KEV evidence file processed transactionally
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CisaKevImportResult'
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+        '403':
+          $ref: '#/components/responses/InsufficientRole'
+        '413':
+          $ref: '#/components/responses/Problem'
+        '415':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Problem'
+'''
+          p.write_text(text[:start] + block + text[end:], encoding='utf-8')
+          PY
+      - name: Commit OpenAPI repair
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add api/openapi.yaml
+          git diff --cached --check
+          git commit -m "Fix CISA KEV OpenAPI path indentation"
+          git push origin HEAD:${{ github.head_ref }}
