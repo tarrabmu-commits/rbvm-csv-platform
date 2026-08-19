@@ -1,6 +1,6 @@
 # CISA KEV PostgreSQL Persistence
 
-This increment persists `CISA_KEV_CSV_V1` semantics without turning KEV into priority or risk logic.
+`CISA_KEV_CSV_V1` is persisted without turning KEV into priority or risk logic.
 
 ## Storage grain
 
@@ -35,9 +35,20 @@ At one tenant/source/observation timestamp only one snapshot may exist:
 UNIQUE (tenant_id, kev_source, observed_at)
 ```
 
-The later transactional importer will use this constraint to implement exact replay versus same-time conflict handling. The schema does not overwrite an existing snapshot.
+The transactional importer compares the complete snapshot identity before persistence:
+
+```text
+same source + same observed_at + same version/hash/count
+→ snapshot replay
+
+same source + same observed_at + different version/hash/count
+→ quarantine affected rows
+→ no overwrite
+```
 
 The same exact catalog bytes may be observed again at a later time and remain a distinct historical observation. This preserves freshness evidence rather than collapsing all equal SHA-256 values into one row.
+
+The importer also detects a contradictory file that assigns multiple snapshot identities to the same `KEV_Source + KEV_Observed_At`. Every affected row is quarantined so row order cannot become an implicit winner-selection policy.
 
 ## Membership history
 
@@ -70,6 +81,57 @@ Known_Ransomware_Campaign_Use = KNOWN | UNKNOWN
 
 Requires all listing-only metadata to be null. It remains bound to the same snapshot provenance through `snapshot_id`.
 
+## Transactional importer
+
+`PostgresCisaKevImporter` is the canonical persistence boundary for `CISA_KEV_CSV_V1`.
+
+It requires PostgreSQL schema V11 or newer and runs at `SERIALIZABLE` isolation under a transaction-scoped advisory lock.
+
+The import sequence is:
+
+```text
+CISA_KEV_CSV_V1
+        ↓
+contract validation
+        ↓
+in-file snapshot consistency check
+        ↓
+resolve tenant
+        ↓
+resolve CVE only if attached to a canonical finding in that tenant
+        ↓
+persist / replay / quarantine snapshot
+        ↓
+persist / replay / quarantine membership evidence
+        ↓
+catalog revision only when new membership evidence is inserted
+        ↓
+commit
+```
+
+A CVE not attached to a canonical finding in the selected tenant is quarantined as:
+
+```text
+CVE_NOT_FOUND_IN_TENANT
+```
+
+Snapshot conflicts are quarantined as either:
+
+```text
+CONFLICTING_KEV_SNAPSHOT_TIMESTAMP
+CONFLICTING_PERSISTED_KEV_SNAPSHOT_TIMESTAMP
+```
+
+A persisted membership conflict for the same tenant/CVE/snapshot is quarantined as:
+
+```text
+CONFLICTING_PERSISTED_KEV_EVIDENCE
+```
+
+Exact snapshot and evidence replay is idempotent. Fatal database errors roll back the entire persistence transaction. Row-level evidence problems are quarantined without converting them into fabricated `UNKNOWN` or `NOT_LISTED` claims.
+
+Snapshot and evidence UUIDs are deterministic tenant-scoped RFC 9562 version-8 UUIDs derived from canonical SHA-256 material. The semantic evidence digest remains independent of tenant identity; tenant scope is applied only when deriving the persistent UUID.
+
 ## Current view
 
 `rbvm.current_cisa_kev_evidence` selects the newest observation independently per:
@@ -95,7 +157,7 @@ This is a read-model interpretation of missing evidence, not a fabricated databa
 
 ## Deliberate exclusions
 
-This migration does not introduce or derive:
+Persistence and import do not introduce or derive:
 
 ```text
 Priority
@@ -108,16 +170,33 @@ Organizational SLA
 
 CISA `dueDate` remains source evidence only.
 
+## Current boundary
+
+Implemented:
+
+- official CISA source acquisition and complete-snapshot validation;
+- `CISA_KEV_CSV_V1` generation and contract validation;
+- immutable PostgreSQL snapshot history;
+- immutable CVE membership history;
+- current and finding read views;
+- transactional importer;
+- tenant/CVE resolution;
+- exact snapshot/evidence replay idempotency;
+- in-file and persisted snapshot conflict quarantine;
+- persisted membership conflict quarantine;
+- catalog revision only on new membership evidence;
+- rollback on fatal persistence failure.
+
+Not implemented yet:
+
+- platform KEV upload API;
+- KEV evidence read API;
+- KEV operator UI;
+- scheduled automatic KEV refresh and safe handoff;
+- freshness policy;
+- EPSS;
+- RBVM decision logic.
+
 ## Next increment
 
-The next step is the transactional `CISA_KEV_CSV_V1` importer. It must:
-
-1. require PostgreSQL schema V11 or newer;
-2. resolve the selected tenant and CVEs already present in that tenant's canonical findings;
-3. persist or replay the snapshot atomically;
-4. quarantine same source/time snapshot conflicts;
-5. insert immutable LISTED/NOT_LISTED evidence bound to that snapshot;
-6. treat exact evidence replay as idempotent;
-7. never create UNKNOWN rows;
-8. increment catalog revision only when new persisted evidence is inserted;
-9. roll back the entire persistence transaction on fatal database failure.
+Expose this importer through the authenticated platform API and operator UI while preserving the same contract and persistence boundary. The API must not create a second path from the CISA feed directly into PostgreSQL.
