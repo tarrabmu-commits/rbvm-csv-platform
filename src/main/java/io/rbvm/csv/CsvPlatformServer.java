@@ -31,6 +31,9 @@ import io.rbvm.postgres.CvssV31Importer;
 import io.rbvm.postgres.EpssEvidenceReader;
 import io.rbvm.postgres.EpssImportResult;
 import io.rbvm.postgres.EpssImporter;
+import io.rbvm.postgres.NetworkReachabilityEvidenceReader;
+import io.rbvm.postgres.NetworkReachabilityImportResult;
+import io.rbvm.postgres.NetworkReachabilityImporter;
 import io.rbvm.security.ApiKeyAuthenticator;
 import io.rbvm.security.ApiRole;
 import io.rbvm.security.AuthPrincipal;
@@ -83,6 +86,7 @@ public final class CsvPlatformServer implements AutoCloseable {
     private final byte[] kevUi;
     private final byte[] epssUi;
     private final byte[] assetContextUi;
+    private final byte[] networkReachabilityUi;
     private final ApiKeyAuthenticator authenticator;
     private final RequestRateLimiter rateLimiter;
     private final long maximumUploadBytes;
@@ -96,6 +100,8 @@ public final class CsvPlatformServer implements AutoCloseable {
     private final Optional<EpssEvidenceReader> epssEvidenceReader;
     private final Optional<AssetContextImporter> assetContextImporter;
     private final Optional<AssetContextEvidenceReader> assetContextEvidenceReader;
+    private final Optional<NetworkReachabilityImporter> networkReachabilityImporter;
+    private final Optional<NetworkReachabilityEvidenceReader> networkReachabilityEvidenceReader;
     private final Instant startedAt = Instant.now();
     private final AtomicLong requestsTotal = new AtomicLong();
     private final AtomicLong problemsTotal = new AtomicLong();
@@ -142,11 +148,14 @@ public final class CsvPlatformServer implements AutoCloseable {
         this.epssEvidenceReader = Optional.empty();
         this.assetContextImporter = Optional.empty();
         this.assetContextEvidenceReader = Optional.empty();
+        this.networkReachabilityImporter = Optional.empty();
+        this.networkReachabilityEvidenceReader = Optional.empty();
         this.webUi = loadResource("/web/index.html");
         this.cvssUi = loadResource("/web/cvss-v31.html");
         this.kevUi = loadResource("/web/cisa-kev.html");
         this.epssUi = loadResource("/web/epss.html");
         this.assetContextUi = loadResource("/web/asset-context.html");
+        this.networkReachabilityUi = loadResource("/web/network-reachability.html");
         this.server = HttpServer.create(new InetSocketAddress(host, port), 32);
         int workers = Math.max(4, Math.min(16, Runtime.getRuntime().availableProcessors()));
         this.executor = Executors.newFixedThreadPool(workers);
@@ -343,6 +352,7 @@ public final class CsvPlatformServer implements AutoCloseable {
         );
     }
 
+    /** Backward-compatible runtime constructor through the Asset Context V13 capability layer. */
     public CsvPlatformServer(
             String host,
             int port,
@@ -360,6 +370,52 @@ public final class CsvPlatformServer implements AutoCloseable {
             Optional<EpssEvidenceReader> epssEvidenceReader,
             Optional<AssetContextImporter> assetContextImporter,
             Optional<AssetContextEvidenceReader> assetContextEvidenceReader,
+            ApiKeyAuthenticator authenticator,
+            RequestRateLimiter rateLimiter
+    ) throws IOException {
+        this(
+                host,
+                port,
+                dataDirectory,
+                maximumUploadBytes,
+                canonicalProjection,
+                readCatalog,
+                applicabilityImporter,
+                applicabilityFindingExporter,
+                cvssV31Importer,
+                cvssV31EvidenceReader,
+                cisaKevImporter,
+                cisaKevEvidenceReader,
+                epssImporter,
+                epssEvidenceReader,
+                assetContextImporter,
+                assetContextEvidenceReader,
+                Optional.empty(),
+                Optional.empty(),
+                authenticator,
+                rateLimiter
+        );
+    }
+
+    public CsvPlatformServer(
+            String host,
+            int port,
+            Path dataDirectory,
+            long maximumUploadBytes,
+            CanonicalProjection canonicalProjection,
+            DomainCatalog readCatalog,
+            Optional<ApplicabilityImporter> applicabilityImporter,
+            Optional<ApplicabilityFindingExporter> applicabilityFindingExporter,
+            Optional<CvssV31Importer> cvssV31Importer,
+            Optional<CvssV31EvidenceReader> cvssV31EvidenceReader,
+            Optional<CisaKevImporter> cisaKevImporter,
+            Optional<CisaKevEvidenceReader> cisaKevEvidenceReader,
+            Optional<EpssImporter> epssImporter,
+            Optional<EpssEvidenceReader> epssEvidenceReader,
+            Optional<AssetContextImporter> assetContextImporter,
+            Optional<AssetContextEvidenceReader> assetContextEvidenceReader,
+            Optional<NetworkReachabilityImporter> networkReachabilityImporter,
+            Optional<NetworkReachabilityEvidenceReader> networkReachabilityEvidenceReader,
             ApiKeyAuthenticator authenticator,
             RequestRateLimiter rateLimiter
     ) throws IOException {
@@ -408,11 +464,20 @@ public final class CsvPlatformServer implements AutoCloseable {
                 assetContextEvidenceReader,
                 "assetContextEvidenceReader"
         );
+        this.networkReachabilityImporter = Objects.requireNonNull(
+                networkReachabilityImporter,
+                "networkReachabilityImporter"
+        );
+        this.networkReachabilityEvidenceReader = Objects.requireNonNull(
+                networkReachabilityEvidenceReader,
+                "networkReachabilityEvidenceReader"
+        );
         this.webUi = loadResource("/web/index.html");
         this.cvssUi = loadResource("/web/cvss-v31.html");
         this.kevUi = loadResource("/web/cisa-kev.html");
         this.epssUi = loadResource("/web/epss.html");
         this.assetContextUi = loadResource("/web/asset-context.html");
+        this.networkReachabilityUi = loadResource("/web/network-reachability.html");
         this.server = HttpServer.create(new InetSocketAddress(host, port), 32);
         int workers = Math.max(4, Math.min(16, Runtime.getRuntime().availableProcessors()));
         this.executor = Executors.newFixedThreadPool(workers);
@@ -471,6 +536,11 @@ public final class CsvPlatformServer implements AutoCloseable {
             if ("/asset-context".equals(path) || "/asset-context/".equals(path)) {
                 requireMethod(exchange, method, "GET");
                 sendBytes(exchange, 200, "text/html; charset=utf-8", assetContextUi);
+                return;
+            }
+            if ("/reachability".equals(path) || "/reachability/".equals(path)) {
+                requireMethod(exchange, method, "GET");
+                sendBytes(exchange, 200, "text/html; charset=utf-8", networkReachabilityUi);
                 return;
             }
             if ("/api/v1/health".equals(path)) {
@@ -570,6 +640,18 @@ public final class CsvPlatformServer implements AutoCloseable {
                 requireMethod(exchange, method, "POST");
                 authorize(exchange, ApiRole.OPERATOR);
                 createAssetContextImport(exchange);
+                return;
+            }
+            if ("/api/v1/network-reachability-evidence".equals(path)) {
+                requireMethod(exchange, method, "GET");
+                authorize(exchange, ApiRole.VIEWER);
+                readNetworkReachabilityEvidence(exchange);
+                return;
+            }
+            if ("/api/v1/network-reachability-imports".equals(path)) {
+                requireMethod(exchange, method, "POST");
+                authorize(exchange, ApiRole.OPERATOR);
+                createNetworkReachabilityImport(exchange);
                 return;
             }
             if ("/api/v1/csv-imports".equals(path)) {
@@ -678,6 +760,10 @@ public final class CsvPlatformServer implements AutoCloseable {
         health.put("assetContext", Map.of(
                 "importEnabled", assetContextImporter.isPresent(),
                 "evidenceReadEnabled", assetContextEvidenceReader.isPresent()
+        ));
+        health.put("networkReachability", Map.of(
+                "importEnabled", networkReachabilityImporter.isPresent(),
+                "evidenceReadEnabled", networkReachabilityEvidenceReader.isPresent()
         ));
         return health;
     }
@@ -931,6 +1017,61 @@ public final class CsvPlatformServer implements AutoCloseable {
         }
     }
 
+    private void readNetworkReachabilityEvidence(HttpExchange exchange) throws IOException {
+        NetworkReachabilityEvidenceReader reader = networkReachabilityEvidenceReader.orElseThrow(() ->
+                new HttpProblem(
+                        503,
+                        "NETWORK_REACHABILITY_PERSISTENCE_UNAVAILABLE",
+                        "Network reachability evidence reads require PostgreSQL schema version 14 or newer"
+                ));
+        NetworkReachabilityEvidenceQuery query = parseNetworkReachabilityEvidenceQuery(
+                exchange.getRequestURI());
+        sendJson(exchange, 200, reader.currentEvidence(
+                query.limit(),
+                query.assetPrefix(),
+                query.sourceProfileKey(),
+                query.evidenceSource(),
+                query.originScope(),
+                query.reachabilityStatus()
+        ));
+    }
+
+    private void createNetworkReachabilityImport(HttpExchange exchange) throws IOException {
+        NetworkReachabilityImporter importer = networkReachabilityImporter.orElseThrow(() ->
+                new HttpProblem(
+                        503,
+                        "NETWORK_REACHABILITY_PERSISTENCE_UNAVAILABLE",
+                        "Network reachability import requires PostgreSQL schema version 14 or newer"
+                ));
+        String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
+        if (!isCsvContentType(contentType)) {
+            throw new HttpProblem(
+                    415,
+                    "UNSUPPORTED_MEDIA_TYPE",
+                    "Content-Type must be text/csv, application/csv, or application/octet-stream"
+            );
+        }
+        long contentLength = parseContentLength(exchange.getRequestHeaders().getFirst("Content-Length"));
+        if (contentLength > maximumUploadBytes) {
+            throw new HttpProblem(
+                    413,
+                    "UPLOAD_TOO_LARGE",
+                    "Network reachability CSV exceeds the configured upload limit"
+            );
+        }
+        Path staged = Files.createTempFile("rbvm-network-reachability-upload-", ".csv");
+        try {
+            try (InputStream body = exchange.getRequestBody();
+                 OutputStream output = Files.newOutputStream(staged)) {
+                copyBounded(body, output, maximumUploadBytes, "Network reachability CSV");
+            }
+            NetworkReachabilityImportResult result = importer.importFile(staged);
+            sendJson(exchange, 200, result.toMap());
+        } finally {
+            Files.deleteIfExists(staged);
+        }
+    }
+
     private static void copyBounded(
             InputStream input,
             OutputStream output,
@@ -1140,6 +1281,24 @@ public final class CsvPlatformServer implements AutoCloseable {
         );
     }
 
+    private static NetworkReachabilityEvidenceQuery parseNetworkReachabilityEvidenceQuery(URI uri) {
+        Map<String, String> query = parseParameters(uri.getRawQuery());
+        rejectUnknownFields(query, Set.of(
+                "limit", "asset", "sourceProfile", "evidenceSource",
+                "originScope", "reachabilityStatus"));
+        return new NetworkReachabilityEvidenceQuery(
+                queryLimit(query),
+                queryOptional(query, "asset", 160),
+                querySourceProfile(query),
+                queryOptional(query, "evidenceSource", 256),
+                queryEnum(query, "originScope", Set.of(
+                        "INTERNET", "EXTERNAL_PARTNER", "INTERNAL_ENTERPRISE",
+                        "LOCAL_SEGMENT", "OTHER", "UNKNOWN")),
+                queryEnum(query, "reachabilityStatus", Set.of(
+                        "REACHABLE", "NOT_REACHABLE", "UNKNOWN"))
+        );
+    }
+
     private static Map<String, String> parseEvidenceQuery(URI uri) {
         Map<String, String> query = parseParameters(uri.getRawQuery());
         rejectUnknownFields(query, Set.of("limit", "cve"));
@@ -1171,6 +1330,22 @@ public final class CsvPlatformServer implements AutoCloseable {
             return cve;
         }
         return null;
+    }
+
+    private static String queryEnum(
+            Map<String, String> query,
+            String field,
+            Set<String> allowed
+    ) {
+        String value = queryOptional(query, field, 64);
+        if (value == null) {
+            return null;
+        }
+        value = value.toUpperCase(Locale.ROOT);
+        if (!allowed.contains(value)) {
+            throw new InvalidCaseActionException(field + " contains an unsupported value");
+        }
+        return value;
     }
 
     private static String querySourceProfile(Map<String, String> query) {
@@ -1392,6 +1567,10 @@ public final class CsvPlatformServer implements AutoCloseable {
                 + "rbvm_asset_context_import_enabled " + (assetContextImporter.isPresent() ? 1 : 0) + "\n"
                 + "# TYPE rbvm_asset_context_evidence_read_enabled gauge\n"
                 + "rbvm_asset_context_evidence_read_enabled " + (assetContextEvidenceReader.isPresent() ? 1 : 0) + "\n"
+                + "# TYPE rbvm_network_reachability_import_enabled gauge\n"
+                + "rbvm_network_reachability_import_enabled " + (networkReachabilityImporter.isPresent() ? 1 : 0) + "\n"
+                + "# TYPE rbvm_network_reachability_evidence_read_enabled gauge\n"
+                + "rbvm_network_reachability_evidence_read_enabled " + (networkReachabilityEvidenceReader.isPresent() ? 1 : 0) + "\n"
                 + "# TYPE rbvm_process_uptime_seconds gauge\n"
                 + "rbvm_process_uptime_seconds " + uptime + "\n"
                 + "# TYPE rbvm_imports_stored gauge\n"
@@ -1451,6 +1630,8 @@ public final class CsvPlatformServer implements AutoCloseable {
                 runtime.epssEvidenceReader(),
                 runtime.assetContextImporter(),
                 runtime.assetContextEvidenceReader(),
+                runtime.networkReachabilityImporter(),
+                runtime.networkReachabilityEvidenceReader(),
                 authenticator,
                 rateLimiter
         );
@@ -1461,6 +1642,7 @@ public final class CsvPlatformServer implements AutoCloseable {
         System.out.println("CISA KEV operator UI: " + application.baseUri().resolve("/kev"));
         System.out.println("EPSS operator UI: " + application.baseUri().resolve("/epss"));
         System.out.println("Asset Context operator UI: " + application.baseUri().resolve("/asset-context"));
+        System.out.println("Network Reachability operator UI: " + application.baseUri().resolve("/reachability"));
         System.out.println("Data directory: " + configuration.dataDirectory().toAbsolutePath().normalize());
         System.out.println("Canonical projection: "
                 + canonicalProjection.health().get("backend"));
@@ -1474,6 +1656,8 @@ public final class CsvPlatformServer implements AutoCloseable {
                 + (runtime.epssImporter().isPresent() ? "ENABLED" : "DISABLED"));
         System.out.println("Asset Context persistence: "
                 + (runtime.assetContextImporter().isPresent() ? "ENABLED" : "DISABLED"));
+        System.out.println("Network Reachability persistence: "
+                + (runtime.networkReachabilityImporter().isPresent() ? "ENABLED" : "DISABLED"));
         System.out.println("API authentication: "
                 + (authenticator.enabled() ? "API_KEY" : "DISABLED"));
         new CountDownLatch(1).await();
@@ -1493,6 +1677,16 @@ public final class CsvPlatformServer implements AutoCloseable {
             String assetPrefix,
             String sourceProfileKey,
             String contextSource
+    ) {
+    }
+
+    private record NetworkReachabilityEvidenceQuery(
+            int limit,
+            String assetPrefix,
+            String sourceProfileKey,
+            String evidenceSource,
+            String originScope,
+            String reachabilityStatus
     ) {
     }
 
