@@ -14,7 +14,8 @@ CREATE TABLE rbvm.applicability_assessment (
     ingested_at timestamptz NOT NULL,
     evidence_sha256 char(64) NOT NULL CHECK (evidence_sha256 ~ '^[a-f0-9]{64}$'),
     UNIQUE (tenant_id, id),
-    UNIQUE (tenant_id, finding_id, evaluated_at),
+    CONSTRAINT applicability_one_assessment_time
+        UNIQUE (tenant_id, finding_id, evaluated_at),
     FOREIGN KEY (tenant_id, finding_id)
         REFERENCES rbvm.exposure(tenant_id, id)
 );
@@ -68,7 +69,7 @@ COMMENT ON TABLE rbvm.applicability_assessment IS
     'Immutable finding-scoped applicability history imported from APPLICABILITY_CSV_V1.';
 COMMENT ON COLUMN rbvm.applicability_assessment.finding_id IS
     'Canonical Finding_ID. It is the tenant-scoped rbvm.exposure.id UUID.';
-COMMENT ON CONSTRAINT applicability_assessment_tenant_id_finding_id_evaluated_at_key
+COMMENT ON CONSTRAINT applicability_one_assessment_time
     ON rbvm.applicability_assessment IS
     'At one evaluation timestamp a finding may have only one applicability conclusion; exact replay is handled idempotently by the importer and conflicting content is rejected.';
 COMMENT ON VIEW rbvm.current_applicability_assessment IS
