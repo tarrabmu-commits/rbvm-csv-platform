@@ -12,4 +12,6 @@ Scope:
 - Release metadata alignment across Gradle, reproducible distribution, verify/release workflows, and README.
 - Structural verification that rejects accidental UNKNOWN persistence, loss of snapshot SHA-256 provenance, or missing KEV paths/capabilities.
 
+Validation gates are the existing repository verify suite and CodeQL; the increment is not merge-ready until both succeed on the final head.
+
 No runtime behavior, database schema, source arbitration, EPSS, priority, risk score, or organizational SLA logic is introduced by this increment.
