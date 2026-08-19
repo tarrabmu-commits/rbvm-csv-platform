@@ -122,7 +122,7 @@ public final class PostgresCisaKevImporter implements CisaKevImporter {
                             snapshots.put(key, SnapshotResolution.usable(existing.id()));
                             replayedSnapshots++;
                         } else {
-                            snapshots.put(key, SnapshotResolution.conflict());
+                            snapshots.put(key, SnapshotResolution.conflicted());
                             snapshotConflictGroups++;
                         }
                         continue;
@@ -517,7 +517,7 @@ public final class PostgresCisaKevImporter implements CisaKevImporter {
             return new SnapshotResolution(Objects.requireNonNull(id, "id"), false);
         }
 
-        private static SnapshotResolution conflict() {
+        private static SnapshotResolution conflicted() {
             return new SnapshotResolution(null, true);
         }
     }
