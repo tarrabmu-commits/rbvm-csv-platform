@@ -48,6 +48,7 @@ public final class PostgresFoundationSelfTest {
         PostgresCvssV31EvidenceReaderSelfTest.main(args);
         PostgresCisaKevEvidenceReaderSelfTest.main(args);
         PostgresEpssEvidenceReaderSelfTest.main(args);
+        PostgresAssetContextEvidenceReaderSelfTest.main(args);
         PostgresApplicabilityFindingExporterSelfTest.main(args);
         PostgresApplicabilityAwareCatalogSelfTest.main(args);
         System.out.println("PostgresFoundationSelfTest: PASS");

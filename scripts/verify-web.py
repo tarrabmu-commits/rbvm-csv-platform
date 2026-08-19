@@ -53,6 +53,7 @@ def main():
         (root / "src/main/resources/web/cvss-v31.html", True),
         (root / "src/main/resources/web/cisa-kev.html", True),
         (root / "src/main/resources/web/epss.html", True),
+        (root / "src/main/resources/web/asset-context.html", True),
     ]
     total_ids = sum(verify_page(path, requires_session_token=token) for path, token in pages)
     print(f"Web structural checks: PASS ({len(pages)} pages, {total_ids} unique page ids)")
