@@ -2,7 +2,7 @@ BEGIN;
 
 -- RBVM decision methodology policies are immutable configuration provenance, not vulnerability
 -- evidence and not decisions. V16 deliberately has no "current" or "active" policy view: choosing
--- a policy revision is an explicit later control-plane action rather than max(revision) inference.
+-- a policy revision is an explicit later control-plane action rather than highest-revision inference.
 CREATE TABLE rbvm.decision_methodology_policy (
     id uuid PRIMARY KEY,
     tenant_id uuid NOT NULL,
