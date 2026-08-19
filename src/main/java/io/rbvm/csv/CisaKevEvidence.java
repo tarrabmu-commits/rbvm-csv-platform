@@ -1,7 +1,5 @@
 package io.rbvm.csv;
 
-import java.net.URI;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.Locale;
@@ -10,7 +8,8 @@ import java.util.Objects;
 import java.util.regex.Pattern;
 
 /**
- * CVE-scoped evidence derived from a CISA Known Exploited Vulnerabilities catalog snapshot.
+ * CVE-scoped evidence derived from a validated complete CISA Known Exploited Vulnerabilities
+ * catalog snapshot.
  *
  * <p>This type represents threat evidence only. It deliberately does not derive remediation
  * priority, organizational risk, SLA, EPSS, asset criticality, or business impact.</p>
@@ -32,9 +31,7 @@ public final class CisaKevEvidence {
 
     private final String cveId;
     private final Status status;
-    private final String catalogVersion;
-    private final String source;
-    private final Instant observedAt;
+    private final CisaKevCatalogSnapshot snapshot;
     private final LocalDate dateAdded;
     private final LocalDate dueDate;
     private final RansomwareCampaignUse ransomwareCampaignUse;
@@ -42,18 +39,14 @@ public final class CisaKevEvidence {
     private CisaKevEvidence(
             String cveId,
             Status status,
-            String catalogVersion,
-            String source,
-            Instant observedAt,
+            CisaKevCatalogSnapshot snapshot,
             LocalDate dateAdded,
             LocalDate dueDate,
             RansomwareCampaignUse ransomwareCampaignUse
     ) {
         this.cveId = normalizeCve(cveId);
         this.status = Objects.requireNonNull(status, "status");
-        this.catalogVersion = catalogVersion;
-        this.source = source;
-        this.observedAt = observedAt;
+        this.snapshot = snapshot;
         this.dateAdded = dateAdded;
         this.dueDate = dueDate;
         this.ransomwareCampaignUse = ransomwareCampaignUse;
@@ -63,7 +56,7 @@ public final class CisaKevEvidence {
     /**
      * No usable KEV catalog evidence is currently attached to this CVE.
      *
-     * <p>Collection failure or absence of an observed snapshot is not converted into
+     * <p>Collection failure or absence of a validated complete snapshot is not converted into
      * NOT_LISTED.</p>
      */
     public static CisaKevEvidence unknown(String cveId) {
@@ -73,18 +66,14 @@ public final class CisaKevEvidence {
                 null,
                 null,
                 null,
-                null,
-                null,
                 null
         );
     }
 
-    /** Positive membership evidence from a successfully observed complete CISA KEV snapshot. */
+    /** Positive membership evidence from a validated complete CISA KEV snapshot. */
     public static CisaKevEvidence listed(
             String cveId,
-            String catalogVersion,
-            String source,
-            Instant observedAt,
+            CisaKevCatalogSnapshot snapshot,
             LocalDate dateAdded,
             LocalDate dueDate,
             RansomwareCampaignUse ransomwareCampaignUse
@@ -92,9 +81,7 @@ public final class CisaKevEvidence {
         return new CisaKevEvidence(
                 cveId,
                 Status.LISTED,
-                requireText(catalogVersion, "KEV_Catalog_Version"),
-                requireHttps(source, "KEV_Source"),
-                Objects.requireNonNull(observedAt, "KEV_Observed_At"),
+                Objects.requireNonNull(snapshot, "snapshot"),
                 Objects.requireNonNull(dateAdded, "KEV_Date_Added"),
                 Objects.requireNonNull(dueDate, "KEV_Due_Date"),
                 Objects.requireNonNull(ransomwareCampaignUse, "Known_Ransomware_Campaign_Use")
@@ -102,23 +89,19 @@ public final class CisaKevEvidence {
     }
 
     /**
-     * Negative membership evidence from a successfully observed complete CISA KEV snapshot.
+     * Negative membership evidence from a validated complete CISA KEV snapshot.
      *
      * <p>NOT_LISTED means only that the CVE was absent from that catalog snapshot. It is not a
      * claim that exploitation has never occurred.</p>
      */
     public static CisaKevEvidence notListed(
             String cveId,
-            String catalogVersion,
-            String source,
-            Instant observedAt
+            CisaKevCatalogSnapshot snapshot
     ) {
         return new CisaKevEvidence(
                 cveId,
                 Status.NOT_LISTED,
-                requireText(catalogVersion, "KEV_Catalog_Version"),
-                requireHttps(source, "KEV_Source"),
-                Objects.requireNonNull(observedAt, "KEV_Observed_At"),
+                Objects.requireNonNull(snapshot, "snapshot"),
                 null,
                 null,
                 null
@@ -127,19 +110,16 @@ public final class CisaKevEvidence {
 
     private void validate() {
         if (status == Status.UNKNOWN) {
-            if (catalogVersion != null || source != null || observedAt != null
-                    || dateAdded != null || dueDate != null || ransomwareCampaignUse != null) {
+            if (snapshot != null || dateAdded != null || dueDate != null
+                    || ransomwareCampaignUse != null) {
                 throw new IllegalArgumentException(
-                        "UNKNOWN KEV evidence must not fabricate catalog provenance or listing metadata"
+                        "UNKNOWN KEV evidence must not fabricate snapshot or listing metadata"
                 );
             }
             return;
         }
 
-        requireText(catalogVersion, "KEV_Catalog_Version");
-        requireHttps(source, "KEV_Source");
-        Objects.requireNonNull(observedAt, "KEV_Observed_At");
-
+        Objects.requireNonNull(snapshot, "snapshot");
         if (status == Status.LISTED) {
             Objects.requireNonNull(dateAdded, "KEV_Date_Added");
             Objects.requireNonNull(dueDate, "KEV_Due_Date");
@@ -159,16 +139,8 @@ public final class CisaKevEvidence {
         return status;
     }
 
-    public String catalogVersion() {
-        return catalogVersion;
-    }
-
-    public String source() {
-        return source;
-    }
-
-    public Instant observedAt() {
-        return observedAt;
+    public CisaKevCatalogSnapshot snapshot() {
+        return snapshot;
     }
 
     public LocalDate dateAdded() {
@@ -192,10 +164,12 @@ public final class CisaKevEvidence {
         output.put("cveId", cveId);
         output.put("kevStatus", status.name());
         output.put("kevEvidenceObserved", hasCatalogEvidence());
-        if (catalogVersion != null) {
-            output.put("kevCatalogVersion", catalogVersion);
-            output.put("kevSource", source);
-            output.put("kevObservedAt", observedAt.toString());
+        if (snapshot != null) {
+            output.put("kevCatalogVersion", snapshot.catalogVersion());
+            output.put("kevCatalogSha256", snapshot.sha256());
+            output.put("kevCatalogCount", snapshot.declaredCount());
+            output.put("kevSource", snapshot.source());
+            output.put("kevObservedAt", snapshot.observedAt().toString());
         }
         if (status == Status.LISTED) {
             output.put("kevDateAdded", dateAdded.toString());
@@ -206,31 +180,13 @@ public final class CisaKevEvidence {
     }
 
     private static String normalizeCve(String value) {
-        String normalized = requireText(value, "CVE_ID").toUpperCase(Locale.ROOT);
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("CVE_ID is required");
+        }
+        String normalized = value.trim().toUpperCase(Locale.ROOT);
         if (!CVE_PATTERN.matcher(normalized).matches()) {
             throw new IllegalArgumentException("CVE_ID must match CVE-YYYY-NNNN or longer");
         }
         return normalized;
-    }
-
-    private static String requireHttps(String value, String field) {
-        String normalized = requireText(value, field);
-        URI uri;
-        try {
-            uri = URI.create(normalized);
-        } catch (IllegalArgumentException exception) {
-            throw new IllegalArgumentException(field + " must be a valid HTTPS URL", exception);
-        }
-        if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null) {
-            throw new IllegalArgumentException(field + " must be a valid HTTPS URL");
-        }
-        return normalized;
-    }
-
-    private static String requireText(String value, String field) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(field + " is required");
-        }
-        return value.trim();
     }
 }
