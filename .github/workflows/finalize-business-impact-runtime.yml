@@ -39,6 +39,19 @@ jobs:
               raise SystemExit(f'constructor locator anchor mismatch: {text.count(old)}')
           path.write_text(text.replace(old, new, 1), encoding='utf-8')
           PY
+      - name: Correct V15 migration replay invariant
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('src/test/java/io/rbvm/postgres/PostgresMigratorSelfTest.java')
+          text = path.read_text(encoding='utf-8')
+          old = '        assert database.commits == 13 : "replay must not reapply migrations";\n'
+          new = '        assert database.commits == 15 : "replay must not reapply migrations";\n'
+          if text.count(old) != 1:
+              raise SystemExit(f'V15 replay invariant anchor mismatch: {text.count(old)}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
       - name: Apply V15 Business Impact runtime wiring
         run: python3 scripts/finalize-business-impact-runtime.py
       - name: Verify finalized runtime
@@ -53,6 +66,7 @@ jobs:
           git add src/main/java/io/rbvm/csv/CsvPlatformServer.java
           git add src/test/java/io/rbvm/csv/PlatformSelfTest.java
           git add src/test/java/io/rbvm/postgres/PostgresFoundationSelfTest.java
+          git add src/test/java/io/rbvm/postgres/PostgresMigratorSelfTest.java
           git add scripts/verify-web.py
           git commit -m "Wire Business Impact V15 runtime API and UI"
           git push origin HEAD:agent/business-impact-api-ui
