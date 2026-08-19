@@ -103,7 +103,9 @@ public final class PostgresApplicabilityAwareCatalog implements DomainCatalog {
             output.put("exposures", List.copyOf(enriched));
             return Optional.of(immutableNullableMap(output));
         } catch (SQLException exception) {
-            throw new IllegalStateException("PostgreSQL applicability read failed", exception);
+            throw new IllegalStateException(
+                    "PostgreSQL applicability read failed: " + PostgresErrors.safeMessage(exception)
+            );
         }
     }
 
