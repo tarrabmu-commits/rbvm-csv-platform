@@ -39,7 +39,8 @@ public final class CanonicalProjectionFactory {
                 connections,
                 settings.migrate()
         );
-        PostgresReadCatalog readCatalog = new PostgresReadCatalog(connections);
+        PostgresReadCatalog postgresReadCatalog = new PostgresReadCatalog(connections);
+        DomainCatalog readCatalog = postgresReadCatalog;
         int installedVersion = new PostgresMigrator(connections).installedVersion();
         Optional<ApplicabilityImporter> applicabilityImporter = Optional.empty();
         Optional<ApplicabilityFindingExporter> applicabilityFindingExporter = Optional.empty();
@@ -52,6 +53,7 @@ public final class CanonicalProjectionFactory {
             applicabilityFindingExporter = Optional.of(
                     new PostgresApplicabilityFindingExporter(connections)
             );
+            readCatalog = new PostgresApplicabilityAwareCatalog(postgresReadCatalog, connections);
         }
         return new RuntimeComponents(
                 projection,
