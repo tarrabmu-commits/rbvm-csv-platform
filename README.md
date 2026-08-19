@@ -1,4 +1,4 @@
-# RBVM CSV Platform — Increment 13
+# RBVM CSV Platform — Increment 14
 
 منصة محلية قابلة للتشغيل لإدخال `WAZUH_CSV_V1` أوعقد `WAZUH_CSV_V2` الاختياري وتحويل الأدلة إلى
 نموذج RBVM موحّد: Assets وVulnerabilities وComponents وObservations وExposures
@@ -16,7 +16,8 @@
 - Applicability مستقلة عن Wazuh عبر `APPLICABILITY_CSV_V1` مع `APPLICABLE|NOT_APPLICABLE|UNKNOWN` وprovenance ووقت تقييم صريح.
 - CVSS v3.1 Base مستقلة عبر `CVSS_V31_CSV_V1` كدليل Technical Severity على مستوى CVE، مع source وobserved-at خاصين بها.
 - PostgreSQL V9 يحفظ Applicability history ويعرض current applicability على finding reads؛ V10 يحفظ CVSS history ويعرض أحدث evidence لكل source دون اختيار winner مخفي.
-- API مخصصة لاستيراد Applicability وCVSS وقراءة CVSS current-per-source، مع صفحة تشغيل مستقلة على `/cvss`.
+- API مخصصة لاستيراد Applicability وCVSS وKEV وقراءة current evidence، مع صفحات تشغيل مستقلة على `/cvss` و`/kev`.
+- CISA KEV مستقلة عبر `CISA_KEV_CSV_V1` كدليل Threat Evidence مربوط بلقطة كاملة ومتحقق منها، مع `LISTED|NOT_LISTED` وprovenance صريح؛ غياب الدليل يبقى `UNKNOWN`.
 - ملخص coverage وfreshness للاستخبارات القديمة مع حد stale معلن قدره 7 أيام وتوزيع الأولوية.
 - تحديث استخبارات مجدول وآمن مع cache مربوط ببصمة CVE ولقطات ذرية قابلة للعمل offline.
 - حل تقني وإعادة فتح من دليل V2 صريح فقط؛ لا يوجد أي إغلاق مبني على غياب الصف.
@@ -37,10 +38,10 @@
 - PostgreSQL projection متزامنة: Import لا يكتمل قبل Commit معاملة قاعدة البيانات.
 - إعادة إرسال آمنة للـImports وأحداث Workflow من الأدلة المحلية بعد الانقطاع.
 - PostgreSQL Read Catalog لملخص الكاتالوج والبحث وتفاصيل الحالات.
-- Migration runner بتدقيق SHA-256 وقفل PostgreSQL advisory وتسلسل V1–V10.
-- دور Runtime محدود، وحراس append-only يمنعون تعديل أوحذف أدلة التدقيق وApplicability/CVSS history.
+- Migration runner بتدقيق SHA-256 وقفل PostgreSQL advisory وتسلسل V1–V11.
+- دور Runtime محدود، وحراس append-only يمنعون تعديل أوحذف أدلة التدقيق وApplicability/CVSS/KEV history.
 - TLS `verify-full` وأدوات Backup/Restore واختبار قطع الاتصال.
-- Health يصرّح بمصدر القراءة وحالة PostgreSQL reconciliation وبقدرات Applicability وCVSS v3.1.
+- Health يصرّح بمصدر القراءة وحالة PostgreSQL reconciliation وبقدرات Applicability وCVSS v3.1 وCISA KEV.
 - Bearer API keys ببصمات SHA-256 فقط وRBAC لأدوار Viewer/Operator/Admin.
 - هوية Actor موثقة في Audit Trail، مع liveness/readiness وPrometheus metrics.
 - انتهاء اختياري لمفاتيح API وحدود طلبات مستقلة للـActors ومحاولات الدخول الفاشلة.
@@ -48,7 +49,7 @@
 - JAR reproducible مع SHA-256 وSPDX 2.3 SBOM وGitHub artifact attestations.
 - كل GitHub Action مثبت على commit SHA كامل، مع CodeQL وجدول release موثّق.
 - GitHub Actions للتحقق والبناء، واختبار تعافي حي بعد إعادة تشغيل PostgreSQL.
-- OpenAPI 0.13.0 موحّد مع runtime CVSS/Applicability الحالي، إضافة إلى migrations واختبارات contract/domain/HTTP.
+- OpenAPI 0.14.0 موحّد مع runtime Applicability/CVSS/CISA KEV الحالي، إضافة إلى migrations واختبارات contract/domain/HTTP.
 
 ## التشغيل المحلي
 
@@ -72,11 +73,17 @@ http://127.0.0.1:8080
 http://127.0.0.1:8080/cvss
 ```
 
+واجهة CISA KEV المستقلة:
+
+```text
+http://127.0.0.1:8080/kev
+```
+
 لبناء JAR مستقل:
 
 ```bash
 ./scripts/build-distribution.sh
-java -jar dist/rbvm-csv-platform-0.13.0.jar
+java -jar dist/rbvm-csv-platform-0.14.0.jar
 ```
 
 ولتشغيل الاختبارات ثم تحليل ملف من CLI:
@@ -89,10 +96,10 @@ java -jar dist/rbvm-csv-platform-0.13.0.jar
 
 ```bash
 ./scripts/verify-reproducible-build.sh
-sha256sum --check dist/rbvm-csv-platform-0.13.0.jar.sha256
+sha256sum --check dist/rbvm-csv-platform-0.14.0.jar.sha256
 ```
 
-ينشر tag مطابق مثل `v0.13.0` Release يحتوي JAR وchecksum وSPDX SBOM، ويولد
+ينشر tag مطابق مثل `v0.14.0` Release يحتوي JAR وchecksum وSPDX SBOM، ويولد
 GitHub build-provenance وSBOM attestations. يتحقق workflow من تطابق tag مع
 Gradle وOpenAPI واسم الحزمة قبل النشر.
 
@@ -232,6 +239,21 @@ curl -X POST http://127.0.0.1:8080/api/v1/cases/CASE_ID/actions \
 probes، بينما `/api/v1/health` و`/api/v1/metrics` يحتاجان دور `VIEWER` أوأعلى.
 الخدمة الافتراضية تستمع على loopback؛
 عند نشرها خارج الجهاز يجب وضع TLS reverse proxy موثوق أمامها وعدم إرسال Bearer token عبر HTTP.
+
+CISA KEV Threat Evidence:
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/v1/cisa-kev-imports \
+  -H "Authorization: Bearer $RBVM_API_TOKEN" \
+  -H 'Content-Type: text/csv' \
+  --data-binary @cisa-kev.csv
+
+curl -H "Authorization: Bearer $RBVM_API_TOKEN" \
+  'http://127.0.0.1:8080/api/v1/cisa-kev-evidence?limit=100&cve=CVE-2026-'
+```
+
+`NOT_LISTED` يعني أن الـCVE غير موجود في لقطة KEV كاملة ومتحقق منها؛ لا يعني أن الثغرة آمنة أو غير مستغلة. `KEV_Due_Date` يبقى دليل مصدر من CISA ولا يتحول تلقائياً إلى SLA للمؤسسة.
+
 
 ## نتيجة CSV المرجعية
 

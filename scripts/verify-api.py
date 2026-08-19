@@ -55,8 +55,8 @@ def main():
 
     if document.get("openapi") != "3.1.1":
         raise AssertionError("OpenAPI document must declare 3.1.1")
-    if document.get("info", {}).get("version") != "0.13.0":
-        raise AssertionError("OpenAPI info.version must match Increment 13")
+    if document.get("info", {}).get("version") != "0.14.0":
+        raise AssertionError("OpenAPI info.version must match Increment 14")
 
     bearer = document.get("components", {}).get("securitySchemes", {}).get("bearerAuth", {})
     if bearer.get("type") != "http" or bearer.get("scheme") != "bearer":
@@ -93,6 +93,8 @@ def main():
         "/applicability-imports",
         "/cvss-v31-evidence",
         "/cvss-v31-imports",
+        "/cisa-kev-evidence",
+        "/cisa-kev-imports",
         "/cases",
         "/cases/{caseId}",
         "/cases/{caseId}/actions",
@@ -114,6 +116,43 @@ def main():
     cvss_capability = schemas.get("CvssV31Capability", {})
     if set(cvss_capability.get("required", [])) != {"importEnabled", "evidenceReadEnabled"}:
         raise AssertionError("CVSS v3.1 capability schema is incomplete")
+
+    if "cisaKev" not in health_required:
+        raise AssertionError("Health schema must expose CISA KEV runtime capability")
+    kev_capability = schemas.get("CisaKevCapability", {})
+    if set(kev_capability.get("required", [])) != {"importEnabled", "evidenceReadEnabled"}:
+        raise AssertionError("CISA KEV capability schema is incomplete")
+
+    kev_import = schemas.get("CisaKevImportResult", {})
+    required_kev_import_fields = {
+        "insertedSnapshots",
+        "replayedSnapshots",
+        "snapshotConflictGroups",
+        "insertedEvidence",
+        "replayedEvidence",
+        "persistenceQuarantinedRows",
+        "contractQuarantinedRows",
+        "totalQuarantinedRows",
+        "uniqueCves",
+        "uniqueSnapshots",
+    }
+    if not required_kev_import_fields.issubset(set(kev_import.get("required", []))):
+        raise AssertionError("CISA KEV import result schema is incomplete")
+    if kev_import.get("properties", {}).get("contractId", {}).get("const") != "CISA_KEV_CSV_V1":
+        raise AssertionError("CISA KEV import result must bind to CISA_KEV_CSV_V1")
+    if kev_import.get("properties", {}).get("semantics", {}).get("const") != \
+  "CVE_SCOPED_CISA_KEV_SNAPSHOT_MEMBERSHIP_EVIDENCE":
+        raise AssertionError("CISA KEV import semantics are incorrect")
+
+    kev_page = schemas.get("CisaKevEvidencePage", {})
+    if kev_page.get("properties", {}).get("semantics", {}).get("const") != \
+  "CURRENT_PER_SOURCE_CISA_KEV_SNAPSHOT_MEMBERSHIP_EVIDENCE":
+        raise AssertionError("CISA KEV read semantics must remain current-per-source")
+    kev_item = schemas.get("CisaKevEvidenceItem", {}).get("properties", {})
+    if set(kev_item.get("kevStatus", {}).get("enum", [])) != {"LISTED", "NOT_LISTED"}:
+        raise AssertionError("CISA KEV API must not persist or expose fabricated UNKNOWN rows")
+    if kev_item.get("kevCatalogSha256", {}).get("pattern") != "^[a-f0-9]{64}$":
+        raise AssertionError("CISA KEV API must expose snapshot SHA-256 provenance")
 
     applicability = schemas.get("ApplicabilityImportResult", {})
     required_applicability_fields = {
