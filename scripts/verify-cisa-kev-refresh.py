@@ -134,7 +134,7 @@ def scheduled_flow_runs_end_to_end_without_database_shortcut():
 
             snapshot = json.loads((published / "catalog-snapshot.json").read_text(encoding="utf-8"))
             assert snapshot["complete"] is True
-            assert snapshot["acquisitionMode"] == "OFFLINE_REPLAY"
+            assert snapshot["acquisitionMode"] == "OFFLINE_INPUT"
             assert snapshot["declaredCount"] == snapshot["parsedCount"] == 1
 
             build = json.loads((published / "build.json").read_text(encoding="utf-8"))
