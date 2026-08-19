@@ -22,7 +22,7 @@ def arguments():
     parser.add_argument(
         "--api-base",
         default=os.environ.get("RBVM_API_BASE_URL", DEFAULT_API_BASE),
-        help="platform base URL; remote endpoints must use HTTPS",
+        help="platform origin; remote endpoints must use HTTPS",
     )
     parser.add_argument("--report", type=Path, help="write the import response atomically")
     parser.add_argument(
@@ -50,6 +50,8 @@ def endpoint(api_base):
     parsed = urlparse(api_base)
     if parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise RuntimeError("API base URL must not contain credentials, query, or fragment")
+    if parsed.path not in {"", "/"}:
+        raise RuntimeError("API base URL must be an origin without an application path")
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise RuntimeError("API base URL must be an absolute HTTP(S) URL")
     localhost = parsed.hostname.lower() in {"127.0.0.1", "localhost", "::1"}
@@ -88,8 +90,9 @@ def import_evidence(path, api_base, api_key, max_bytes):
             status = response.status
             payload = response.read()
     except HTTPError as error:
-        detail = error.read(4096).decode("utf-8", errors="replace").strip()
-        raise RuntimeError(f"CVSS import returned HTTP {error.code}: {detail}") from error
+        # Do not echo the remote response body. A configured endpoint has seen the bearer token and
+        # must not be allowed to reflect secrets or attacker-controlled text into scheduler logs.
+        raise RuntimeError(f"CVSS import returned HTTP {error.code}") from error
     except URLError as error:
         raise RuntimeError(f"CVSS import connection failed: {error.reason}") from error
 
