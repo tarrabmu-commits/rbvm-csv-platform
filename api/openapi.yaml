@@ -5,9 +5,9 @@ info:
   description: >-
     Synchronous upload, validation, preview, and canonical-domain materialization
     API for WAZUH_CSV_V1 positive observations and opt-in WAZUH_CSV_V2 explicit
-    finding lifecycle evidence, including explicit
-    case decisions, an append-only workflow audit trail, and optional health
-    visibility for a synchronous PostgreSQL canonical projection.
+    finding lifecycle evidence, including separate finding-scoped applicability
+    assessment import, explicit case decisions, an append-only workflow audit trail,
+    and optional health visibility for a synchronous PostgreSQL canonical projection.
 servers:
   - url: http://127.0.0.1:8080/api/v1
 security:
@@ -95,6 +95,75 @@ paths:
           $ref: '#/components/responses/AuthenticationRequired'
         '429':
           $ref: '#/components/responses/RateLimited'
+  /applicability-findings.csv:
+    get:
+      operationId: exportApplicabilityFindings
+      summary: Export tenant-scoped Finding_ID references for applicability work
+      description: >-
+        Returns a reference CSV containing the canonical Finding_ID plus asset, CVE,
+        product, severity, and current applicability context. Current_* column names are
+        deliberate so this reference export cannot masquerade as APPLICABILITY_CSV_V1.
+      responses:
+        '200':
+          description: Finding reference CSV
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+          content:
+            text/csv:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /applicability-imports:
+    post:
+      operationId: importApplicabilityCsv
+      summary: Validate and persist APPLICABILITY_CSV_V1 evidence
+      description: >-
+        Parses the five-column finding-scoped assessment contract and appends safe
+        evidence to immutable PostgreSQL history. Unknown findings and persisted
+        same-time conflicts are quarantined rather than reassigned or overwritten.
+      requestBody:
+        required: true
+        content:
+          text/csv:
+            schema:
+              type: string
+              format: binary
+          application/csv:
+            schema:
+              type: string
+              format: binary
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Applicability file processed transactionally
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicabilityImportResult'
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+        '403':
+          $ref: '#/components/responses/InsufficientRole'
+        '413':
+          $ref: '#/components/responses/Problem'
+        '415':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Problem'
   /cases:
     get:
       operationId: listCases
@@ -416,6 +485,7 @@ components:
         - defaultContractId
         - catalogBackend
         - canonicalProjection
+        - applicability
         - storedImports
         - recoveryWarningCount
         - maximumUploadBytes
@@ -437,6 +507,8 @@ components:
           enum: [LOCAL_MEMORY_REBUILD, POSTGRESQL]
         canonicalProjection:
           $ref: '#/components/schemas/CanonicalProjectionHealth'
+        applicability:
+          $ref: '#/components/schemas/ApplicabilityCapability'
         storedImports:
           type: integer
           minimum: 0
@@ -456,6 +528,15 @@ components:
         cases:
           type: integer
           minimum: 0
+    ApplicabilityCapability:
+      type: object
+      additionalProperties: false
+      required: [importEnabled, findingReferenceExportEnabled]
+      properties:
+        importEnabled:
+          type: boolean
+        findingReferenceExportEnabled:
+          type: boolean
     CanonicalProjectionHealth:
       type: object
       required: [backend, status]
@@ -1058,6 +1139,97 @@ components:
         resolvedAt:
           type: [string, 'null']
           format: date-time
+    ApplicabilityImportResult:
+      type: object
+      additionalProperties: false
+      required:
+        - contractId
+        - semantics
+        - logicalRows
+        - acceptedRows
+        - insertedAssessments
+        - replayedAssessments
+        - contractDeduplicatedRows
+        - persistenceQuarantinedRows
+        - contractQuarantinedRows
+        - totalDeduplicatedRows
+        - totalQuarantinedRows
+        - statusDistribution
+        - contractIssues
+        - persistenceIssues
+      properties:
+        contractId:
+          const: APPLICABILITY_CSV_V1
+        semantics:
+          const: FINDING_SCOPED_EXPLICIT_ASSESSMENT
+        logicalRows:
+          type: integer
+          format: int64
+          minimum: 0
+        acceptedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        insertedAssessments:
+          type: integer
+          format: int64
+          minimum: 0
+        replayedAssessments:
+          type: integer
+          format: int64
+          minimum: 0
+        contractDeduplicatedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        persistenceQuarantinedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        contractQuarantinedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        totalDeduplicatedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        totalQuarantinedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        statusDistribution:
+          type: object
+          required: [APPLICABLE, NOT_APPLICABLE, UNKNOWN]
+          properties:
+            APPLICABLE: {type: integer, format: int64, minimum: 0}
+            NOT_APPLICABLE: {type: integer, format: int64, minimum: 0}
+            UNKNOWN: {type: integer, format: int64, minimum: 0}
+        contractIssues:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/ApplicabilityIssue'
+        persistenceIssues:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/ApplicabilityIssue'
+    ApplicabilityIssue:
+      type: object
+      additionalProperties: false
+      required: [rowNumber, level, code, message]
+      properties:
+        rowNumber:
+          type: integer
+          format: int64
+          minimum: 1
+        level:
+          enum: [WARNING, ERROR]
+        code:
+          type: string
+        message:
+          type: string
     CaseAuditEvent:
       type: object
       required:
