@@ -1,0 +1,54 @@
+name: align-v018-evidence-catchup-once
+
+on:
+  push:
+    branches:
+      - agent/evidence-api-contract-v018-catchup
+
+permissions:
+  contents: write
+
+concurrency:
+  group: align-v018-evidence-catchup-once
+  cancel-in-progress: false
+
+jobs:
+  align:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch and historical transformer source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: agent/evidence-api-contract-v018-catchup
+          fetch-depth: 0
+      - name: Apply missed Network Reachability 0.17 alignment
+        shell: bash
+        run: |
+          git show origin/agent/network-reachability-api-contract-v017:scripts/align-v017.py > scripts/_align-v017-catchup.py
+          python3 scripts/_align-v017-catchup.py
+          rm scripts/_align-v017-catchup.py
+      - name: Apply Business Impact and 0.18 alignment
+        run: python3 scripts/align-v018-business-impact.py
+      - name: Verify 0.18 release contract
+        run: ./scripts/verify-release-version.sh v0.18.0
+      - name: Verify code API SQL web and scripts
+        run: ./scripts/verify.sh
+      - name: Verify reproducible 0.18 distribution
+        run: ./scripts/verify-reproducible-build.sh
+      - name: Publish finalized release contract branch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f scripts/align-v018-business-impact.py .github/workflows/align-v018-evidence-catchup.yml
+          git add build.gradle.kts
+          git add api/openapi.yaml
+          git add README.md
+          git add scripts/verify-api.py
+          git add scripts/build-distribution.sh
+          git add scripts/verify-reproducible-build.sh
+          git add .github/workflows/verify.yml
+          git add .github/workflows/release.yml
+          git commit -m "Align Reachability and Business Impact API contract to 0.18.0"
+          git push origin HEAD:agent/evidence-api-contract-v018-catchup
