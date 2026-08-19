@@ -2,6 +2,7 @@ package io.rbvm.csv;
 
 import io.rbvm.decision.RbvmDecisionInputSnapshotSelfTest;
 import io.rbvm.decision.RbvmDecisionMethodologyPolicySelfTest;
+import io.rbvm.postgres.PostgresDecisionInputSnapshotStoreSelfTest;
 import io.rbvm.postgres.PostgresDecisionMethodologyPolicyStoreSelfTest;
 import io.rbvm.postgres.PostgresFoundationSelfTest;
 
@@ -39,6 +40,7 @@ public final class PlatformSelfTest {
         CanonicalProjectionSelfTest.main(args);
         PostgresFoundationSelfTest.main(args);
         PostgresDecisionMethodologyPolicyStoreSelfTest.main(args);
+        PostgresDecisionInputSnapshotStoreSelfTest.main(args);
         System.out.println("PlatformSelfTest: PASS");
     }
 }
