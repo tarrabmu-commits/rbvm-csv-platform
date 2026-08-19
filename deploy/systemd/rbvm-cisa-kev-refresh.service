@@ -1,0 +1,21 @@
+[Unit]
+Description=RBVM CISA KEV collection and canonical import
+After=network-online.target rbvm-csv-platform.service
+Wants=network-online.target rbvm-csv-platform.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/rbvm-csv-platform
+EnvironmentFile=%h/.config/rbvm-platform/cisa-kev-refresh.env
+ExecStart=/usr/bin/env bash %h/rbvm-csv-platform/scripts/scheduled-cisa-kev-refresh.sh
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=-%h/.local/share/rbvm-platform/cisa-kev
