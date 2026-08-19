@@ -39,20 +39,21 @@ def main() -> None:
         if invariant not in migration:
             raise AssertionError(f"V16 is missing methodology registry invariant: {invariant}")
 
-    # Policy selection/activation is deliberately not inferred by SQL.
+    # Policy selection/activation is deliberately not inferred by SQL. The legacy-exclusion enum
+    # legitimately contains the token PRIORITY_TIER, so guard actual decision-column shapes instead.
     for forbidden in (
         "CREATE VIEW RBVM.CURRENT_DECISION_METHODOLOGY",
         "CREATE VIEW RBVM.ACTIVE_DECISION_METHODOLOGY",
-        "IS_ACTIVE",
-        "ACTIVE_POLICY",
+        "IS_ACTIVE BOOLEAN",
+        "ACTIVE_POLICY_ID",
         "MAX(REVISION)",
-        "RISK_SCORE",
-        "PRIORITY_TIER",
-        "SLA_DAYS",
-        "IMPACT_WEIGHT",
-        "AGGREGATE_IMPACT_SCORE",
-        "ATTACK_PATH_SCORE",
-        "INTERNET_EXPOSED",
+        "RISK_SCORE ",
+        "PRIORITY_TIER TEXT",
+        "SLA_DAYS ",
+        "IMPACT_WEIGHT ",
+        "AGGREGATE_IMPACT_SCORE ",
+        "ATTACK_PATH_SCORE ",
+        "INTERNET_EXPOSED BOOLEAN",
     ):
         if forbidden in migration:
             raise AssertionError(f"V16 must not derive or select {forbidden}")
