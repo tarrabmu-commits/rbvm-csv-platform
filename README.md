@@ -48,7 +48,7 @@
 - JAR reproducible مع SHA-256 وSPDX 2.3 SBOM وGitHub artifact attestations.
 - كل GitHub Action مثبت على commit SHA كامل، مع CodeQL وجدول release موثّق.
 - GitHub Actions للتحقق والبناء، واختبار تعافي حي بعد إعادة تشغيل PostgreSQL.
-- OpenAPI 0.13.0 موحّد مع runtime CVSS/Appplicability الحالي، إضافة إلى migrations واختبارات contract/domain/HTTP.
+- OpenAPI 0.13.0 موحّد مع runtime CVSS/Applicability الحالي، إضافة إلى migrations واختبارات contract/domain/HTTP.
 
 ## التشغيل المحلي
 
