@@ -1,4 +1,4 @@
-# RBVM CSV Platform — Increment 15
+# RBVM CSV Platform — Increment 16
 
 منصة محلية قابلة للتشغيل لإدخال `WAZUH_CSV_V1` أوعقد `WAZUH_CSV_V2` الاختياري وتحويل الأدلة إلى
 نموذج RBVM موحّد: Assets وVulnerabilities وComponents وObservations وExposures
@@ -17,9 +17,10 @@
 - CVSS v3.1 Base مستقلة عبر `CVSS_V31_CSV_V1` كدليل Technical Severity على مستوى CVE، مع source وobserved-at خاصين بها.
 - CISA KEV مستقلة عبر `CISA_KEV_CSV_V1` كدليل Threat Evidence مربوط بلقطة كاملة ومتحقق منها، مع `LISTED|NOT_LISTED` وprovenance صريح؛ غياب الدليل يبقى `UNKNOWN`.
 - FIRST EPSS مستقلة عبر `EPSS_CSV_V1` كدليل exploitation probability على مستوى CVE، مع probability وpercentile وmodel version وscore date وsource SHA-256؛ غياب score evidence لا يتحول إلى `0`.
-- PostgreSQL V9 يحفظ Applicability history، V10 يحفظ CVSS history، V11 يحفظ CISA KEV snapshot-bound history، وV12 يحفظ EPSS score snapshots وCVE score history.
-- API مخصصة لاستيراد Applicability وCVSS وKEV وEPSS وقراءة current evidence، مع صفحات تشغيل مستقلة على `/cvss` و`/kev` و`/epss`.
-- current CVSS/KEV/EPSS evidence تبقى per-source من دون اختيار winner مخفي أوthreshold-to-priority mapping.
+- Asset Context مستقلة عبر `ASSET_CONTEXT_CSV_V1` كدليل تنظيمي على مستوى الـAsset، مع Environment وBusiness Service وOwner وqualitative Business Criticality وsource SHA-256؛ ولا تتحول هذه القيم تلقائياً إلى risk أوpriority.
+- PostgreSQL V9 يحفظ Applicability history، V10 يحفظ CVSS history، V11 يحفظ CISA KEV snapshot-bound history، V12 يحفظ EPSS score snapshots وCVE score history، وV13 يحفظ immutable Asset Context snapshots/evidence.
+- API مخصصة لاستيراد Applicability وCVSS وKEV وEPSS وAsset Context وقراءة current evidence، مع صفحات تشغيل مستقلة على `/cvss` و`/kev` و`/epss` و`/asset-context`.
+- current CVSS/KEV/EPSS وAsset Context evidence تبقى per-source من دون اختيار winner مخفي أوthreshold-to-priority mapping؛ Business Criticality تبقى qualitative evidence فقط.
 - ملخص coverage وfreshness للاستخبارات القديمة مع حد stale معلن قدره 7 أيام وتوزيع الأولوية.
 - تحديث استخبارات مجدول وآمن مع cache مربوط ببصمة CVE ولقطات ذرية قابلة للعمل offline.
 - حل تقني وإعادة فتح من دليل V2 صريح فقط؛ لا يوجد أي إغلاق مبني على غياب الصف.
@@ -40,10 +41,10 @@
 - PostgreSQL projection متزامنة: Import لا يكتمل قبل Commit معاملة قاعدة البيانات.
 - إعادة إرسال آمنة للـImports وأحداث Workflow من الأدلة المحلية بعد الانقطاع.
 - PostgreSQL Read Catalog لملخص الكاتالوج والبحث وتفاصيل الحالات.
-- Migration runner بتدقيق SHA-256 وقفل PostgreSQL advisory وتسلسل V1–V12.
-- دور Runtime محدود، وحراس append-only يمنعون تعديل أوحذف أدلة التدقيق وApplicability/CVSS/KEV/EPSS history.
+- Migration runner بتدقيق SHA-256 وقفل PostgreSQL advisory وتسلسل V1–V13.
+- دور Runtime محدود، وحراس append-only يمنعون تعديل أوحذف أدلة التدقيق وApplicability/CVSS/KEV/EPSS/Asset Context history.
 - TLS `verify-full` وأدوات Backup/Restore واختبار قطع الاتصال.
-- Health يصرّح بمصدر القراءة وحالة PostgreSQL reconciliation وبقدرات Applicability وCVSS v3.1 وCISA KEV وEPSS.
+- Health يصرّح بمصدر القراءة وحالة PostgreSQL reconciliation وبقدرات Applicability وCVSS v3.1 وCISA KEV وEPSS وAsset Context.
 - Bearer API keys ببصمات SHA-256 فقط وRBAC لأدوار Viewer/Operator/Admin.
 - هوية Actor موثقة في Audit Trail، مع liveness/readiness وPrometheus metrics.
 - انتهاء اختياري لمفاتيح API وحدود طلبات مستقلة للـActors ومحاولات الدخول الفاشلة.
@@ -51,7 +52,7 @@
 - JAR reproducible مع SHA-256 وSPDX 2.3 SBOM وGitHub artifact attestations.
 - كل GitHub Action مثبت على commit SHA كامل، مع CodeQL وجدول release موثّق.
 - GitHub Actions للتحقق والبناء، واختبار تعافي حي بعد إعادة تشغيل PostgreSQL.
-- OpenAPI 0.15.0 موحّد مع runtime Applicability/CVSS/CISA KEV/EPSS الحالي، إضافة إلى migrations واختبارات contract/domain/HTTP.
+- OpenAPI 0.16.0 موحّد مع runtime Applicability/CVSS/CISA KEV/EPSS/Asset Context الحالي، إضافة إلى migrations واختبارات contract/domain/HTTP.
 
 ## التشغيل المحلي
 
@@ -87,11 +88,17 @@ http://127.0.0.1:8080/kev
 http://127.0.0.1:8080/epss
 ```
 
+واجهة Asset Context المستقلة:
+
+```text
+http://127.0.0.1:8080/asset-context
+```
+
 لبناء JAR مستقل:
 
 ```bash
 ./scripts/build-distribution.sh
-java -jar dist/rbvm-csv-platform-0.15.0.jar
+java -jar dist/rbvm-csv-platform-0.16.0.jar
 ```
 
 ولتشغيل الاختبارات ثم تحليل ملف من CLI:
@@ -104,10 +111,10 @@ java -jar dist/rbvm-csv-platform-0.15.0.jar
 
 ```bash
 ./scripts/verify-reproducible-build.sh
-sha256sum --check dist/rbvm-csv-platform-0.15.0.jar.sha256
+sha256sum --check dist/rbvm-csv-platform-0.16.0.jar.sha256
 ```
 
-ينشر tag مطابق مثل `v0.15.0` Release يحتوي JAR وchecksum وSPDX SBOM، ويولد
+ينشر tag مطابق مثل `v0.16.0` Release يحتوي JAR وchecksum وSPDX SBOM، ويولد
 GitHub build-provenance وSBOM attestations. يتحقق workflow من تطابق tag مع
 Gradle وOpenAPI واسم الحزمة قبل النشر.
 
@@ -129,6 +136,15 @@ Gradle وOpenAPI واسم الحزمة قبل النشر.
 | `RBVM_API_KEYS_FILE` | — | ملف `digest=actor-id\|ROLE` ببصمات SHA-256؛ يمنع التشغيل أي POSIX group/other permissions |
 | `RBVM_RATE_LIMIT_PER_MINUTE` | `600` | الحد الثابت لكل Actor موثّق؛ القيمة `0` تعطل الحد |
 | `RBVM_AUTH_FAILURE_LIMIT_PER_MINUTE` | `60` | حد محاولات الدخول الفاشلة لكل عنوان مصدر |
+
+## تحديث FIRST EPSS المجدول
+
+المسار الكانوني المستقل لـEPSS مكتمل أيضاً: `scheduled-epss-refresh.sh` يجلب أويعيد تشغيل
+لقطة FIRST bulk متحققاً منها، يبني `EPSS_CSV_V1`، ثم يسلّم نفس البايتات إلى
+`POST /api/v1/epss-imports` بمفتاح API مخصص. لا يتقدم `latest` إلا بعد نجاح الـAPI import،
+وأي فشل fetch/build/handoff يبقي آخر لقطة منشورة سليمة كما هي. وحدتا
+`rbvm-epss-refresh.service` و`rbvm-epss-refresh.timer` توفران جدولة يومية مع قفل يمنع
+التشغيل المتداخل وretention للقطات المكتملة.
 
 ## تحديث استخبارات الثغرات المجدول
 
@@ -331,6 +347,7 @@ data/
 - [`db/migration/V10__cvss_v31_base_persistence.sql`](db/migration/V10__cvss_v31_base_persistence.sql)
 - [`db/migration/V11__cisa_kev_persistence.sql`](db/migration/V11__cisa_kev_persistence.sql)
 - [`db/migration/V12__epss_persistence.sql`](db/migration/V12__epss_persistence.sql)
+- [`db/migration/V13__asset_context_persistence.sql`](db/migration/V13__asset_context_persistence.sql)
 
 لتفعيل الإسقاط، ضع pgJDBC على الـclasspath من دون تضمينه داخل حزمة التطبيق:
 
@@ -389,3 +406,12 @@ append-only؛ CVSS/KEV/EPSS current views تبقى per-source من دون source
 - لا يوجد إغلاق من الغياب؛ `SOURCE_RESOLVED` يحتاج صف V2 صريحاً ومطابقاً.
 - تعافي single-node بعد restart مختبر، لكن لا يوجد HA أوMulti-writer؛ مسار الكتابة يستخدم advisory lock واحداً عن قصد.
 - TLS المحلي وBackup/Restore مختبران، لكن إدارة الشهادات وRPO/RTO الإنتاجية تعتمد بيئة النشر.
+
+## حد Asset Context الحالي
+
+Asset Context أصبحت evidence كاملة من العقد حتى V13 وAPI/UI، لكن **ليست RBVM score**.
+لا يوجد في 0.16.0 source arbitration بين أنظمة السياق، ولا internet exposure/reachability،
+ولا numeric criticality multiplier، ولا CVSS+KEV+EPSS+asset formula، ولا remediation SLA مشتق.
+المرحلة التالية هي Exposure/Reachability evidence مستقلة مع provenance، ثم Business/Mission
+Impact، وبعدها فقط يمكن تثبيت methodology القرار بشكل صريح وقابل للتدقيق.
+

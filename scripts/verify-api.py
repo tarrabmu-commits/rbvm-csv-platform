@@ -55,8 +55,8 @@ def main():
 
     if document.get("openapi") != "3.1.1":
         raise AssertionError("OpenAPI document must declare 3.1.1")
-    if document.get("info", {}).get("version") != "0.15.0":
-        raise AssertionError("OpenAPI info.version must match Increment 15")
+    if document.get("info", {}).get("version") != "0.16.0":
+        raise AssertionError("OpenAPI info.version must match Increment 16")
 
     bearer = document.get("components", {}).get("securitySchemes", {}).get("bearerAuth", {})
     if bearer.get("type") != "http" or bearer.get("scheme") != "bearer":
@@ -97,6 +97,8 @@ def main():
         "/cisa-kev-imports",
         "/epss-evidence",
         "/epss-imports",
+        "/asset-context-evidence",
+        "/asset-context-imports",
         "/cases",
         "/cases/{caseId}",
         "/cases/{caseId}/actions",
@@ -131,6 +133,14 @@ def main():
     if set(epss_capability.get("required", [])) != {"importEnabled", "evidenceReadEnabled"}:
         raise AssertionError("EPSS capability schema is incomplete")
 
+    if "assetContext" not in health_required:
+        raise AssertionError("Health schema must expose Asset Context runtime capability")
+    asset_context_capability = schemas.get("AssetContextCapability", {})
+    if set(asset_context_capability.get("required", [])) != {
+        "importEnabled", "evidenceReadEnabled"
+    }:
+        raise AssertionError("Asset Context capability schema is incomplete")
+
     kev_import = schemas.get("CisaKevImportResult", {})
     required_kev_import_fields = {
         "insertedSnapshots",
@@ -149,12 +159,12 @@ def main():
     if kev_import.get("properties", {}).get("contractId", {}).get("const") != "CISA_KEV_CSV_V1":
         raise AssertionError("CISA KEV import result must bind to CISA_KEV_CSV_V1")
     if kev_import.get("properties", {}).get("semantics", {}).get("const") != \
-  "CVE_SCOPED_CISA_KEV_SNAPSHOT_MEMBERSHIP_EVIDENCE":
+            "CVE_SCOPED_CISA_KEV_SNAPSHOT_MEMBERSHIP_EVIDENCE":
         raise AssertionError("CISA KEV import semantics are incorrect")
 
     kev_page = schemas.get("CisaKevEvidencePage", {})
     if kev_page.get("properties", {}).get("semantics", {}).get("const") != \
-  "CURRENT_PER_SOURCE_CISA_KEV_SNAPSHOT_MEMBERSHIP_EVIDENCE":
+            "CURRENT_PER_SOURCE_CISA_KEV_SNAPSHOT_MEMBERSHIP_EVIDENCE":
         raise AssertionError("CISA KEV read semantics must remain current-per-source")
     kev_item = schemas.get("CisaKevEvidenceItem", {}).get("properties", {})
     if set(kev_item.get("kevStatus", {}).get("enum", [])) != {"LISTED", "NOT_LISTED"}:
@@ -203,6 +213,72 @@ def main():
     }
     if forbidden_epss_fields.intersection(epss_item):
         raise AssertionError("Independent EPSS evidence must not contain decision-policy fields")
+
+    asset_context_import = schemas.get("AssetContextImportResult", {})
+    required_asset_context_import_fields = {
+        "contractId",
+        "semantics",
+        "logicalRows",
+        "acceptedRows",
+        "insertedSnapshots",
+        "replayedSnapshots",
+        "snapshotConflictGroups",
+        "insertedEvidence",
+        "replayedEvidence",
+        "contractDeduplicatedRows",
+        "persistenceQuarantinedRows",
+        "contractQuarantinedRows",
+        "totalDeduplicatedRows",
+        "totalQuarantinedRows",
+        "environmentDistribution",
+        "criticalityDistribution",
+        "contractIssues",
+        "persistenceIssues",
+    }
+    if not required_asset_context_import_fields.issubset(
+            set(asset_context_import.get("required", []))
+    ):
+        raise AssertionError("Asset Context import result schema is incomplete")
+    asset_context_import_properties = asset_context_import.get("properties", {})
+    if asset_context_import_properties.get("contractId", {}).get("const") != \
+            "ASSET_CONTEXT_CSV_V1":
+        raise AssertionError("Asset Context import result must bind to ASSET_CONTEXT_CSV_V1")
+    if asset_context_import_properties.get("semantics", {}).get("const") != \
+            "ASSET_SCOPED_ORGANIZATIONAL_CONTEXT_EVIDENCE":
+        raise AssertionError("Asset Context import semantics are incorrect")
+
+    asset_context_page = schemas.get("AssetContextEvidencePage", {})
+    if asset_context_page.get("properties", {}).get("semantics", {}).get("const") != \
+            "CURRENT_PER_SOURCE_ASSET_ORGANIZATIONAL_CONTEXT_EVIDENCE":
+        raise AssertionError("Asset Context read semantics must remain current-per-source")
+    asset_context_item = schemas.get("AssetContextEvidenceItem", {}).get("properties", {})
+    if set(asset_context_item.get("assetIdentityBasis", {}).get("enum", [])) != {
+        "SOURCE_NAME_ONLY", "SOURCE_STABLE_ID"
+    }:
+        raise AssertionError("Asset Context API must preserve canonical asset identity basis")
+    if set(asset_context_item.get("environment", {}).get("enum", [])) != {
+        "PRODUCTION", "PRE_PRODUCTION", "DEVELOPMENT", "TEST", "SANDBOX",
+        "DISASTER_RECOVERY", "UNKNOWN"
+    }:
+        raise AssertionError("Asset Context environment vocabulary is incomplete")
+    if set(asset_context_item.get("businessCriticality", {}).get("enum", [])) != {
+        "MISSION_CRITICAL", "HIGH", "MODERATE", "LOW", "UNKNOWN"
+    }:
+        raise AssertionError("Asset Context business criticality vocabulary is incomplete")
+    if asset_context_item.get("contextSourceSha256", {}).get("pattern") != "^[a-f0-9]{64}$":
+        raise AssertionError("Asset Context API must expose exact source-artifact SHA-256 provenance")
+    for timestamp in ("contextObservedAt", "evidenceIngestedAt", "snapshotIngestedAt"):
+        if asset_context_item.get(timestamp, {}).get("format") != "date-time":
+            raise AssertionError(f"Asset Context API must expose {timestamp} as date-time")
+    forbidden_asset_context_fields = {
+        "weight", "criticalityWeight", "riskScore", "priority", "priorityTier", "slaDays",
+        "threshold", "reachability", "internetExposed", "knownExploited",
+        "epssProbability", "cvssBaseScore"
+    }
+    if forbidden_asset_context_fields.intersection(asset_context_item):
+        raise AssertionError(
+            "Independent Asset Context evidence must not contain decision or reachability fields"
+        )
 
     applicability = schemas.get("ApplicabilityImportResult", {})
     required_applicability_fields = {
