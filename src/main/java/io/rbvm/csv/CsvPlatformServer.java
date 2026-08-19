@@ -19,6 +19,9 @@ import io.rbvm.postgres.ApplicabilityImportResult;
 import io.rbvm.postgres.ApplicabilityImporter;
 import io.rbvm.postgres.CanonicalProjectionFactory;
 import io.rbvm.postgres.CanonicalProjectionFactory.RuntimeComponents;
+import io.rbvm.postgres.CvssV31EvidenceReader;
+import io.rbvm.postgres.CvssV31ImportResult;
+import io.rbvm.postgres.CvssV31Importer;
 import io.rbvm.security.ApiKeyAuthenticator;
 import io.rbvm.security.ApiRole;
 import io.rbvm.security.AuthPrincipal;
@@ -58,6 +61,7 @@ public final class CsvPlatformServer implements AutoCloseable {
             "^/api/v1/csv-imports/([0-9a-fA-F-]{36})(/confirm)?$");
     private static final Pattern CASE_PATH = Pattern.compile(
             "^/api/v1/cases/([a-f0-9]{64})(/actions)?$");
+    private static final Pattern CVE_PREFIX = Pattern.compile("^CVE-[0-9A-Z-]+$");
     private static final long DEFAULT_MAXIMUM_UPLOAD_BYTES = 100L * 1024L * 1024L;
     private static final int MAXIMUM_ACTION_BODY_BYTES = 16 * 1024;
 
@@ -65,11 +69,14 @@ public final class CsvPlatformServer implements AutoCloseable {
     private final ExecutorService executor;
     private final CsvImportService imports;
     private final byte[] webUi;
+    private final byte[] cvssUi;
     private final ApiKeyAuthenticator authenticator;
     private final RequestRateLimiter rateLimiter;
     private final long maximumUploadBytes;
     private final Optional<ApplicabilityImporter> applicabilityImporter;
     private final Optional<ApplicabilityFindingExporter> applicabilityFindingExporter;
+    private final Optional<CvssV31Importer> cvssV31Importer;
+    private final Optional<CvssV31EvidenceReader> cvssV31EvidenceReader;
     private final Instant startedAt = Instant.now();
     private final AtomicLong requestsTotal = new AtomicLong();
     private final AtomicLong problemsTotal = new AtomicLong();
@@ -108,7 +115,10 @@ public final class CsvPlatformServer implements AutoCloseable {
         this.maximumUploadBytes = maximumUploadBytes;
         this.applicabilityImporter = Optional.empty();
         this.applicabilityFindingExporter = Optional.empty();
+        this.cvssV31Importer = Optional.empty();
+        this.cvssV31EvidenceReader = Optional.empty();
         this.webUi = loadResource("/web/index.html");
+        this.cvssUi = loadResource("/web/cvss-v31.html");
         this.server = HttpServer.create(new InetSocketAddress(host, port), 32);
         int workers = Math.max(4, Math.min(16, Runtime.getRuntime().availableProcessors()));
         this.executor = Executors.newFixedThreadPool(workers);
@@ -160,6 +170,8 @@ public final class CsvPlatformServer implements AutoCloseable {
                 readCatalog,
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
                 authenticator,
                 rateLimiter
         );
@@ -174,6 +186,36 @@ public final class CsvPlatformServer implements AutoCloseable {
             DomainCatalog readCatalog,
             Optional<ApplicabilityImporter> applicabilityImporter,
             Optional<ApplicabilityFindingExporter> applicabilityFindingExporter,
+            ApiKeyAuthenticator authenticator,
+            RequestRateLimiter rateLimiter
+    ) throws IOException {
+        this(
+                host,
+                port,
+                dataDirectory,
+                maximumUploadBytes,
+                canonicalProjection,
+                readCatalog,
+                applicabilityImporter,
+                applicabilityFindingExporter,
+                Optional.empty(),
+                Optional.empty(),
+                authenticator,
+                rateLimiter
+        );
+    }
+
+    public CsvPlatformServer(
+            String host,
+            int port,
+            Path dataDirectory,
+            long maximumUploadBytes,
+            CanonicalProjection canonicalProjection,
+            DomainCatalog readCatalog,
+            Optional<ApplicabilityImporter> applicabilityImporter,
+            Optional<ApplicabilityFindingExporter> applicabilityFindingExporter,
+            Optional<CvssV31Importer> cvssV31Importer,
+            Optional<CvssV31EvidenceReader> cvssV31EvidenceReader,
             ApiKeyAuthenticator authenticator,
             RequestRateLimiter rateLimiter
     ) throws IOException {
@@ -202,7 +244,13 @@ public final class CsvPlatformServer implements AutoCloseable {
                 applicabilityFindingExporter,
                 "applicabilityFindingExporter"
         );
+        this.cvssV31Importer = Objects.requireNonNull(cvssV31Importer, "cvssV31Importer");
+        this.cvssV31EvidenceReader = Objects.requireNonNull(
+                cvssV31EvidenceReader,
+                "cvssV31EvidenceReader"
+        );
         this.webUi = loadResource("/web/index.html");
+        this.cvssUi = loadResource("/web/cvss-v31.html");
         this.server = HttpServer.create(new InetSocketAddress(host, port), 32);
         int workers = Math.max(4, Math.min(16, Runtime.getRuntime().availableProcessors()));
         this.executor = Executors.newFixedThreadPool(workers);
@@ -241,6 +289,11 @@ public final class CsvPlatformServer implements AutoCloseable {
             if ("/".equals(path)) {
                 requireMethod(exchange, method, "GET");
                 sendBytes(exchange, 200, "text/html; charset=utf-8", webUi);
+                return;
+            }
+            if ("/cvss".equals(path) || "/cvss/".equals(path)) {
+                requireMethod(exchange, method, "GET");
+                sendBytes(exchange, 200, "text/html; charset=utf-8", cvssUi);
                 return;
             }
             if ("/api/v1/health".equals(path)) {
@@ -292,6 +345,18 @@ public final class CsvPlatformServer implements AutoCloseable {
                 requireMethod(exchange, method, "POST");
                 authorize(exchange, ApiRole.OPERATOR);
                 createApplicabilityImport(exchange);
+                return;
+            }
+            if ("/api/v1/cvss-v31-evidence".equals(path)) {
+                requireMethod(exchange, method, "GET");
+                authorize(exchange, ApiRole.VIEWER);
+                readCvssV31Evidence(exchange);
+                return;
+            }
+            if ("/api/v1/cvss-v31-imports".equals(path)) {
+                requireMethod(exchange, method, "POST");
+                authorize(exchange, ApiRole.OPERATOR);
+                createCvssV31Import(exchange);
                 return;
             }
             if ("/api/v1/csv-imports".equals(path)) {
@@ -385,6 +450,10 @@ public final class CsvPlatformServer implements AutoCloseable {
                 "importEnabled", applicabilityImporter.isPresent(),
                 "findingReferenceExportEnabled", applicabilityFindingExporter.isPresent()
         ));
+        health.put("cvssV31", Map.of(
+                "importEnabled", cvssV31Importer.isPresent(),
+                "evidenceReadEnabled", cvssV31EvidenceReader.isPresent()
+        ));
         return health;
     }
 
@@ -431,7 +500,7 @@ public final class CsvPlatformServer implements AutoCloseable {
         try {
             try (InputStream body = exchange.getRequestBody();
                  OutputStream output = Files.newOutputStream(staged)) {
-                copyBounded(body, output, maximumUploadBytes);
+                copyBounded(body, output, maximumUploadBytes, "Applicability CSV");
             }
             ApplicabilityImportResult result = importer.importFile(staged);
             sendJson(exchange, 200, result.toMap());
@@ -440,8 +509,60 @@ public final class CsvPlatformServer implements AutoCloseable {
         }
     }
 
-    private static void copyBounded(InputStream input, OutputStream output, long maximumBytes)
-            throws IOException {
+    private void readCvssV31Evidence(HttpExchange exchange) throws IOException {
+        CvssV31EvidenceReader reader = cvssV31EvidenceReader.orElseThrow(() ->
+                new HttpProblem(
+                        503,
+                        "CVSS_V31_PERSISTENCE_UNAVAILABLE",
+                        "CVSS v3.1 evidence reads require PostgreSQL schema version 10 or newer"
+                ));
+        CvssEvidenceQuery query = parseCvssEvidenceQuery(exchange.getRequestURI());
+        sendJson(exchange, 200, reader.currentEvidence(query.limit(), query.cvePrefix()));
+    }
+
+    private void createCvssV31Import(HttpExchange exchange) throws IOException {
+        CvssV31Importer importer = cvssV31Importer.orElseThrow(() ->
+                new HttpProblem(
+                        503,
+                        "CVSS_V31_PERSISTENCE_UNAVAILABLE",
+                        "CVSS v3.1 import requires PostgreSQL schema version 10 or newer"
+                ));
+        String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
+        if (!isCsvContentType(contentType)) {
+            throw new HttpProblem(
+                    415,
+                    "UNSUPPORTED_MEDIA_TYPE",
+                    "Content-Type must be text/csv, application/csv, or application/octet-stream"
+            );
+        }
+        long contentLength = parseContentLength(exchange.getRequestHeaders().getFirst("Content-Length"));
+        if (contentLength > maximumUploadBytes) {
+            throw new HttpProblem(
+                    413,
+                    "UPLOAD_TOO_LARGE",
+                    "CVSS v3.1 CSV exceeds the configured upload limit"
+            );
+        }
+
+        Path staged = Files.createTempFile("rbvm-cvss-v31-upload-", ".csv");
+        try {
+            try (InputStream body = exchange.getRequestBody();
+                 OutputStream output = Files.newOutputStream(staged)) {
+                copyBounded(body, output, maximumUploadBytes, "CVSS v3.1 CSV");
+            }
+            CvssV31ImportResult result = importer.importFile(staged);
+            sendJson(exchange, 200, result.toMap());
+        } finally {
+            Files.deleteIfExists(staged);
+        }
+    }
+
+    private static void copyBounded(
+            InputStream input,
+            OutputStream output,
+            long maximumBytes,
+            String evidenceName
+    ) throws IOException {
         byte[] buffer = new byte[8192];
         long total = 0;
         int read;
@@ -454,7 +575,7 @@ public final class CsvPlatformServer implements AutoCloseable {
                 throw new HttpProblem(
                         413,
                         "UPLOAD_TOO_LARGE",
-                        "Applicability CSV exceeds the configured upload limit"
+                        evidenceName + " exceeds the configured upload limit"
                 );
             }
             output.write(buffer, 0, read);
@@ -617,6 +738,32 @@ public final class CsvPlatformServer implements AutoCloseable {
                 parseEnumSet(query.get("priority"), VulnerabilityPriorityTier.class, "priority"),
                 parseOptionalBoolean(query.get("knownExploited"), "knownExploited")
         );
+    }
+
+    private static CvssEvidenceQuery parseCvssEvidenceQuery(URI uri) {
+        Map<String, String> query = parseParameters(uri.getRawQuery());
+        rejectUnknownFields(query, Set.of("limit", "cve"));
+        int limit = 100;
+        if (query.containsKey("limit")) {
+            try {
+                limit = Integer.parseInt(query.get("limit"));
+                if (limit < 1 || limit > 500) {
+                    throw new NumberFormatException("out of range");
+                }
+            } catch (NumberFormatException exception) {
+                throw new InvalidCaseActionException("limit must be between 1 and 500");
+            }
+        }
+        String cve = query.get("cve");
+        if (cve != null && !cve.isBlank()) {
+            cve = cve.trim().toUpperCase(Locale.ROOT);
+            if (cve.length() > 32 || !CVE_PREFIX.matcher(cve).matches()) {
+                throw new InvalidCaseActionException("cve must be a CVE identifier or CVE prefix");
+            }
+        } else {
+            cve = null;
+        }
+        return new CvssEvidenceQuery(limit, cve);
     }
 
     private static Boolean parseOptionalBoolean(String value, String field) {
@@ -798,6 +945,10 @@ public final class CsvPlatformServer implements AutoCloseable {
                 + "rbvm_rate_limited_total " + rateLimitedTotal.get() + "\n"
                 + "# TYPE rbvm_applicability_import_enabled gauge\n"
                 + "rbvm_applicability_import_enabled " + (applicabilityImporter.isPresent() ? 1 : 0) + "\n"
+                + "# TYPE rbvm_cvss_v31_import_enabled gauge\n"
+                + "rbvm_cvss_v31_import_enabled " + (cvssV31Importer.isPresent() ? 1 : 0) + "\n"
+                + "# TYPE rbvm_cvss_v31_evidence_read_enabled gauge\n"
+                + "rbvm_cvss_v31_evidence_read_enabled " + (cvssV31EvidenceReader.isPresent() ? 1 : 0) + "\n"
                 + "# TYPE rbvm_process_uptime_seconds gauge\n"
                 + "rbvm_process_uptime_seconds " + uptime + "\n"
                 + "# TYPE rbvm_imports_stored gauge\n"
@@ -849,20 +1000,28 @@ public final class CsvPlatformServer implements AutoCloseable {
                 runtime.readCatalog(),
                 runtime.applicabilityImporter(),
                 runtime.applicabilityFindingExporter(),
+                runtime.cvssV31Importer(),
+                runtime.cvssV31EvidenceReader(),
                 authenticator,
                 rateLimiter
         );
         Runtime.getRuntime().addShutdownHook(new Thread(application::close, "rbvm-shutdown"));
         application.start();
         System.out.println("RBVM CSV Platform is running at " + application.baseUri());
+        System.out.println("CVSS v3.1 operator UI: " + application.baseUri().resolve("/cvss"));
         System.out.println("Data directory: " + configuration.dataDirectory().toAbsolutePath().normalize());
         System.out.println("Canonical projection: "
                 + canonicalProjection.health().get("backend"));
         System.out.println("Applicability persistence: "
                 + (runtime.applicabilityImporter().isPresent() ? "ENABLED" : "DISABLED"));
+        System.out.println("CVSS v3.1 persistence: "
+                + (runtime.cvssV31Importer().isPresent() ? "ENABLED" : "DISABLED"));
         System.out.println("API authentication: "
                 + (authenticator.enabled() ? "API_KEY" : "DISABLED"));
         new CountDownLatch(1).await();
+    }
+
+    private record CvssEvidenceQuery(int limit, String cvePrefix) {
     }
 
     private record ServerConfiguration(
