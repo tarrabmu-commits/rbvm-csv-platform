@@ -2,7 +2,7 @@ package io.rbvm.postgres;
 
 import java.util.Objects;
 
-/** Idempotent outcome of installing one immutable RBVM methodology policy. */
+/** Idempotent outcome of installing one immutable RBVM methodology policy revision. */
 public record DecisionMethodologyPolicyInstallResult(
         Status status,
         int requestedRevision,
@@ -22,10 +22,9 @@ public record DecisionMethodologyPolicyInstallResult(
         if (existingPolicySha256 != null) {
             requireSha(existingPolicySha256, "existingPolicySha256");
         }
-        if ((status == Status.INSERTED || status == Status.REPLAYED)
-                && (existingRevision == null || existingPolicySha256 == null)) {
+        if (existingRevision == null || existingPolicySha256 == null) {
             throw new IllegalArgumentException(
-                    "Successful methodology installs must identify the persisted revision and SHA");
+                    "Methodology install outcomes must identify the persisted/conflicting revision and SHA");
         }
         if (status == Status.INSERTED || status == Status.REPLAYED) {
             if (existingRevision != requestedRevision
@@ -33,6 +32,10 @@ public record DecisionMethodologyPolicyInstallResult(
                 throw new IllegalArgumentException(
                         "Successful methodology install identity must match the request");
             }
+        }
+        if (status == Status.REVISION_CONFLICT && existingRevision != requestedRevision) {
+            throw new IllegalArgumentException(
+                    "Revision conflict must identify the same requested revision");
         }
     }
 
@@ -43,8 +46,7 @@ public record DecisionMethodologyPolicyInstallResult(
     public enum Status {
         INSERTED,
         REPLAYED,
-        REVISION_CONFLICT,
-        CONTENT_ALREADY_REGISTERED
+        REVISION_CONFLICT
     }
 
     private static void requireSha(String value, String field) {
