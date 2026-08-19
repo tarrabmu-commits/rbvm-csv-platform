@@ -30,9 +30,9 @@ public final class PostgresMigratorSelfTest {
     private static void appliesAndReplaysVersionedMigrations() throws Exception {
         FakeDatabase database = new FakeDatabase();
         PostgresMigrator migrator = new PostgresMigrator(database::connection);
-        assert migrator.migrate() == 12;
-        assert database.checksums.size() == 12;
-        assert database.commits == 12;
+        assert migrator.migrate() == 13;
+        assert database.checksums.size() == 13;
+        assert database.commits == 13;
         assert database.rollbacks == 0;
         assert database.executedSql.stream()
                 .anyMatch(sql -> sql.contains("CREATE TABLE rbvm.observation"));
@@ -64,6 +64,14 @@ public final class PostgresMigratorSelfTest {
                 .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.current_epss_evidence"));
         assert database.executedSql.stream()
                 .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.finding_epss_evidence"));
+        assert database.executedSql.stream()
+                .anyMatch(sql -> sql.contains("CREATE TABLE rbvm.asset_context_snapshot"));
+        assert database.executedSql.stream()
+                .anyMatch(sql -> sql.contains("CREATE TABLE rbvm.asset_context_evidence"));
+        assert database.executedSql.stream()
+                .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.current_asset_context_evidence"));
+        assert database.executedSql.stream()
+                .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.finding_asset_context_evidence"));
 
         long observationCreates = database.executedSql.stream()
                 .filter(sql -> sql.contains("CREATE TABLE rbvm.observation (")).count();
@@ -81,9 +89,13 @@ public final class PostgresMigratorSelfTest {
                 .filter(sql -> sql.contains("CREATE TABLE rbvm.epss_score_snapshot")).count();
         long epssEvidenceCreates = database.executedSql.stream()
                 .filter(sql -> sql.contains("CREATE TABLE rbvm.epss_evidence")).count();
+        long assetContextSnapshotCreates = database.executedSql.stream()
+                .filter(sql -> sql.contains("CREATE TABLE rbvm.asset_context_snapshot")).count();
+        long assetContextEvidenceCreates = database.executedSql.stream()
+                .filter(sql -> sql.contains("CREATE TABLE rbvm.asset_context_evidence")).count();
 
-        assert migrator.migrate() == 12;
-        assert database.commits == 12 : "replay must not reapply migrations";
+        assert migrator.migrate() == 13;
+        assert database.commits == 13 : "replay must not reapply migrations";
         assert database.executedSql.stream()
                 .filter(sql -> sql.contains("CREATE TABLE rbvm.observation (")).count()
                 == observationCreates;
@@ -108,6 +120,12 @@ public final class PostgresMigratorSelfTest {
         assert database.executedSql.stream()
                 .filter(sql -> sql.contains("CREATE TABLE rbvm.epss_evidence")).count()
                 == epssEvidenceCreates;
+        assert database.executedSql.stream()
+                .filter(sql -> sql.contains("CREATE TABLE rbvm.asset_context_snapshot")).count()
+                == assetContextSnapshotCreates;
+        assert database.executedSql.stream()
+                .filter(sql -> sql.contains("CREATE TABLE rbvm.asset_context_evidence")).count()
+                == assetContextEvidenceCreates;
         assert database.advisoryLocks == 2;
         assert database.advisoryUnlocks == 2;
     }
