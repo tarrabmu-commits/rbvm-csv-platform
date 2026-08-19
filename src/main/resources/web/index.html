@@ -46,6 +46,7 @@
       margin-top: 18px;
     }
     .upload-grid { display: grid; grid-template-columns: 1.4fr 1fr auto; gap: 14px; align-items: end; }
+    .applicability-grid { display: grid; grid-template-columns: 1.4fr auto auto; gap: 14px; align-items: end; }
     label { display: grid; gap: 8px; color: var(--muted); font-size: .9rem; }
     input, select, textarea {
       width: 100%;
@@ -68,8 +69,8 @@
     }
     button.secondary { background: var(--accent-2); }
     button:disabled { opacity: .5; cursor: wait; }
-    #message { min-height: 28px; margin-top: 15px; color: var(--muted); }
-    #message.error { color: var(--danger); }
+    #message, #applicabilityMessage { min-height: 28px; margin-top: 15px; color: var(--muted); }
+    #message.error, #applicabilityMessage.error { color: var(--danger); }
     .hidden { display: none !important; }
     .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 18px; }
     .card { background: rgba(6, 0, 13, .35); border: 1px solid var(--border); border-radius: 15px; padding: 17px; }
@@ -90,11 +91,12 @@
     .subtle { color: var(--muted); font-size: .88rem; }
     .note { border-inline-start: 3px solid var(--accent); padding-inline-start: 14px; margin-top: 18px; }
     .auth-grid { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: end; }
+    .issues { margin-top: 16px; white-space: pre-wrap; direction: ltr; text-align: left; font-size: .82rem; color: var(--muted); }
     @media (max-width: 850px) {
       header { display: block; }
       .badge { display: inline-block; margin-top: 18px; }
       .runtime-stack { justify-items: start; }
-      .upload-grid, .auth-grid, .split, .filters, .workflow-grid { grid-template-columns: 1fr; }
+      .upload-grid, .applicability-grid, .auth-grid, .split, .filters, .workflow-grid { grid-template-columns: 1fr; }
       .cards { grid-template-columns: repeat(2, 1fr); }
     }
     @media (max-width: 480px) { .cards { grid-template-columns: 1fr; } }
@@ -108,7 +110,7 @@
       <p>بوابة إدخال مشاهدات Vulnerability Detection من Wazuh، مع تحقق ومعاينة قبل الاعتماد.</p>
     </div>
     <div class="runtime-stack">
-      <div class="badge">WAZUH_CSV_V1 + V2 · Explicit evidence</div>
+      <div class="badge">CSV evidence · Canonical findings · Applicability</div>
       <div id="runtimeHealth" role="status" aria-live="polite">Runtime status…</div>
     </div>
   </header>
@@ -126,7 +128,7 @@
   </section>
 
   <section class="panel">
-    <h2>1. ارفع الملف وحلّله</h2>
+    <h2>1. ارفع ملف Wazuh وحلّله</h2>
     <div class="upload-grid">
       <label>ملف CSV
         <input id="file" type="file" accept=".csv,text/csv">
@@ -177,8 +179,26 @@
     </div>
   </section>
 
+  <section id="applicabilityPanel" class="panel">
+    <h2>3. Applicability Assessment</h2>
+    <p>نزّل مرجع الـFinding IDs أولاً، قيّم فقط الـfindings التي عندك دليل عليها، ثم ارفع ملف <code>APPLICABILITY_CSV_V1</code> بخمسة أعمدة فقط.</p>
+    <div class="applicability-grid" style="margin-top:18px">
+      <label>ملف APPLICABILITY_CSV_V1
+        <input id="applicabilityFile" type="file" accept=".csv,text/csv">
+      </label>
+      <button id="downloadApplicabilityFindings" class="secondary">تنزيل Finding IDs</button>
+      <button id="importApplicability">استيراد التقييمات</button>
+    </div>
+    <div id="applicabilityMessage" role="status" aria-live="polite">جاري التحقق من توفر Applicability persistence…</div>
+    <p class="note">عدم وجود row يعني UNKNOWN / unassessed. أما row بحالة UNKNOWN فيعني أن التقييم تم فعلاً لكن الدليل غير حاسم. ملف المرجع يستخدم أعمدة Current_* عمداً ولا يُرفع مباشرة كملف تقييم.</p>
+    <div id="applicabilityResult" class="hidden">
+      <div id="applicabilityCards" class="cards"></div>
+      <div id="applicabilityIssues" class="issues"></div>
+    </div>
+  </section>
+
   <section id="catalogPanel" class="panel hidden">
-    <h2>3. الكاتالوج الموحّد</h2>
+    <h2>4. الكاتالوج الموحّد</h2>
     <div id="catalogCards" class="cards"></div>
     <div class="filters">
       <label>Severity
@@ -212,7 +232,7 @@
   </section>
 
   <section id="caseDetailPanel" class="panel hidden">
-    <h2 id="caseDetailTitle">4. تفاصيل الحالة</h2>
+    <h2 id="caseDetailTitle">5. تفاصيل الحالة</h2>
     <div id="caseDetailMeta" class="meta"></div>
     <h2>Exposures</h2>
     <div class="scroll">
@@ -226,7 +246,7 @@
       <label>Action
         <select id="caseAction"><option>COMMENT</option><option>ACCEPT_RISK</option><option>MARK_FALSE_POSITIVE</option><option>CLOSE_MANUAL</option><option>REOPEN</option></select>
       </label>
-      <label>السبب أوالتعليق
+      <label>السبب أو التعليق
         <textarea id="caseReason" maxlength="2000"></textarea>
       </label>
       <label>انتهاء قبول المخاطرة
@@ -253,6 +273,8 @@
   let currentImportId = null;
   let currentCaseId = null;
   let nextCaseCursor = null;
+  let applicabilityEnabled = false;
+  let applicabilityExportEnabled = false;
   let apiToken = sessionStorage.getItem('rbvmApiToken') || '';
 
   function apiFetch(resource, options = {}) {
@@ -272,16 +294,39 @@
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       const projection = data.canonicalProjection || {backend: 'UNKNOWN', status: 'UNKNOWN'};
-      target.textContent = `${data.status} · ${data.catalogBackend} · ${projection.backend}:${projection.status}`;
+      const applicability = data.applicability || {};
+      applicabilityEnabled = applicability.importEnabled === true;
+      applicabilityExportEnabled = applicability.findingReferenceExportEnabled === true;
+      target.textContent = `${data.status} · ${data.catalogBackend} · ${projection.backend}:${projection.status} · applicability:${applicabilityEnabled ? 'ON' : 'OFF'}`;
       target.classList.toggle('degraded', data.status !== 'UP');
+      updateApplicabilityAvailability();
     } catch (error) {
       target.textContent = 'Runtime health unavailable';
       target.classList.add('degraded');
+      applicabilityEnabled = false;
+      applicabilityExportEnabled = false;
+      updateApplicabilityAvailability();
+    }
+  }
+
+  function updateApplicabilityAvailability() {
+    byId('importApplicability').disabled = !applicabilityEnabled;
+    byId('downloadApplicabilityFindings').disabled = !applicabilityExportEnabled;
+    if (!applicabilityEnabled || !applicabilityExportEnabled) {
+      setApplicabilityMessage('Applicability persistence يحتاج PostgreSQL schema V9 أو أحدث.', true);
+    } else {
+      setApplicabilityMessage('جاهز: نزّل مرجع Finding_ID ثم ارفع APPLICABILITY_CSV_V1 بعد التقييم.');
     }
   }
 
   function setMessage(text, error = false) {
     const target = byId('message');
+    target.textContent = text;
+    target.classList.toggle('error', error);
+  }
+
+  function setApplicabilityMessage(text, error = false) {
+    const target = byId('applicabilityMessage');
     target.textContent = text;
     target.classList.toggle('error', error);
   }
@@ -359,6 +404,20 @@
     if (data.status === 'COMPLETED') loadCatalog();
   }
 
+  function renderApplicabilityResult(data) {
+    byId('applicabilityResult').classList.remove('hidden');
+    byId('applicabilityCards').replaceChildren(
+      card('Inserted', data.insertedAssessments),
+      card('Replayed', data.replayedAssessments),
+      card('Deduplicated', data.totalDeduplicatedRows),
+      card('Quarantined', data.totalQuarantinedRows)
+    );
+    const issues = [...(data.contractIssues || []), ...(data.persistenceIssues || [])];
+    byId('applicabilityIssues').textContent = issues.length === 0
+      ? 'No quarantine issues.'
+      : issues.map(issue => `row ${issue.rowNumber} · ${issue.code} · ${issue.message}`).join('\n');
+  }
+
   async function loadCatalog(cursor = null) {
     try {
       const parameters = new URLSearchParams({limit: '10'});
@@ -413,7 +472,7 @@
       if (!response.ok) throw new Error(await errorFrom(response));
       const item = await response.json();
       currentCaseId = item.caseId;
-      byId('caseDetailTitle').textContent = `4. ${item.cveId} على ${item.assetName}`;
+      byId('caseDetailTitle').textContent = `5. ${item.cveId} على ${item.assetName}`;
       const meta = byId('caseDetailMeta');
       meta.replaceChildren();
       for (const [label, value] of [
@@ -516,6 +575,56 @@
     }
   });
 
+  byId('downloadApplicabilityFindings').addEventListener('click', async () => {
+    if (!applicabilityExportEnabled) return;
+    const button = byId('downloadApplicabilityFindings');
+    button.disabled = true;
+    setApplicabilityMessage('جاري تجهيز مرجع Finding_ID…');
+    try {
+      const response = await apiFetch('/api/v1/applicability-findings.csv', {cache: 'no-store'});
+      if (!response.ok) throw new Error(await errorFrom(response));
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'rbvm-applicability-findings.csv';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setApplicabilityMessage('تم تجهيز مرجع Finding_ID. استخدمه كمرجع فقط، وليس كملف تقييم.');
+    } catch (error) {
+      setApplicabilityMessage(error.message || 'تعذر تنزيل مرجع Finding_ID.', true);
+    } finally {
+      button.disabled = !applicabilityExportEnabled;
+    }
+  });
+
+  byId('importApplicability').addEventListener('click', async () => {
+    const file = byId('applicabilityFile').files[0];
+    if (!applicabilityEnabled) return;
+    if (!file) { setApplicabilityMessage('اختر ملف APPLICABILITY_CSV_V1 أولاً.', true); return; }
+    const button = byId('importApplicability');
+    button.disabled = true;
+    setApplicabilityMessage(`جاري استيراد ${file.name}…`);
+    try {
+      const response = await apiFetch('/api/v1/applicability-imports', {
+        method: 'POST',
+        headers: {'Content-Type': 'text/csv; charset=utf-8'},
+        body: file
+      });
+      if (!response.ok) throw new Error(await errorFrom(response));
+      const result = await response.json();
+      renderApplicabilityResult(result);
+      setApplicabilityMessage(`تم الاستيراد: ${result.insertedAssessments} جديد، ${result.replayedAssessments} replay، ${result.totalQuarantinedRows} quarantine.`);
+      await loadHealth();
+    } catch (error) {
+      setApplicabilityMessage(error.message || 'تعذر استيراد Applicability.', true);
+    } finally {
+      button.disabled = !applicabilityEnabled;
+    }
+  });
+
   byId('caseSearch').addEventListener('click', () => loadCatalog());
   byId('nextCases').addEventListener('click', () => {
     if (nextCaseCursor) loadCatalog(nextCaseCursor);
@@ -578,6 +687,7 @@
   });
   if (apiToken) byId('authMessage').textContent = 'مفتاح وصول مفعّل لهذه النافذة.';
   byId('caseExpires').disabled = true;
+  updateApplicabilityAvailability();
   loadHealth();
 </script>
 </body>
