@@ -2,6 +2,8 @@
 
 This increment aligns the repository-wide OpenAPI and release metadata with the already-implemented CISA KEV runtime API.
 
+The runtime routes already exist; this increment documents and release-aligns them without changing their behavior.
+
 Scope:
 
 - OpenAPI `0.14.0` documentation for `POST /cisa-kev-imports` and `GET /cisa-kev-evidence` under the `/api/v1` server base path.
