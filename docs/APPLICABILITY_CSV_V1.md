@@ -232,6 +232,21 @@ totalQuarantinedRows
 
 The HTTP upload is streamed to a bounded temporary file using the platform upload limit. The temporary file is deleted after the transactional importer completes or fails.
 
+### Normal finding reads
+
+When PostgreSQL schema V9+ is active, normal case detail reads also decorate each exposure with the canonical finding UUID and current applicability evidence. The existing hashed `exposureId` remains unchanged for API compatibility; the additional fields are:
+
+```text
+findingId
+applicabilityStatus
+applicabilityAssessed
+applicabilityReason
+applicabilityEvidenceSource
+applicabilityEvaluatedAt
+```
+
+This prevents the operator from having to infer a `Finding_ID` from Agent/CVE/Product text and makes current applicability visible alongside the finding itself. Local-memory or pre-V9 runtimes do not fabricate these fields.
+
 ## Current boundary
 
 The following applicability foundation is now implemented:
@@ -247,6 +262,7 @@ The following applicability foundation is now implemented:
 - transactional PostgreSQL importer with persisted replay idempotency and conflict quarantine;
 - authenticated finding-reference CSV export for operators;
 - authenticated applicability upload endpoint and structured import result;
+- current applicability surfaced on normal PostgreSQL finding/exposure reads;
 - runtime health/metrics capability visibility for applicability operations.
 
 Applicability remains independent from:
