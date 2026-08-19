@@ -1,6 +1,6 @@
 # FIRST EPSS Official Source Adapter
 
-This increment starts the independent EPSS exploitation-probability evidence path at the external acquisition boundary. It deliberately does **not** persist EPSS, expose an EPSS platform API, schedule refreshes, or convert EPSS into RBVM priority.
+This adapter starts the independent EPSS exploitation-probability evidence path at the external acquisition boundary. It deliberately does **not** persist EPSS, expose an EPSS platform API, schedule refreshes, or convert EPSS into RBVM priority.
 
 ## Why the daily bulk feed is the primary acquisition source
 
@@ -48,6 +48,9 @@ Official FIRST/Empirical Security daily EPSS .csv.gz
         |
         v
 FIRST_EPSS_VALIDATED_SNAPSHOT
+        |
+        v
+EPSS_CSV_V1
 ```
 
 The entire downloaded feed is parsed and validated before requested CVEs are selected. This prevents a malformed row elsewhere in the source file from being silently ignored while the adapter claims a valid snapshot.
@@ -100,7 +103,7 @@ CVE absent from validated EPSS feed
         -> downstream state remains UNKNOWN
 ```
 
-`missingCves[]` is an acquisition diagnostic only. The future `EPSS_CSV_V1` contract should emit rows only for CVEs with explicit score evidence.
+`missingCves[]` is an acquisition diagnostic only. `EPSS_CSV_V1` emits rows only for CVEs with explicit score evidence; missing CVEs remain absent from the contract rather than receiving fabricated zero/UNKNOWN rows.
 
 ## Provenance and time
 
@@ -111,7 +114,7 @@ scoreDate   = date represented by the EPSS publication
 observedAt  = when this platform successfully acquired and validated the bytes
 ```
 
-The exact compressed source is bound with SHA-256. A future persistence layer should retain both score date and observation time so historical decisions can be reconstructed without pretending they are the same event.
+The exact compressed source is bound with SHA-256. `EPSS_CSV_V1` preserves the model version, score date, semantic source, observation time, and source-byte SHA-256 so future persistence can reconstruct the evidence without pretending source time and acquisition time are the same event.
 
 ## Offline replay
 
@@ -123,7 +126,7 @@ acquisitionMode = OFFLINE_REPLAY
 
 ## Boundary
 
-Implemented in this increment:
+Implemented:
 
 - official daily bulk EPSS acquisition;
 - source-byte SHA-256 provenance;
@@ -133,11 +136,11 @@ Implemented in this increment:
 - duplicate rejection;
 - source-limited extraction for current CVEs;
 - explicit missing-evidence semantics;
-- deterministic offline replay tests.
+- deterministic offline replay tests;
+- `EPSS_CSV_V1` generation and strict Java contract validation.
 
 Not implemented yet:
 
-- `EPSS_CSV_V1`;
 - PostgreSQL EPSS history/current views;
 - transactional EPSS importer;
 - EPSS platform import/read API;
@@ -147,4 +150,4 @@ Not implemented yet:
 - thresholds;
 - priority, risk score, SLA, or combination with CVSS/KEV.
 
-The next increment should define `EPSS_CSV_V1` from this validated snapshot artifact, preserving `modelVersion`, `scoreDate`, `source`, `observedAt`, and source-byte SHA-256 as independent provenance.
+The next increment after `EPSS_CSV_V1` should add immutable PostgreSQL EPSS history/current views and a transactional importer without creating a FIRST-to-database shortcut.

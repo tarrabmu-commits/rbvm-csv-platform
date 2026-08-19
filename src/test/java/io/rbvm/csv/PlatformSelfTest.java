@@ -19,6 +19,7 @@ public final class PlatformSelfTest {
         CvssV31CsvContractSelfTest.main(args);
         CisaKevEvidenceSelfTest.main(args);
         CisaKevCsvContractSelfTest.main(args);
+        EpssCsvContractSelfTest.main(args);
         DomainCatalogSelfTest.main(args);
         ApiSecuritySelfTest.main(args);
         CsvHttpSelfTest.main(args);
