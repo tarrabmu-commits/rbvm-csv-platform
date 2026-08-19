@@ -14,6 +14,9 @@ import io.rbvm.domain.CaseWorkflowConflictException;
 import io.rbvm.domain.InvalidCaseActionException;
 import io.rbvm.domain.StaleCaseCursorException;
 import io.rbvm.domain.VulnerabilityPriorityTier;
+import io.rbvm.postgres.ApplicabilityFindingExporter;
+import io.rbvm.postgres.ApplicabilityImportResult;
+import io.rbvm.postgres.ApplicabilityImporter;
 import io.rbvm.postgres.CanonicalProjectionFactory;
 import io.rbvm.postgres.CanonicalProjectionFactory.RuntimeComponents;
 import io.rbvm.security.ApiKeyAuthenticator;
@@ -24,10 +27,12 @@ import io.rbvm.security.RequestRateLimiter.Decision;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
@@ -37,6 +42,7 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -61,6 +67,9 @@ public final class CsvPlatformServer implements AutoCloseable {
     private final byte[] webUi;
     private final ApiKeyAuthenticator authenticator;
     private final RequestRateLimiter rateLimiter;
+    private final long maximumUploadBytes;
+    private final Optional<ApplicabilityImporter> applicabilityImporter;
+    private final Optional<ApplicabilityFindingExporter> applicabilityFindingExporter;
     private final Instant startedAt = Instant.now();
     private final AtomicLong requestsTotal = new AtomicLong();
     private final AtomicLong problemsTotal = new AtomicLong();
@@ -96,6 +105,9 @@ public final class CsvPlatformServer implements AutoCloseable {
         );
         this.authenticator = ApiKeyAuthenticator.disabled();
         this.rateLimiter = RequestRateLimiter.disabled();
+        this.maximumUploadBytes = maximumUploadBytes;
+        this.applicabilityImporter = Optional.empty();
+        this.applicabilityFindingExporter = Optional.empty();
         this.webUi = loadResource("/web/index.html");
         this.server = HttpServer.create(new InetSocketAddress(host, port), 32);
         int workers = Math.max(4, Math.min(16, Runtime.getRuntime().availableProcessors()));
@@ -139,6 +151,32 @@ public final class CsvPlatformServer implements AutoCloseable {
             ApiKeyAuthenticator authenticator,
             RequestRateLimiter rateLimiter
     ) throws IOException {
+        this(
+                host,
+                port,
+                dataDirectory,
+                maximumUploadBytes,
+                canonicalProjection,
+                readCatalog,
+                Optional.empty(),
+                Optional.empty(),
+                authenticator,
+                rateLimiter
+        );
+    }
+
+    public CsvPlatformServer(
+            String host,
+            int port,
+            Path dataDirectory,
+            long maximumUploadBytes,
+            CanonicalProjection canonicalProjection,
+            DomainCatalog readCatalog,
+            Optional<ApplicabilityImporter> applicabilityImporter,
+            Optional<ApplicabilityFindingExporter> applicabilityFindingExporter,
+            ApiKeyAuthenticator authenticator,
+            RequestRateLimiter rateLimiter
+    ) throws IOException {
         if (port < 0 || port > 65_535) {
             throw new IllegalArgumentException("port must be between 0 and 65535");
         }
@@ -155,6 +193,15 @@ public final class CsvPlatformServer implements AutoCloseable {
         );
         this.authenticator = Objects.requireNonNull(authenticator, "authenticator");
         this.rateLimiter = Objects.requireNonNull(rateLimiter, "rateLimiter");
+        this.maximumUploadBytes = maximumUploadBytes;
+        this.applicabilityImporter = Objects.requireNonNull(
+                applicabilityImporter,
+                "applicabilityImporter"
+        );
+        this.applicabilityFindingExporter = Objects.requireNonNull(
+                applicabilityFindingExporter,
+                "applicabilityFindingExporter"
+        );
         this.webUi = loadResource("/web/index.html");
         this.server = HttpServer.create(new InetSocketAddress(host, port), 32);
         int workers = Math.max(4, Math.min(16, Runtime.getRuntime().availableProcessors()));
@@ -199,7 +246,7 @@ public final class CsvPlatformServer implements AutoCloseable {
             if ("/api/v1/health".equals(path)) {
                 requireMethod(exchange, method, "GET");
                 authorize(exchange, ApiRole.VIEWER);
-                sendJson(exchange, 200, imports.health());
+                sendJson(exchange, 200, healthView());
                 return;
             }
             if ("/api/v1/live".equals(path)) {
@@ -233,6 +280,18 @@ public final class CsvPlatformServer implements AutoCloseable {
                 requireMethod(exchange, method, "GET");
                 authorize(exchange, ApiRole.VIEWER);
                 sendJson(exchange, 200, imports.queryCases(parseCaseQuery(exchange.getRequestURI())));
+                return;
+            }
+            if ("/api/v1/applicability-findings.csv".equals(path)) {
+                requireMethod(exchange, method, "GET");
+                authorize(exchange, ApiRole.VIEWER);
+                exportApplicabilityFindings(exchange);
+                return;
+            }
+            if ("/api/v1/applicability-imports".equals(path)) {
+                requireMethod(exchange, method, "POST");
+                authorize(exchange, ApiRole.OPERATOR);
+                createApplicabilityImport(exchange);
                 return;
             }
             if ("/api/v1/csv-imports".equals(path)) {
@@ -317,6 +376,88 @@ public final class CsvPlatformServer implements AutoCloseable {
             sendProblem(exchange, 500, "INTERNAL_ERROR", "The request could not be completed", correlationId);
         } finally {
             exchange.close();
+        }
+    }
+
+    private Map<String, Object> healthView() {
+        Map<String, Object> health = new LinkedHashMap<>(imports.health());
+        health.put("applicability", Map.of(
+                "importEnabled", applicabilityImporter.isPresent(),
+                "findingReferenceExportEnabled", applicabilityFindingExporter.isPresent()
+        ));
+        return health;
+    }
+
+    private void exportApplicabilityFindings(HttpExchange exchange) throws IOException {
+        ApplicabilityFindingExporter exporter = applicabilityFindingExporter.orElseThrow(() ->
+                new HttpProblem(
+                        503,
+                        "APPLICABILITY_PERSISTENCE_UNAVAILABLE",
+                        "Applicability finding references require PostgreSQL schema version 9 or newer"
+                ));
+        byte[] csv = exporter.exportCsv();
+        exchange.getResponseHeaders().set(
+                "Content-Disposition",
+                "attachment; filename=\"rbvm-applicability-findings.csv\""
+        );
+        sendBytes(exchange, 200, "text/csv; charset=utf-8", csv);
+    }
+
+    private void createApplicabilityImport(HttpExchange exchange) throws IOException {
+        ApplicabilityImporter importer = applicabilityImporter.orElseThrow(() ->
+                new HttpProblem(
+                        503,
+                        "APPLICABILITY_PERSISTENCE_UNAVAILABLE",
+                        "Applicability import requires PostgreSQL schema version 9 or newer"
+                ));
+        String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
+        if (!isCsvContentType(contentType)) {
+            throw new HttpProblem(
+                    415,
+                    "UNSUPPORTED_MEDIA_TYPE",
+                    "Content-Type must be text/csv, application/csv, or application/octet-stream"
+            );
+        }
+        long contentLength = parseContentLength(exchange.getRequestHeaders().getFirst("Content-Length"));
+        if (contentLength > maximumUploadBytes) {
+            throw new HttpProblem(
+                    413,
+                    "UPLOAD_TOO_LARGE",
+                    "Applicability CSV exceeds the configured upload limit"
+            );
+        }
+
+        Path staged = Files.createTempFile("rbvm-applicability-upload-", ".csv");
+        try {
+            try (InputStream body = exchange.getRequestBody();
+                 OutputStream output = Files.newOutputStream(staged)) {
+                copyBounded(body, output, maximumUploadBytes);
+            }
+            ApplicabilityImportResult result = importer.importFile(staged);
+            sendJson(exchange, 200, result.toMap());
+        } finally {
+            Files.deleteIfExists(staged);
+        }
+    }
+
+    private static void copyBounded(InputStream input, OutputStream output, long maximumBytes)
+            throws IOException {
+        byte[] buffer = new byte[8192];
+        long total = 0;
+        int read;
+        while ((read = input.read(buffer)) >= 0) {
+            if (read == 0) {
+                continue;
+            }
+            total += read;
+            if (total > maximumBytes) {
+                throw new HttpProblem(
+                        413,
+                        "UPLOAD_TOO_LARGE",
+                        "Applicability CSV exceeds the configured upload limit"
+                );
+            }
+            output.write(buffer, 0, read);
         }
     }
 
@@ -655,6 +796,8 @@ public final class CsvPlatformServer implements AutoCloseable {
                 + "rbvm_authorization_forbidden_total " + forbiddenTotal.get() + "\n"
                 + "# TYPE rbvm_rate_limited_total counter\n"
                 + "rbvm_rate_limited_total " + rateLimitedTotal.get() + "\n"
+                + "# TYPE rbvm_applicability_import_enabled gauge\n"
+                + "rbvm_applicability_import_enabled " + (applicabilityImporter.isPresent() ? 1 : 0) + "\n"
                 + "# TYPE rbvm_process_uptime_seconds gauge\n"
                 + "rbvm_process_uptime_seconds " + uptime + "\n"
                 + "# TYPE rbvm_imports_stored gauge\n"
@@ -704,6 +847,8 @@ public final class CsvPlatformServer implements AutoCloseable {
                 configuration.maximumUploadBytes(),
                 canonicalProjection,
                 runtime.readCatalog(),
+                runtime.applicabilityImporter(),
+                runtime.applicabilityFindingExporter(),
                 authenticator,
                 rateLimiter
         );
@@ -713,6 +858,8 @@ public final class CsvPlatformServer implements AutoCloseable {
         System.out.println("Data directory: " + configuration.dataDirectory().toAbsolutePath().normalize());
         System.out.println("Canonical projection: "
                 + canonicalProjection.health().get("backend"));
+        System.out.println("Applicability persistence: "
+                + (runtime.applicabilityImporter().isPresent() ? "ENABLED" : "DISABLED"));
         System.out.println("API authentication: "
                 + (authenticator.enabled() ? "API_KEY" : "DISABLED"));
         new CountDownLatch(1).await();
