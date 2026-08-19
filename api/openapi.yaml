@@ -1,14 +1,15 @@
 openapi: 3.1.1
 info:
   title: RBVM CSV Import API
-  version: 0.15.0
+  version: 0.16.0
   description: >-
     Synchronous upload, validation, preview, and canonical-domain materialization
     API for WAZUH_CSV_V1 positive observations and opt-in WAZUH_CSV_V2 explicit
     finding lifecycle evidence, separate finding-scoped applicability assessment,
     independent CVSS v3.1 Base technical-severity evidence, snapshot-bound CISA KEV
     threat evidence, independent FIRST EPSS exploitation-probability evidence,
-    explicit case decisions, an append-only workflow audit trail, and optional
+    independent asset-scoped organizational context evidence, explicit case
+    decisions, an append-only workflow audit trail, and optional
     PostgreSQL canonical persistence.
 servers:
   - url: http://127.0.0.1:8080/api/v1
@@ -418,6 +419,104 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/Problem'
+  /asset-context-evidence:
+    get:
+      operationId: listAssetContextEvidence
+      summary: Read current organizational Asset Context evidence per source
+      description: >-
+        Returns the latest organizational context observation independently for every
+        context source attached to an existing tenant asset. Environment, business service,
+        owner, and Business Criticality remain source evidence. This API does not select a
+        winning context source or derive criticality weights, reachability, risk, priority,
+        SLA, CVSS/KEV/EPSS combinations, or business-loss conclusions.
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of current source-evidence rows to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+        - name: asset
+          in: query
+          description: Optional case-insensitive prefix for observed asset name or source ID
+          schema:
+            type: string
+            maxLength: 160
+        - name: sourceProfile
+          in: query
+          description: Optional exact source-profile external key
+          schema:
+            type: string
+            maxLength: 128
+            pattern: '^[A-Za-z0-9._:-]+$'
+        - name: contextSource
+          in: query
+          description: Optional exact organizational-context source identifier
+          schema:
+            type: string
+            maxLength: 256
+      responses:
+        '200':
+          description: Current tenant-scoped per-source organizational Asset Context evidence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetContextEvidencePage'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /asset-context-imports:
+    post:
+      operationId: importAssetContextCsv
+      summary: Validate and persist ASSET_CONTEXT_CSV_V1 evidence
+      description: >-
+        Parses asset-scoped organizational context evidence and appends safe rows through
+        the transactional PostgreSQL V13 importer. Rows must resolve to existing canonical
+        assets; context import never creates scanner assets. Same-observation source-artifact
+        conflicts and persisted evidence conflicts are quarantined rather than overwritten.
+      requestBody:
+        required: true
+        content:
+          text/csv:
+            schema:
+              type: string
+              format: binary
+          application/csv:
+            schema:
+              type: string
+              format: binary
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Asset Context evidence file processed transactionally
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetContextImportResult'
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+        '403':
+          $ref: '#/components/responses/InsufficientRole'
+        '413':
+          $ref: '#/components/responses/Problem'
+        '415':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Problem'
   /cases:
     get:
       operationId: listCases
@@ -743,6 +842,7 @@ components:
         - cvssV31
         - cisaKev
         - epss
+        - assetContext
         - storedImports
         - recoveryWarningCount
         - maximumUploadBytes
@@ -772,6 +872,8 @@ components:
           $ref: '#/components/schemas/CisaKevCapability'
         epss:
           $ref: '#/components/schemas/EpssCapability'
+        assetContext:
+          $ref: '#/components/schemas/AssetContextCapability'
         storedImports:
           type: integer
           minimum: 0
@@ -819,6 +921,15 @@ components:
         evidenceReadEnabled:
           type: boolean
     EpssCapability:
+      type: object
+      additionalProperties: false
+      required: [importEnabled, evidenceReadEnabled]
+      properties:
+        importEnabled:
+          type: boolean
+        evidenceReadEnabled:
+          type: boolean
+    AssetContextCapability:
       type: object
       additionalProperties: false
       required: [importEnabled, evidenceReadEnabled]
@@ -2049,6 +2160,229 @@ components:
           items:
             $ref: '#/components/schemas/EpssIssue'
     EpssIssue:
+      type: object
+      additionalProperties: false
+      required: [rowNumber, level, code, message]
+      properties:
+        rowNumber:
+          type: integer
+          format: int64
+          minimum: 1
+        level:
+          enum: [WARNING, ERROR]
+        code:
+          type: string
+        message:
+          type: string
+    AssetContextEvidencePage:
+      type: object
+      additionalProperties: false
+      required:
+        - semantics
+        - limit
+        - assetPrefix
+        - sourceProfileKey
+        - contextSource
+        - count
+        - items
+      properties:
+        semantics:
+          const: CURRENT_PER_SOURCE_ASSET_ORGANIZATIONAL_CONTEXT_EVIDENCE
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 500
+        assetPrefix:
+          type: [string, 'null']
+          maxLength: 160
+        sourceProfileKey:
+          type: [string, 'null']
+          maxLength: 128
+          pattern: '^[A-Za-z0-9._:-]+$'
+        contextSource:
+          type: [string, 'null']
+          maxLength: 256
+        count:
+          type: integer
+          minimum: 0
+          maximum: 500
+        items:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/AssetContextEvidenceItem'
+    AssetContextEvidenceItem:
+      type: object
+      additionalProperties: false
+      required:
+        - sourceProfileKey
+        - assetIdentityBasis
+        - assetName
+        - assetSourceId
+        - environment
+        - businessService
+        - businessOwner
+        - businessCriticality
+        - contextSource
+        - contextSourceSha256
+        - contextObservedAt
+        - evidenceIngestedAt
+        - snapshotIngestedAt
+      properties:
+        sourceProfileKey:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: '^[A-Za-z0-9._:-]+$'
+        assetIdentityBasis:
+          enum: [SOURCE_NAME_ONLY, SOURCE_STABLE_ID]
+        assetName:
+          type: string
+          minLength: 1
+          maxLength: 160
+        assetSourceId:
+          type: [string, 'null']
+          maxLength: 160
+        environment:
+          enum: [PRODUCTION, PRE_PRODUCTION, DEVELOPMENT, TEST, SANDBOX, DISASTER_RECOVERY, UNKNOWN]
+        businessService:
+          type: string
+          minLength: 1
+          maxLength: 256
+        businessOwner:
+          type: string
+          minLength: 1
+          maxLength: 256
+        businessCriticality:
+          enum: [MISSION_CRITICAL, HIGH, MODERATE, LOW, UNKNOWN]
+        contextSource:
+          type: string
+          minLength: 1
+          maxLength: 256
+        contextSourceSha256:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        contextObservedAt:
+          type: string
+          format: date-time
+        evidenceIngestedAt:
+          type: string
+          format: date-time
+        snapshotIngestedAt:
+          type: string
+          format: date-time
+    AssetContextImportResult:
+      type: object
+      additionalProperties: false
+      required:
+        - contractId
+        - semantics
+        - logicalRows
+        - acceptedRows
+        - insertedSnapshots
+        - replayedSnapshots
+        - snapshotConflictGroups
+        - insertedEvidence
+        - replayedEvidence
+        - contractDeduplicatedRows
+        - persistenceQuarantinedRows
+        - contractQuarantinedRows
+        - totalDeduplicatedRows
+        - totalQuarantinedRows
+        - environmentDistribution
+        - criticalityDistribution
+        - contractIssues
+        - persistenceIssues
+      properties:
+        contractId:
+          const: ASSET_CONTEXT_CSV_V1
+        semantics:
+          const: ASSET_SCOPED_ORGANIZATIONAL_CONTEXT_EVIDENCE
+        logicalRows:
+          type: integer
+          format: int64
+          minimum: 0
+        acceptedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        insertedSnapshots:
+          type: integer
+          format: int64
+          minimum: 0
+        replayedSnapshots:
+          type: integer
+          format: int64
+          minimum: 0
+        snapshotConflictGroups:
+          type: integer
+          format: int64
+          minimum: 0
+        insertedEvidence:
+          type: integer
+          format: int64
+          minimum: 0
+        replayedEvidence:
+          type: integer
+          format: int64
+          minimum: 0
+        contractDeduplicatedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        persistenceQuarantinedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        contractQuarantinedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        totalDeduplicatedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        totalQuarantinedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        environmentDistribution:
+          $ref: '#/components/schemas/AssetContextEnvironmentDistribution'
+        criticalityDistribution:
+          $ref: '#/components/schemas/AssetContextCriticalityDistribution'
+        contractIssues:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/AssetContextIssue'
+        persistenceIssues:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/AssetContextIssue'
+    AssetContextEnvironmentDistribution:
+      type: object
+      additionalProperties: false
+      required: [PRODUCTION, PRE_PRODUCTION, DEVELOPMENT, TEST, SANDBOX, DISASTER_RECOVERY, UNKNOWN]
+      properties:
+        PRODUCTION: {type: integer, format: int64, minimum: 0}
+        PRE_PRODUCTION: {type: integer, format: int64, minimum: 0}
+        DEVELOPMENT: {type: integer, format: int64, minimum: 0}
+        TEST: {type: integer, format: int64, minimum: 0}
+        SANDBOX: {type: integer, format: int64, minimum: 0}
+        DISASTER_RECOVERY: {type: integer, format: int64, minimum: 0}
+        UNKNOWN: {type: integer, format: int64, minimum: 0}
+    AssetContextCriticalityDistribution:
+      type: object
+      additionalProperties: false
+      required: [MISSION_CRITICAL, HIGH, MODERATE, LOW, UNKNOWN]
+      properties:
+        MISSION_CRITICAL: {type: integer, format: int64, minimum: 0}
+        HIGH: {type: integer, format: int64, minimum: 0}
+        MODERATE: {type: integer, format: int64, minimum: 0}
+        LOW: {type: integer, format: int64, minimum: 0}
+        UNKNOWN: {type: integer, format: int64, minimum: 0}
+    AssetContextIssue:
       type: object
       additionalProperties: false
       required: [rowNumber, level, code, message]
