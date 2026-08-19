@@ -31,6 +31,8 @@ public final class CanonicalProjectionFactory {
                     Optional.empty(),
                     Optional.empty(),
                     Optional.empty(),
+                    Optional.empty(),
+                    Optional.empty(),
                     Optional.empty()
             );
         }
@@ -52,6 +54,8 @@ public final class CanonicalProjectionFactory {
         Optional<CvssV31EvidenceReader> cvssV31EvidenceReader = Optional.empty();
         Optional<CisaKevImporter> cisaKevImporter = Optional.empty();
         Optional<CisaKevEvidenceReader> cisaKevEvidenceReader = Optional.empty();
+        Optional<EpssImporter> epssImporter = Optional.empty();
+        Optional<EpssEvidenceReader> epssEvidenceReader = Optional.empty();
         if (installedVersion >= 9) {
             PostgresApplicabilityImporter importer = new PostgresApplicabilityImporter(
                     connections,
@@ -73,6 +77,11 @@ public final class CanonicalProjectionFactory {
             cisaKevImporter = Optional.of(importer::importFile);
             cisaKevEvidenceReader = Optional.of(new PostgresCisaKevEvidenceReader(connections));
         }
+        if (installedVersion >= 12) {
+            PostgresEpssImporter importer = new PostgresEpssImporter(connections, false);
+            epssImporter = Optional.of(importer::importFile);
+            epssEvidenceReader = Optional.of(new PostgresEpssEvidenceReader(connections));
+        }
         return new RuntimeComponents(
                 projection,
                 readCatalog,
@@ -81,7 +90,9 @@ public final class CanonicalProjectionFactory {
                 cvssV31Importer,
                 cvssV31EvidenceReader,
                 cisaKevImporter,
-                cisaKevEvidenceReader
+                cisaKevEvidenceReader,
+                epssImporter,
+                epssEvidenceReader
         );
     }
 
@@ -93,7 +104,9 @@ public final class CanonicalProjectionFactory {
             Optional<CvssV31Importer> cvssV31Importer,
             Optional<CvssV31EvidenceReader> cvssV31EvidenceReader,
             Optional<CisaKevImporter> cisaKevImporter,
-            Optional<CisaKevEvidenceReader> cisaKevEvidenceReader
+            Optional<CisaKevEvidenceReader> cisaKevEvidenceReader,
+            Optional<EpssImporter> epssImporter,
+            Optional<EpssEvidenceReader> epssEvidenceReader
     ) {
         public RuntimeComponents {
             Objects.requireNonNull(canonicalProjection, "canonicalProjection");
@@ -116,6 +129,8 @@ public final class CanonicalProjectionFactory {
                     cisaKevEvidenceReader,
                     "cisaKevEvidenceReader"
             );
+            epssImporter = Objects.requireNonNull(epssImporter, "epssImporter");
+            epssEvidenceReader = Objects.requireNonNull(epssEvidenceReader, "epssEvidenceReader");
         }
 
         public RuntimeComponents(
@@ -125,6 +140,8 @@ public final class CanonicalProjectionFactory {
             this(
                     canonicalProjection,
                     readCatalog,
+                    Optional.empty(),
+                    Optional.empty(),
                     Optional.empty(),
                     Optional.empty(),
                     Optional.empty(),
@@ -148,6 +165,8 @@ public final class CanonicalProjectionFactory {
                     Optional.empty(),
                     Optional.empty(),
                     Optional.empty(),
+                    Optional.empty(),
+                    Optional.empty(),
                     Optional.empty()
             );
         }
@@ -167,6 +186,32 @@ public final class CanonicalProjectionFactory {
                     applicabilityFindingExporter,
                     cvssV31Importer,
                     cvssV31EvidenceReader,
+                    Optional.empty(),
+                    Optional.empty(),
+                    Optional.empty(),
+                    Optional.empty()
+            );
+        }
+
+        public RuntimeComponents(
+                CanonicalProjection canonicalProjection,
+                DomainCatalog readCatalog,
+                Optional<ApplicabilityImporter> applicabilityImporter,
+                Optional<ApplicabilityFindingExporter> applicabilityFindingExporter,
+                Optional<CvssV31Importer> cvssV31Importer,
+                Optional<CvssV31EvidenceReader> cvssV31EvidenceReader,
+                Optional<CisaKevImporter> cisaKevImporter,
+                Optional<CisaKevEvidenceReader> cisaKevEvidenceReader
+        ) {
+            this(
+                    canonicalProjection,
+                    readCatalog,
+                    applicabilityImporter,
+                    applicabilityFindingExporter,
+                    cvssV31Importer,
+                    cvssV31EvidenceReader,
+                    cisaKevImporter,
+                    cisaKevEvidenceReader,
                     Optional.empty(),
                     Optional.empty()
             );
