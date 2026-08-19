@@ -1,0 +1,470 @@
+name: apply-v014-contract
+
+on:
+  push:
+    branches: [foundation/cisa-kev-api-contract-v014]
+
+permissions:
+  contents: write
+
+jobs:
+  apply-contract:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Align KEV OpenAPI and release contract to 0.14.0
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              if text.count(old) != 1:
+                  raise SystemExit(f'{path}: expected exactly one anchor, found {text.count(old)}: {old!r}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          def replace_all(path, old, new, minimum=1):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count < minimum:
+                  raise SystemExit(f'{path}: expected at least {minimum} occurrence(s), found {count}: {old!r}')
+              p.write_text(text.replace(old, new), encoding='utf-8')
+
+          openapi = Path('api/openapi.yaml')
+          text = openapi.read_text(encoding='utf-8')
+          if text.count('  version: 0.13.0\n') != 1:
+              raise SystemExit('OpenAPI version anchor mismatch')
+          text = text.replace('  version: 0.13.0\n', '  version: 0.14.0\n', 1)
+          text = text.replace(
+              '    independent CVSS v3.1 Base technical-severity evidence, explicit case decisions,\n',
+              '    independent CVSS v3.1 Base technical-severity evidence, snapshot-bound CISA KEV\n'
+              '    threat evidence, explicit case decisions,\n',
+              1,
+          )
+
+          kev_paths = '''  /cisa-kev-evidence:
+    get:
+      operationId: listCisaKevEvidence
+      summary: Read current snapshot-bound CISA KEV membership evidence per source
+      description: >-
+        Returns the latest persisted LISTED or NOT_LISTED membership evidence independently
+        for every KEV source attached to tenant CVEs. Absence of persisted evidence remains
+        UNKNOWN and is not fabricated as a row. NOT_LISTED does not mean safe or not exploited,
+        and CISA due dates remain source evidence rather than organizational SLA.
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of current source-evidence rows to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+        - name: cve
+          in: query
+          description: Optional case-insensitive CVE identifier or CVE prefix
+          schema:
+            type: string
+            maxLength: 32
+            pattern: '^CVE-[0-9A-Za-z-]+$'
+      responses:
+        '200':
+          description: Current tenant-scoped CISA KEV membership evidence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CisaKevEvidencePage'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /cisa-kev-imports:
+    post:
+      operationId: importCisaKevCsv
+      summary: Validate and persist CISA_KEV_CSV_V1 evidence
+      description: >-
+        Parses snapshot-bound CISA KEV membership evidence and appends safe rows through
+        the existing transactional PostgreSQL V11 importer. Snapshot and membership
+        conflicts are quarantined; UNKNOWN is represented by absence of usable evidence.
+      requestBody:
+        required: true
+        content:
+          text/csv:
+            schema:
+              type: string
+              format: binary
+          application/csv:
+            schema:
+              type: string
+              format: binary
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: CISA KEV evidence file processed transactionally
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CisaKevImportResult'
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+        '403':
+          $ref: '#/components/responses/InsufficientRole'
+        '413':
+          $ref: '#/components/responses/Problem'
+        '415':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Problem'
+'''
+          anchor = '  /cases:\n'
+          if text.count(anchor) != 1:
+              raise SystemExit('OpenAPI cases path anchor mismatch')
+          text = text.replace(anchor, kev_paths + anchor, 1)
+
+          text = text.replace(
+              '        - cvssV31\n        - storedImports\n',
+              '        - cvssV31\n        - cisaKev\n        - storedImports\n',
+              1,
+          )
+          text = text.replace(
+              "        cvssV31:\n          $ref: '#/components/schemas/CvssV31Capability'\n        storedImports:\n",
+              "        cvssV31:\n          $ref: '#/components/schemas/CvssV31Capability'\n        cisaKev:\n          $ref: '#/components/schemas/CisaKevCapability'\n        storedImports:\n",
+              1,
+          )
+          text = text.replace(
+              '''    CanonicalProjectionHealth:\n''',
+              '''    CisaKevCapability:
+      type: object
+      additionalProperties: false
+      required: [importEnabled, evidenceReadEnabled]
+      properties:
+        importEnabled:
+          type: boolean
+        evidenceReadEnabled:
+          type: boolean
+    CanonicalProjectionHealth:
+''',
+              1,
+          )
+
+          kev_schemas = '''    CisaKevEvidencePage:
+      type: object
+      additionalProperties: false
+      required: [semantics, limit, cvePrefix, count, items]
+      properties:
+        semantics:
+          const: CURRENT_PER_SOURCE_CISA_KEV_SNAPSHOT_MEMBERSHIP_EVIDENCE
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 500
+        cvePrefix:
+          type: [string, 'null']
+        count:
+          type: integer
+          minimum: 0
+          maximum: 500
+        items:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/CisaKevEvidenceItem'
+    CisaKevEvidenceItem:
+      type: object
+      additionalProperties: false
+      required:
+        - cveId
+        - kevStatus
+        - kevDateAdded
+        - kevDueDate
+        - knownRansomwareCampaignUse
+        - kevCatalogVersion
+        - kevCatalogSha256
+        - kevCatalogCount
+        - kevSource
+        - kevObservedAt
+        - evidenceIngestedAt
+        - snapshotIngestedAt
+      properties:
+        cveId:
+          type: string
+          pattern: '^CVE-[0-9]{4}-[0-9]{4,}$'
+        kevStatus:
+          enum: [LISTED, NOT_LISTED]
+        kevDateAdded:
+          type: [string, 'null']
+          format: date
+        kevDueDate:
+          type: [string, 'null']
+          format: date
+        knownRansomwareCampaignUse:
+          type: [string, 'null']
+          enum: [KNOWN, UNKNOWN, null]
+        kevCatalogVersion:
+          type: string
+          minLength: 1
+        kevCatalogSha256:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        kevCatalogCount:
+          type: integer
+          minimum: 1
+        kevSource:
+          type: string
+          format: uri
+          pattern: '^https://'
+        kevObservedAt:
+          type: string
+          format: date-time
+        evidenceIngestedAt:
+          type: string
+          format: date-time
+        snapshotIngestedAt:
+          type: string
+          format: date-time
+    CisaKevImportResult:
+      type: object
+      additionalProperties: false
+      required:
+        - contractId
+        - semantics
+        - logicalRows
+        - acceptedRows
+        - listedRows
+        - notListedRows
+        - insertedSnapshots
+        - replayedSnapshots
+        - snapshotConflictGroups
+        - insertedEvidence
+        - replayedEvidence
+        - contractDeduplicatedRows
+        - persistenceQuarantinedRows
+        - contractQuarantinedRows
+        - totalDeduplicatedRows
+        - totalQuarantinedRows
+        - uniqueCves
+        - uniqueSnapshots
+        - contractIssues
+        - persistenceIssues
+      properties:
+        contractId:
+          const: CISA_KEV_CSV_V1
+        semantics:
+          const: CVE_SCOPED_CISA_KEV_SNAPSHOT_MEMBERSHIP_EVIDENCE
+        logicalRows:
+          type: integer
+          format: int64
+          minimum: 0
+        acceptedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        listedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        notListedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        insertedSnapshots:
+          type: integer
+          format: int64
+          minimum: 0
+        replayedSnapshots:
+          type: integer
+          format: int64
+          minimum: 0
+        snapshotConflictGroups:
+          type: integer
+          format: int64
+          minimum: 0
+        insertedEvidence:
+          type: integer
+          format: int64
+          minimum: 0
+        replayedEvidence:
+          type: integer
+          format: int64
+          minimum: 0
+        contractDeduplicatedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        persistenceQuarantinedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        contractQuarantinedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        totalDeduplicatedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        totalQuarantinedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        uniqueCves:
+          type: integer
+          format: int64
+          minimum: 0
+        uniqueSnapshots:
+          type: integer
+          format: int64
+          minimum: 0
+        contractIssues:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/CisaKevIssue'
+        persistenceIssues:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/CisaKevIssue'
+    CisaKevIssue:
+      type: object
+      additionalProperties: false
+      required: [rowNumber, level, code, message]
+      properties:
+        rowNumber:
+          type: integer
+          format: int64
+          minimum: 1
+        level:
+          enum: [WARNING, ERROR]
+        code:
+          type: string
+        message:
+          type: string
+'''
+          schema_anchor = '    CaseAuditEvent:\n'
+          if text.count(schema_anchor) != 1:
+              raise SystemExit('OpenAPI CaseAuditEvent anchor mismatch')
+          text = text.replace(schema_anchor, kev_schemas + schema_anchor, 1)
+          openapi.write_text(text, encoding='utf-8')
+
+          replace_once('build.gradle.kts', 'version = "0.13.0-SNAPSHOT"', 'version = "0.14.0-SNAPSHOT"')
+          replace_once('scripts/build-distribution.sh', 'VERSION=0.13.0', 'VERSION=0.14.0')
+
+          replace_all('.github/workflows/verify.yml', '0.13.0', '0.14.0')
+          replace_all('.github/workflows/release.yml', '0.13.0', '0.14.0')
+
+          verifier = Path('scripts/verify-api.py')
+          v = verifier.read_text(encoding='utf-8')
+          v = v.replace('document.get("info", {}).get("version") != "0.13.0"', 'document.get("info", {}).get("version") != "0.14.0"', 1)
+          v = v.replace('OpenAPI info.version must match Increment 13', 'OpenAPI info.version must match Increment 14', 1)
+          v = v.replace('        "/cvss-v31-imports",\n', '        "/cvss-v31-imports",\n        "/cisa-kev-evidence",\n        "/cisa-kev-imports",\n', 1)
+          marker = '''    applicability = schemas.get("ApplicabilityImportResult", {})\n'''
+          kev_checks = '''    if "cisaKev" not in health_required:
+        raise AssertionError("Health schema must expose CISA KEV runtime capability")
+    kev_capability = schemas.get("CisaKevCapability", {})
+    if set(kev_capability.get("required", [])) != {"importEnabled", "evidenceReadEnabled"}:
+        raise AssertionError("CISA KEV capability schema is incomplete")
+
+    kev_import = schemas.get("CisaKevImportResult", {})
+    required_kev_import_fields = {
+        "insertedSnapshots",
+        "replayedSnapshots",
+        "snapshotConflictGroups",
+        "insertedEvidence",
+        "replayedEvidence",
+        "persistenceQuarantinedRows",
+        "contractQuarantinedRows",
+        "totalQuarantinedRows",
+        "uniqueCves",
+        "uniqueSnapshots",
+    }
+    if not required_kev_import_fields.issubset(set(kev_import.get("required", []))):
+        raise AssertionError("CISA KEV import result schema is incomplete")
+    if kev_import.get("properties", {}).get("contractId", {}).get("const") != "CISA_KEV_CSV_V1":
+        raise AssertionError("CISA KEV import result must bind to CISA_KEV_CSV_V1")
+    if kev_import.get("properties", {}).get("semantics", {}).get("const") != \\
+            "CVE_SCOPED_CISA_KEV_SNAPSHOT_MEMBERSHIP_EVIDENCE":
+        raise AssertionError("CISA KEV import semantics are incorrect")
+
+    kev_page = schemas.get("CisaKevEvidencePage", {})
+    if kev_page.get("properties", {}).get("semantics", {}).get("const") != \\
+            "CURRENT_PER_SOURCE_CISA_KEV_SNAPSHOT_MEMBERSHIP_EVIDENCE":
+        raise AssertionError("CISA KEV read semantics must remain current-per-source")
+    kev_item = schemas.get("CisaKevEvidenceItem", {}).get("properties", {})
+    if set(kev_item.get("kevStatus", {}).get("enum", [])) != {"LISTED", "NOT_LISTED"}:
+        raise AssertionError("CISA KEV API must not persist or expose fabricated UNKNOWN rows")
+    if kev_item.get("kevCatalogSha256", {}).get("pattern") != "^[a-f0-9]{64}$":
+        raise AssertionError("CISA KEV API must expose snapshot SHA-256 provenance")
+
+'''
+          if v.count(marker) != 1:
+              raise SystemExit('verify-api applicability anchor mismatch')
+          v = v.replace(marker, kev_checks + marker, 1)
+          verifier.write_text(v, encoding='utf-8')
+
+          readme = Path('README.md')
+          r = readme.read_text(encoding='utf-8')
+          r = r.replace('# RBVM CSV Platform — Increment 13', '# RBVM CSV Platform — Increment 14', 1)
+          r = r.replace('0.13.0', '0.14.0')
+          r = r.replace('تسلسل V1–V10', 'تسلسل V1–V11', 1)
+          r = r.replace('أدلة التدقيق وApplicability/CVSS history', 'أدلة التدقيق وApplicability/CVSS/KEV history', 1)
+          r = r.replace('وبقدرات Applicability وCVSS v3.1.', 'وبقدرات Applicability وCVSS v3.1 وCISA KEV.', 1)
+          r = r.replace(
+              '- API مخصصة لاستيراد Applicability وCVSS وقراءة CVSS current-per-source، مع صفحة تشغيل مستقلة على `/cvss`.\n',
+              '- API مخصصة لاستيراد Applicability وCVSS وKEV وقراءة current evidence، مع صفحات تشغيل مستقلة على `/cvss` و`/kev`.\n'
+              '- CISA KEV مستقلة عبر `CISA_KEV_CSV_V1` كدليل Threat Evidence مربوط بلقطة كاملة ومتحقق منها، مع `LISTED|NOT_LISTED` وprovenance صريح؛ غياب الدليل يبقى `UNKNOWN`.\n',
+              1,
+          )
+          r = r.replace(
+              '- OpenAPI 0.14.0 موحّد مع runtime CVSS/Applicability الحالي، إضافة إلى migrations واختبارات contract/domain/HTTP.',
+              '- OpenAPI 0.14.0 موحّد مع runtime Applicability/CVSS/CISA KEV الحالي، إضافة إلى migrations واختبارات contract/domain/HTTP.',
+          )
+          ui_anchor = '''واجهة CVSS v3.1 المستقلة:\n\n```text\nhttp://127.0.0.1:8080/cvss\n```\n'''
+          kev_ui = ui_anchor + '''\nواجهة CISA KEV المستقلة:\n\n```text\nhttp://127.0.0.1:8080/kev\n```\n'''
+          if r.count(ui_anchor) != 1:
+              raise SystemExit('README CVSS UI anchor mismatch')
+          r = r.replace(ui_anchor, kev_ui, 1)
+          cvss_note = '`/api/v1/cvss-v31-evidence`'
+          pos = r.find(cvss_note)
+          if pos < 0:
+              raise SystemExit('README CVSS API anchor missing')
+          # Insert KEV API example after the CVSS explanatory paragraph by using the next blank-line heading boundary.
+          heading = '\n## '
+          next_heading = r.find(heading, pos)
+          insert_at = next_heading if next_heading >= 0 else len(r)
+          kev_readme = '''\nCISA KEV Threat Evidence:\n\n```bash\ncurl -X POST http://127.0.0.1:8080/api/v1/cisa-kev-imports \\\n  -H "Authorization: Bearer $RBVM_API_TOKEN" \\\n  -H 'Content-Type: text/csv' \\\n  --data-binary @cisa-kev.csv\n\ncurl -H "Authorization: Bearer $RBVM_API_TOKEN" \\\n  'http://127.0.0.1:8080/api/v1/cisa-kev-evidence?limit=100&cve=CVE-2026-'\n```\n\n`NOT_LISTED` يعني أن الـCVE غير موجود في لقطة KEV كاملة ومتحقق منها؛ لا يعني أن الثغرة آمنة أو غير مستغلة. `KEV_Due_Date` يبقى دليل مصدر من CISA ولا يتحول تلقائياً إلى SLA للمؤسسة.\n\n'''
+          r = r[:insert_at] + kev_readme + r[insert_at:]
+          readme.write_text(r, encoding='utf-8')
+
+          # Remove this one-shot workflow from the final branch commit.
+          Path('.github/workflows/apply-v014-contract.yml').unlink()
+          PY
+      - name: Commit generated contract alignment
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git diff --cached --check
+          git commit -m "Align CISA KEV API and release contract to 0.14.0"
+          git push origin HEAD:foundation/cisa-kev-api-contract-v014
