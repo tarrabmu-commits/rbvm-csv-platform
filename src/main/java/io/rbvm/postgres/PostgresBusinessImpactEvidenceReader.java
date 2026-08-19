@@ -5,6 +5,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -183,7 +184,7 @@ public final class PostgresBusinessImpactEvidenceReader implements BusinessImpac
 
     private static String normalizeOptional(String value, int max, String field, boolean lowercase) {
         if (value == null || value.isBlank()) return null;
-        String normalized = value.trim();
+        String normalized = Normalizer.normalize(value.trim(), Normalizer.Form.NFKC);
         if (normalized.length() > max || normalized.indexOf('\u0000') >= 0) {
             throw new IllegalArgumentException(field + " is invalid or too long");
         }
