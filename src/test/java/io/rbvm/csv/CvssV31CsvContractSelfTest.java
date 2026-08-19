@@ -27,7 +27,7 @@ public final class CvssV31CsvContractSelfTest {
     private static void parsesCveScopedBaseEvidence() throws Exception {
         List<CvssV31CsvEvidence> rows = new ArrayList<>();
         CvssV31CsvAnalysisReport report = analyze(
-                headers() + validRow("CVE-2026-25087", "7.5", VECTOR, SOURCE,
+                headers() + validRow("CVE-2026-25087", "9.8", VECTOR, SOURCE,
                         "2026-08-19T08:00:00Z"),
                 rows
         );
@@ -41,7 +41,7 @@ public final class CvssV31CsvContractSelfTest {
         CvssV31BaseEvidence evidence = rows.get(0).evidence();
         assert evidence.cveId().equals("CVE-2026-25087");
         assert evidence.version().equals("3.1");
-        assert evidence.baseScore().toPlainString().equals("7.5");
+        assert evidence.baseScore().toPlainString().equals("9.8");
         assert evidence.canonicalVector().equals(VECTOR);
         assert evidence.source().equals(SOURCE);
     }
@@ -50,8 +50,8 @@ public final class CvssV31CsvContractSelfTest {
         String reordered = "CVSS:3.1/A:H/I:H/C:H/S:U/UI:N/PR:N/AC:L/AV:N";
         String timestamp = "2026-08-19T08:10:00Z";
         String csv = headers()
-                + validRow("CVE-2026-25087", "7.5", VECTOR, SOURCE, timestamp)
-                + validRow("CVE-2026-25087", "7.5", reordered, SOURCE, timestamp);
+                + validRow("CVE-2026-25087", "9.8", VECTOR, SOURCE, timestamp)
+                + validRow("CVE-2026-25087", "9.8", reordered, SOURCE, timestamp);
 
         CvssV31CsvAnalysisReport report = analyze(csv, new ArrayList<>());
         assert report.logicalRows() == 2;
@@ -64,8 +64,8 @@ public final class CvssV31CsvContractSelfTest {
         String timestamp = "2026-08-19T08:20:00Z";
         String differentVector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:H/A:H";
         String csv = headers()
-                + validRow("CVE-2026-25087", "7.5", VECTOR, SOURCE, timestamp)
-                + validRow("CVE-2026-25087", "7.5", differentVector, SOURCE, timestamp);
+                + validRow("CVE-2026-25087", "9.8", VECTOR, SOURCE, timestamp)
+                + validRow("CVE-2026-25087", "9.4", differentVector, SOURCE, timestamp);
 
         CvssV31CsvAnalysisReport report = analyze(csv, new ArrayList<>());
         assert report.acceptedRows() == 1;
@@ -79,32 +79,36 @@ public final class CvssV31CsvContractSelfTest {
         String temporalMetric = VECTOR + "/E:H";
         String duplicateMetric = VECTOR + "/AV:L";
         String csv = headers()
-                + validRow("bad-cve", "7.5", VECTOR, SOURCE, "2026-08-19T08:30:00Z")
-                + validRow("CVE-2026-25087", "8.0", VECTOR, SOURCE, "2026-08-19T08:31:00Z")
+                + validRow("bad-cve", "9.8", VECTOR, SOURCE, "2026-08-19T08:30:00Z")
+                + validRow("CVE-2026-25087", "9.8", VECTOR, SOURCE, "2026-08-19T08:31:00Z")
                         .replace(",3.1,", ",4.0,")
                 + validRow("CVE-2026-25087", "10.1", VECTOR, SOURCE, "2026-08-19T08:32:00Z")
                 + validRow("CVE-2026-25087", "7.55", VECTOR, SOURCE, "2026-08-19T08:33:00Z")
-                + validRow("CVE-2026-25087", "7.5", "CVSS:4.0/AV:N", SOURCE,
+                + validRow("CVE-2026-25087", "9.8", "CVSS:4.0/AV:N", SOURCE,
                         "2026-08-19T08:34:00Z")
-                + validRow("CVE-2026-25087", "7.5", missingMetric, SOURCE,
+                + validRow("CVE-2026-25087", "9.8", missingMetric, SOURCE,
                         "2026-08-19T08:35:00Z")
-                + validRow("CVE-2026-25087", "7.5", temporalMetric, SOURCE,
+                + validRow("CVE-2026-25087", "9.8", temporalMetric, SOURCE,
                         "2026-08-19T08:36:00Z")
-                + validRow("CVE-2026-25087", "7.5", duplicateMetric, SOURCE,
+                + validRow("CVE-2026-25087", "9.8", duplicateMetric, SOURCE,
                         "2026-08-19T08:37:00Z")
-                + validRow("CVE-2026-25087", "7.5", VECTOR, "http://example.test/cvss",
+                + validRow("CVE-2026-25087", "9.8", VECTOR, "http://example.test/cvss",
                         "2026-08-19T08:38:00Z")
-                + validRow("CVE-2026-25087", "7.5", VECTOR, SOURCE, "2026-08-19");
+                + validRow("CVE-2026-25087", "9.8", VECTOR, SOURCE, "2026-08-19")
+                + validRow("CVE-2026-25087", "7.5", VECTOR, SOURCE,
+                        "2026-08-19T08:39:00Z");
 
         CvssV31CsvAnalysisReport report = analyze(csv, new ArrayList<>());
         assert report.acceptedRows() == 0;
-        assert report.quarantinedRows() == 10;
+        assert report.quarantinedRows() == 11;
         assert hasIssue(report, "INVALID_CVE_ID");
         assert hasIssue(report, "INVALID_CVSS_VERSION");
         assert hasIssue(report, "INVALID_CVSS_BASE_SCORE");
         assert hasIssue(report, "INVALID_CVSS_VECTOR");
         assert hasIssue(report, "INVALID_CVSS_SOURCE");
         assert hasIssue(report, "INVALID_CVSS_OBSERVED_AT");
+        assert report.issueSamples().stream().anyMatch(issue ->
+                issue.message().contains("must match CVSS_Vector"));
     }
 
     private static void rejectsMissingContractHeader() throws Exception {
