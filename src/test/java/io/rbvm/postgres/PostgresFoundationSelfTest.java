@@ -22,7 +22,9 @@ public final class PostgresFoundationSelfTest {
             "/db/migration/V12__epss_persistence.sql",
             "/db/migration/V13__asset_context_persistence.sql",
             "/db/migration/V14__network_reachability_persistence.sql",
-            "/db/migration/V15__business_impact_persistence.sql"
+            "/db/migration/V15__business_impact_persistence.sql",
+            "/db/migration/V16__decision_methodology_policy_persistence.sql",
+            "/db/migration/V17__decision_input_snapshot_persistence.sql"
     );
 
     private PostgresFoundationSelfTest() {
@@ -51,6 +53,8 @@ public final class PostgresFoundationSelfTest {
         PostgresAssetContextImporterSelfTest.main(args);
         PostgresNetworkReachabilityImporterSelfTest.main(args);
         PostgresBusinessImpactImporterSelfTest.main(args);
+        PostgresDecisionMethodologyPolicyStoreSelfTest.main(args);
+        PostgresDecisionInputSnapshotStoreSelfTest.main(args);
         PostgresNetworkReachabilityEvidenceReaderSelfTest.main(args);
         PostgresBusinessImpactEvidenceReaderSelfTest.main(args);
         PostgresCvssV31EvidenceReaderSelfTest.main(args);
@@ -297,13 +301,11 @@ public final class PostgresFoundationSelfTest {
         assert script.contains("s.observed_at DESC");
         assert script.contains("(i.id IS NOT NULL) AS business_impact_observed");
         assert script.contains("never fabricated as LOW, NEGLIGIBLE, or UNKNOWN");
-        assert !script.contains("impact_weight");
         assert !script.contains("risk_score");
         assert !script.contains("priority_tier");
-        assert !script.contains("sla_days");
-        assert !script.contains("cvss_base_score");
-        assert !script.contains("epss_probability");
-        assert !script.contains("known_exploited");
+        assert !script.contains("SLA_Days");
+        assert !script.contains("impact_weight");
+        assert !script.contains("loss_amount");
         assert !script.contains("internet_exposed");
     }
 

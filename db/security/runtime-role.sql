@@ -44,7 +44,10 @@ GRANT SELECT, INSERT ON
     rbvm.business_impact_evidence,
     rbvm.decision_methodology_policy,
     rbvm.decision_methodology_evidence_policy,
-    rbvm.decision_methodology_source_allowlist
+    rbvm.decision_methodology_source_allowlist,
+    rbvm.decision_input_snapshot,
+    rbvm.decision_input_dimension,
+    rbvm.decision_input_evidence_reference
 TO rbvm_runtime;
 
 GRANT SELECT ON
@@ -97,3 +100,6 @@ REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.business_impact_evidence FROM rbvm_runti
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.decision_methodology_policy FROM rbvm_runtime;
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.decision_methodology_evidence_policy FROM rbvm_runtime;
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.decision_methodology_source_allowlist FROM rbvm_runtime;
+REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.decision_input_snapshot FROM rbvm_runtime;
+REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.decision_input_dimension FROM rbvm_runtime;
+REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.decision_input_evidence_reference FROM rbvm_runtime;

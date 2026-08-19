@@ -30,9 +30,9 @@ public final class PostgresMigratorSelfTest {
     private static void appliesAndReplaysVersionedMigrations() throws Exception {
         FakeDatabase database = new FakeDatabase();
         PostgresMigrator migrator = new PostgresMigrator(database::connection);
-        assert migrator.migrate() == 16;
-        assert database.checksums.size() == 16;
-        assert database.commits == 16;
+        assert migrator.migrate() == 17;
+        assert database.checksums.size() == 17;
+        assert database.commits == 17;
         assert database.rollbacks == 0;
         assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.observation"));
         assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE VIEW rbvm.operational_finding"));
@@ -64,6 +64,9 @@ public final class PostgresMigratorSelfTest {
         assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.decision_methodology_policy"));
         assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.decision_methodology_evidence_policy"));
         assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.decision_methodology_source_allowlist"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.decision_input_snapshot"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.decision_input_dimension"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.decision_input_evidence_reference"));
 
         long observationCreates = count(database, "CREATE TABLE rbvm.observation (");
         long operationalFindingCreates = count(database, "CREATE VIEW rbvm.operational_finding");
@@ -82,9 +85,12 @@ public final class PostgresMigratorSelfTest {
         long methodologyPolicyCreates = count(database, "CREATE TABLE rbvm.decision_methodology_policy");
         long methodologyEvidencePolicyCreates = count(database, "CREATE TABLE rbvm.decision_methodology_evidence_policy");
         long methodologyAllowlistCreates = count(database, "CREATE TABLE rbvm.decision_methodology_source_allowlist");
+        long decisionInputSnapshotCreates = count(database, "CREATE TABLE rbvm.decision_input_snapshot");
+        long decisionInputDimensionCreates = count(database, "CREATE TABLE rbvm.decision_input_dimension");
+        long decisionInputReferenceCreates = count(database, "CREATE TABLE rbvm.decision_input_evidence_reference");
 
-        assert migrator.migrate() == 16;
-        assert database.commits == 16 : "replay must not reapply migrations";
+        assert migrator.migrate() == 17;
+        assert database.commits == 17 : "replay must not reapply migrations";
         assert count(database, "CREATE TABLE rbvm.observation (") == observationCreates;
         assert count(database, "CREATE VIEW rbvm.operational_finding") == operationalFindingCreates;
         assert count(database, "CREATE TABLE rbvm.applicability_assessment") == applicabilityCreates;
@@ -102,6 +108,9 @@ public final class PostgresMigratorSelfTest {
         assert count(database, "CREATE TABLE rbvm.decision_methodology_policy") == methodologyPolicyCreates;
         assert count(database, "CREATE TABLE rbvm.decision_methodology_evidence_policy") == methodologyEvidencePolicyCreates;
         assert count(database, "CREATE TABLE rbvm.decision_methodology_source_allowlist") == methodologyAllowlistCreates;
+        assert count(database, "CREATE TABLE rbvm.decision_input_snapshot") == decisionInputSnapshotCreates;
+        assert count(database, "CREATE TABLE rbvm.decision_input_dimension") == decisionInputDimensionCreates;
+        assert count(database, "CREATE TABLE rbvm.decision_input_evidence_reference") == decisionInputReferenceCreates;
         assert database.advisoryLocks == 2;
         assert database.advisoryUnlocks == 2;
     }
