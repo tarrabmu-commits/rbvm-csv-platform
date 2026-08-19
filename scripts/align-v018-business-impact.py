@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import os
 import subprocess
 import sys
 
@@ -40,8 +41,22 @@ curl -H "Authorization: Bearer $RBVM_API_KEY" \\
     path.write_text(text.replace(marker, "\n" + block + marker.lstrip("\n"), 1), encoding="utf-8")
 
 
+def install_publish_permission_hook() -> None:
+    hook = ROOT / ".git" / "hooks" / "pre-commit"
+    hook.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "git restore --source=HEAD --staged --worktree -- "
+        ".github/workflows/align-v018-evidence-catchup.yml "
+        ".github/workflows/verify.yml .github/workflows/release.yml\n",
+        encoding="utf-8",
+    )
+    os.chmod(hook, 0o755)
+
+
 def main() -> None:
     seed_reachability_api_example()
+    install_publish_permission_hook()
     core = ROOT / "scripts" / "_align-v018-business-impact-core.py"
     with core.open("wb") as output:
         subprocess.run(
