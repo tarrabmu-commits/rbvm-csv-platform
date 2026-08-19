@@ -76,10 +76,12 @@ def main() -> None:
             (9, "V9__applicability_persistence.sql"),
             (10, "V10__cvss_v31_base_persistence.sql"),
             (11, "V11__cisa_kev_persistence.sql"),
+            (12, "V12__epss_persistence.sql"),
         )
     }
     v1, v2, v3, v4, v5, v6, v7 = (migrations[index] for index in range(1, 8))
     v11 = migrations[11]
+    v12 = migrations[12]
 
     required_tables = {
         "tenant",
@@ -173,6 +175,53 @@ def main() -> None:
     for forbidden in ("PRIORITY_TIER", "RISK_SCORE", "EPSS_PROBABILITY", "SLA_DAYS"):
         if forbidden in v11:
             raise AssertionError(f"V11 must not derive {forbidden}")
+
+    for invariant in (
+        "CREATE TABLE RBVM.EPSS_SCORE_SNAPSHOT",
+        "CREATE TABLE RBVM.EPSS_EVIDENCE",
+        "UNIQUE (TENANT_ID, EPSS_SOURCE, OBSERVED_AT)",
+        "UNIQUE (TENANT_ID, VULNERABILITY_ID, SNAPSHOT_ID)",
+        "REFERENCES RBVM.EPSS_SCORE_SNAPSHOT(TENANT_ID, ID)",
+        "EPSS_PROBABILITY >= 0 AND EPSS_PROBABILITY <= 1",
+        "EPSS_PERCENTILE >= 0 AND EPSS_PERCENTILE <= 1",
+        "CREATE VIEW RBVM.CURRENT_EPSS_EVIDENCE",
+        "CREATE VIEW RBVM.FINDING_EPSS_EVIDENCE",
+        "DISTINCT ON (E.TENANT_ID, E.VULNERABILITY_ID, S.EPSS_SOURCE)",
+        "S.SCORE_DATE DESC, S.OBSERVED_AT DESC",
+        "(E.ID IS NOT NULL) AS EPSS_EVIDENCE_OBSERVED",
+    ):
+        if invariant not in v12:
+            raise AssertionError(f"V12 is missing EPSS persistence invariant {invariant}")
+    for forbidden in ("PRIORITY_TIER", "RISK_SCORE", "SLA_DAYS"):
+        if forbidden in v12:
+            raise AssertionError(f"V12 must not derive {forbidden}")
+    if "COALESCE(E.EPSS_PROBABILITY" in v12:
+        raise AssertionError("V12 must preserve missing EPSS as absence, not probability zero")
+
+    runtime_role = " ".join(
+        (root / "db/security/runtime-role.sql").read_text(encoding="utf-8").split()
+    ).upper()
+    for relation in (
+        "RBVM.CISA_KEV_CATALOG_SNAPSHOT",
+        "RBVM.CISA_KEV_EVIDENCE",
+        "RBVM.EPSS_SCORE_SNAPSHOT",
+        "RBVM.EPSS_EVIDENCE",
+        "RBVM.CURRENT_CISA_KEV_EVIDENCE",
+        "RBVM.FINDING_CISA_KEV_EVIDENCE",
+        "RBVM.CURRENT_EPSS_EVIDENCE",
+        "RBVM.FINDING_EPSS_EVIDENCE",
+    ):
+        if relation not in runtime_role:
+            raise AssertionError(f"runtime role is missing intelligence relation {relation}")
+    for relation in (
+        "RBVM.CISA_KEV_CATALOG_SNAPSHOT",
+        "RBVM.CISA_KEV_EVIDENCE",
+        "RBVM.EPSS_SCORE_SNAPSHOT",
+        "RBVM.EPSS_EVIDENCE",
+    ):
+        marker = f"REVOKE UPDATE, DELETE, TRUNCATE ON {relation} FROM RBVM_RUNTIME"
+        if marker not in runtime_role:
+            raise AssertionError(f"runtime role must keep {relation} append-only")
 
     read_catalog = (root / "src/main/java/io/rbvm/postgres/PostgresReadCatalog.java").read_text(
         encoding="utf-8")
