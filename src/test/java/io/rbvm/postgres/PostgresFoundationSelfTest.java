@@ -38,6 +38,7 @@ public final class PostgresFoundationSelfTest {
         PostgresProjectionJdbcSelfTest.main(args);
         PostgresApplicabilityImporterSelfTest.main(args);
         PostgresCvssV31ImporterSelfTest.main(args);
+        PostgresCisaKevImporterSelfTest.main(args);
         PostgresCvssV31EvidenceReaderSelfTest.main(args);
         PostgresApplicabilityFindingExporterSelfTest.main(args);
         PostgresApplicabilityAwareCatalogSelfTest.main(args);
