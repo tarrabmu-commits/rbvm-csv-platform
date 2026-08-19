@@ -15,6 +15,7 @@ public final class PlatformSelfTest {
         CanonicalFindingStateSelfTest.main(args);
         ApplicabilityEvidenceSelfTest.main(args);
         ApplicabilityCsvContractSelfTest.main(args);
+        AssetContextCsvContractSelfTest.main(args);
         CvssV31BaseScoreCalculatorSelfTest.main(args);
         CvssV31CsvContractSelfTest.main(args);
         CisaKevEvidenceSelfTest.main(args);
