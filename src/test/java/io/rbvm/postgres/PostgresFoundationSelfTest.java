@@ -32,6 +32,7 @@ public final class PostgresFoundationSelfTest {
         applicabilityPersistencePreservesEvidenceSemantics();
         PostgresMigratorSelfTest.main(args);
         PostgresProjectionJdbcSelfTest.main(args);
+        PostgresApplicabilityImporterSelfTest.main(args);
         System.out.println("PostgresFoundationSelfTest: PASS");
     }
 
