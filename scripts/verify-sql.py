@@ -62,20 +62,24 @@ def lexical_check(path: Path) -> str:
 
 def main() -> None:
     root = Path(__file__).resolve().parent.parent
-    v1_path = root / "db/migration/V1__canonical_rbvm.sql"
-    v2_path = root / "db/migration/V2__dashboard_views.sql"
-    v3_path = root / "db/migration/V3__case_workflow_audit.sql"
-    v4_path = root / "db/migration/V4__postgres_projection_runtime.sql"
-    v5_path = root / "db/migration/V5__postgres_read_catalog.sql"
-    v6_path = root / "db/migration/V6__explicit_finding_lifecycle.sql"
-    v7_path = root / "db/migration/V7__vulnerability_intelligence.sql"
-    v1 = lexical_check(v1_path)
-    v2 = lexical_check(v2_path)
-    v3 = lexical_check(v3_path)
-    v4 = lexical_check(v4_path)
-    v5 = lexical_check(v5_path)
-    v6 = lexical_check(v6_path)
-    v7 = lexical_check(v7_path)
+    migrations = {
+        version: lexical_check(root / f"db/migration/{name}")
+        for version, name in (
+            (1, "V1__canonical_rbvm.sql"),
+            (2, "V2__dashboard_views.sql"),
+            (3, "V3__case_workflow_audit.sql"),
+            (4, "V4__postgres_projection_runtime.sql"),
+            (5, "V5__postgres_read_catalog.sql"),
+            (6, "V6__explicit_finding_lifecycle.sql"),
+            (7, "V7__vulnerability_intelligence.sql"),
+            (8, "V8__operational_analytics.sql"),
+            (9, "V9__applicability_persistence.sql"),
+            (10, "V10__cvss_v31_base_persistence.sql"),
+            (11, "V11__cisa_kev_persistence.sql"),
+        )
+    }
+    v1, v2, v3, v4, v5, v6, v7 = (migrations[index] for index in range(1, 8))
+    v11 = migrations[11]
 
     required_tables = {
         "tenant",
@@ -152,6 +156,24 @@ def main() -> None:
     ):
         if invariant not in v7:
             raise AssertionError(f"V7 is missing intelligence invariant {invariant}")
+
+    for invariant in (
+        "CREATE TABLE RBVM.CISA_KEV_CATALOG_SNAPSHOT",
+        "CREATE TABLE RBVM.CISA_KEV_EVIDENCE",
+        "UNIQUE (TENANT_ID, KEV_SOURCE, OBSERVED_AT)",
+        "UNIQUE (TENANT_ID, VULNERABILITY_ID, SNAPSHOT_ID)",
+        "REFERENCES RBVM.CISA_KEV_CATALOG_SNAPSHOT(TENANT_ID, ID)",
+        "KEV_STATUS IN ('LISTED', 'NOT_LISTED')",
+        "CREATE VIEW RBVM.CURRENT_CISA_KEV_EVIDENCE",
+        "CREATE VIEW RBVM.FINDING_CISA_KEV_EVIDENCE",
+        "COALESCE(K.KEV_STATUS, 'UNKNOWN')",
+    ):
+        if invariant not in v11:
+            raise AssertionError(f"V11 is missing KEV persistence invariant {invariant}")
+    for forbidden in ("PRIORITY_TIER", "RISK_SCORE", "EPSS_PROBABILITY", "SLA_DAYS"):
+        if forbidden in v11:
+            raise AssertionError(f"V11 must not derive {forbidden}")
+
     read_catalog = (root / "src/main/java/io/rbvm/postgres/PostgresReadCatalog.java").read_text(
         encoding="utf-8")
     if "intel_observed_at" in read_catalog:
