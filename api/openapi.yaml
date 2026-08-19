@@ -1,14 +1,15 @@
 openapi: 3.1.1
 info:
   title: RBVM CSV Import API
-  version: 0.14.0
+  version: 0.15.0
   description: >-
     Synchronous upload, validation, preview, and canonical-domain materialization
     API for WAZUH_CSV_V1 positive observations and opt-in WAZUH_CSV_V2 explicit
     finding lifecycle evidence, separate finding-scoped applicability assessment,
     independent CVSS v3.1 Base technical-severity evidence, snapshot-bound CISA KEV
-    threat evidence, explicit case decisions,
-    an append-only workflow audit trail, and optional PostgreSQL canonical persistence.
+    threat evidence, independent FIRST EPSS exploitation-probability evidence,
+    explicit case decisions, an append-only workflow audit trail, and optional
+    PostgreSQL canonical persistence.
 servers:
   - url: http://127.0.0.1:8080/api/v1
 security:
@@ -318,6 +319,91 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CisaKevImportResult'
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+        '403':
+          $ref: '#/components/responses/InsufficientRole'
+        '413':
+          $ref: '#/components/responses/Problem'
+        '415':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /epss-evidence:
+    get:
+      operationId: listEpssEvidence
+      summary: Read current FIRST EPSS probability evidence per source
+      description: >-
+        Returns the latest published EPSS score independently for every source attached
+        to tenant CVEs. Probability and percentile are source evidence, not organizational
+        risk or priority. A CVE without persisted EPSS evidence is absent rather than
+        fabricated as probability zero. Score date remains distinct from local observation time.
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of current source-evidence rows to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+        - name: cve
+          in: query
+          description: Optional case-insensitive CVE identifier or CVE prefix
+          schema:
+            type: string
+            maxLength: 32
+            pattern: '^CVE-[0-9A-Za-z-]+$'
+      responses:
+        '200':
+          description: Current tenant-scoped FIRST EPSS evidence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EpssEvidencePage'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /epss-imports:
+    post:
+      operationId: importEpssCsv
+      summary: Validate and persist EPSS_CSV_V1 evidence
+      description: >-
+        Parses independent CVE-scoped FIRST EPSS probability evidence and appends safe
+        rows through the transactional PostgreSQL V12 importer. Same-observation snapshot
+        conflicts and persisted score conflicts are quarantined rather than overwritten.
+        Missing score evidence remains absence and is never converted to probability zero.
+      requestBody:
+        required: true
+        content:
+          text/csv:
+            schema:
+              type: string
+              format: binary
+          application/csv:
+            schema:
+              type: string
+              format: binary
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: EPSS evidence file processed transactionally
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EpssImportResult'
         '401':
           $ref: '#/components/responses/AuthenticationRequired'
         '403':
@@ -656,6 +742,7 @@ components:
         - applicability
         - cvssV31
         - cisaKev
+        - epss
         - storedImports
         - recoveryWarningCount
         - maximumUploadBytes
@@ -683,6 +770,8 @@ components:
           $ref: '#/components/schemas/CvssV31Capability'
         cisaKev:
           $ref: '#/components/schemas/CisaKevCapability'
+        epss:
+          $ref: '#/components/schemas/EpssCapability'
         storedImports:
           type: integer
           minimum: 0
@@ -721,6 +810,15 @@ components:
         evidenceReadEnabled:
           type: boolean
     CisaKevCapability:
+      type: object
+      additionalProperties: false
+      required: [importEnabled, evidenceReadEnabled]
+      properties:
+        importEnabled:
+          type: boolean
+        evidenceReadEnabled:
+          type: boolean
+    EpssCapability:
       type: object
       additionalProperties: false
       required: [importEnabled, evidenceReadEnabled]
@@ -1200,9 +1298,9 @@ components:
             - type: 'null'
     VulnerabilityIntelligence:
       description: >-
-        Legacy combined CVSS/EPSS/KEV compatibility object. The independent CVSS v3.1
-        Base evidence model is exposed through /cvss-v31-evidence and does not derive
-        priority from CVSS.
+        Legacy combined CVSS/EPSS/KEV compatibility object. Independent CVSS v3.1
+        Base and FIRST EPSS evidence are exposed through dedicated evidence APIs and
+        do not derive priority from technical severity or exploitation probability.
       type: object
       required:
         - priorityTier
@@ -1773,6 +1871,184 @@ components:
           items:
             $ref: '#/components/schemas/CisaKevIssue'
     CisaKevIssue:
+      type: object
+      additionalProperties: false
+      required: [rowNumber, level, code, message]
+      properties:
+        rowNumber:
+          type: integer
+          format: int64
+          minimum: 1
+        level:
+          enum: [WARNING, ERROR]
+        code:
+          type: string
+        message:
+          type: string
+    EpssEvidencePage:
+      type: object
+      additionalProperties: false
+      required: [semantics, limit, cvePrefix, count, items]
+      properties:
+        semantics:
+          const: CURRENT_PER_SOURCE_EPSS_EXPLOITATION_PROBABILITY_EVIDENCE
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 500
+        cvePrefix:
+          type: [string, 'null']
+        count:
+          type: integer
+          minimum: 0
+          maximum: 500
+        items:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/EpssEvidenceItem'
+    EpssEvidenceItem:
+      type: object
+      additionalProperties: false
+      required:
+        - cveId
+        - epssProbability
+        - epssPercentile
+        - epssModelVersion
+        - epssScoreDate
+        - epssSource
+        - epssSourceSha256
+        - epssObservedAt
+        - evidenceIngestedAt
+        - snapshotIngestedAt
+      properties:
+        cveId:
+          type: string
+          pattern: '^CVE-[0-9]{4}-[0-9]{4,}$'
+        epssProbability:
+          type: number
+          minimum: 0
+          maximum: 1
+        epssPercentile:
+          type: number
+          minimum: 0
+          maximum: 1
+        epssModelVersion:
+          type: string
+          pattern: '^v?[0-9]{4}\.[0-9]{2}\.[0-9]{2}$'
+        epssScoreDate:
+          type: string
+          format: date
+        epssSource:
+          type: string
+          format: uri
+          pattern: '^https://'
+        epssSourceSha256:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        epssObservedAt:
+          type: string
+          format: date-time
+        evidenceIngestedAt:
+          type: string
+          format: date-time
+        snapshotIngestedAt:
+          type: string
+          format: date-time
+    EpssImportResult:
+      type: object
+      additionalProperties: false
+      required:
+        - contractId
+        - semantics
+        - logicalRows
+        - acceptedRows
+        - insertedSnapshots
+        - replayedSnapshots
+        - snapshotConflictGroups
+        - insertedEvidence
+        - replayedEvidence
+        - contractDeduplicatedRows
+        - persistenceQuarantinedRows
+        - contractQuarantinedRows
+        - totalDeduplicatedRows
+        - totalQuarantinedRows
+        - uniqueCves
+        - uniqueSnapshots
+        - contractIssues
+        - persistenceIssues
+      properties:
+        contractId:
+          const: EPSS_CSV_V1
+        semantics:
+          const: CVE_SCOPED_EPSS_EXPLOITATION_PROBABILITY_EVIDENCE
+        logicalRows:
+          type: integer
+          format: int64
+          minimum: 0
+        acceptedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        insertedSnapshots:
+          type: integer
+          format: int64
+          minimum: 0
+        replayedSnapshots:
+          type: integer
+          format: int64
+          minimum: 0
+        snapshotConflictGroups:
+          type: integer
+          format: int64
+          minimum: 0
+        insertedEvidence:
+          type: integer
+          format: int64
+          minimum: 0
+        replayedEvidence:
+          type: integer
+          format: int64
+          minimum: 0
+        contractDeduplicatedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        persistenceQuarantinedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        contractQuarantinedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        totalDeduplicatedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        totalQuarantinedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        uniqueCves:
+          type: integer
+          format: int64
+          minimum: 0
+        uniqueSnapshots:
+          type: integer
+          format: int64
+          minimum: 0
+        contractIssues:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/EpssIssue'
+        persistenceIssues:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/EpssIssue'
+    EpssIssue:
       type: object
       additionalProperties: false
       required: [rowNumber, level, code, message]
