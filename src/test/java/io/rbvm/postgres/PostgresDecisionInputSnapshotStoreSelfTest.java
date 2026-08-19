@@ -69,7 +69,7 @@ public final class PostgresDecisionInputSnapshotStoreSelfTest {
         assert stored.persistedAt.equals(PERSISTED_AT);
         assert Arrays.equals(stored.canonicalPayload, snapshot.canonicalPayload());
         assert database.dimensions.get(stored.id).size() == EvidenceDimension.values().length;
-        assert database.referenceCount(stored.id) == 7;
+        assert database.referenceCount(stored.id) == 6;
         assert database.serializableTransactions == 1;
         assert database.advisoryLocks == 1;
         assert database.commits == 1;
@@ -79,7 +79,7 @@ public final class PostgresDecisionInputSnapshotStoreSelfTest {
         assert replay.status() == DecisionInputSnapshotInstallResult.Status.REPLAYED;
         assert database.snapshotInserts == 1;
         assert database.dimensionInserts == 7;
-        assert database.referenceInserts == 7;
+        assert database.referenceInserts == 6;
         assert database.commits == 2;
 
         RbvmDecisionInputSnapshot conflict = snapshot(EVALUATED_AT, true);
@@ -96,7 +96,7 @@ public final class PostgresDecisionInputSnapshotStoreSelfTest {
         assert database.snapshots.size() == 2;
         assert database.snapshotInserts == 2;
         assert database.dimensionInserts == 14;
-        assert database.referenceInserts == 14;
+        assert database.referenceInserts == 12;
         assert database.commits == 4;
 
         Optional<RbvmDecisionInputSnapshot> loaded = store.findBySha256(snapshot.snapshotSha256());
