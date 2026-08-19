@@ -37,6 +37,8 @@ The importer never creates assets. Every accepted row must resolve through:
 
 `Evidence_Source + Evidence_Observed_At` identifies one source-artifact observation in a tenant. The same source/time cannot name different source bytes.
 
+The importer stores `Origin_Label` in the same NFKC + lowercase identity form used by the CSV observation key, so casing or Unicode presentation changes do not fork endpoint streams.
+
 Within a persisted snapshot, endpoint identity is:
 
 `asset + Origin_Scope + Origin_Label + Transport_Protocol + Target_Port`

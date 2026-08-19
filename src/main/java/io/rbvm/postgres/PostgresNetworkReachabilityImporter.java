@@ -16,6 +16,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.text.Normalizer;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -25,6 +26,7 @@ import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -348,7 +350,7 @@ public final class PostgresNetworkReachabilityImporter implements NetworkReachab
             statement.setObject(2, assetId);
             statement.setObject(3, snapshotId);
             statement.setString(4, evidence.originScope().name());
-            statement.setString(5, evidence.originLabel());
+            statement.setString(5, normalizedOriginLabel(evidence));
             statement.setString(6, evidence.transportProtocol().name());
             statement.setObject(7, evidence.targetPort());
             try (ResultSet rows = statement.executeQuery()) {
@@ -404,7 +406,7 @@ public final class PostgresNetworkReachabilityImporter implements NetworkReachab
             statement.setString(6, evidence.assetObservedName());
             statement.setString(7, evidence.assetSourceId().isBlank() ? null : evidence.assetSourceId());
             statement.setString(8, evidence.originScope().name());
-            statement.setString(9, evidence.originLabel());
+            statement.setString(9, normalizedOriginLabel(evidence));
             statement.setString(10, evidence.transportProtocol().name());
             statement.setObject(11, evidence.targetPort());
             statement.setString(12, evidence.targetService());
@@ -434,6 +436,11 @@ public final class PostgresNetworkReachabilityImporter implements NetworkReachab
         }
     }
 
+    private static String normalizedOriginLabel(NetworkReachabilityCsvEvidence evidence) {
+        return Normalizer.normalize(evidence.originLabel().trim(), Normalizer.Form.NFKC)
+                .toLowerCase(Locale.ROOT);
+    }
+
     private static String evidenceSha256(NetworkReachabilityCsvEvidence evidence) {
         String canonical = evidence.sourceProfileKey() + "\u001F"
                 + evidence.assetIdentityBasis().name() + "\u001F"
@@ -441,7 +448,7 @@ public final class PostgresNetworkReachabilityImporter implements NetworkReachab
                 + evidence.normalizedAssetName() + "\u001F"
                 + evidence.assetSourceId() + "\u001F"
                 + evidence.originScope().name() + "\u001F"
-                + evidence.originLabel() + "\u001F"
+                + normalizedOriginLabel(evidence) + "\u001F"
                 + evidence.transportProtocol().name() + "\u001F"
                 + (evidence.targetPort() == null ? "" : evidence.targetPort()) + "\u001F"
                 + evidence.targetService() + "\u001F"
