@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily RBVM CISA KEV refresh schedule
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=30m
+Persistent=true
+Unit=rbvm-cisa-kev-refresh.service
+
+[Install]
+WantedBy=timers.target
