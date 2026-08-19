@@ -29,7 +29,8 @@ GRANT SELECT, INSERT ON
     rbvm.exposure_observation,
     rbvm.validation_issue,
     rbvm.case_audit_event,
-    rbvm.domain_materialization
+    rbvm.domain_materialization,
+    rbvm.applicability_assessment
 TO rbvm_runtime;
 
 GRANT SELECT ON
@@ -47,9 +48,12 @@ GRANT SELECT ON
     rbvm.analytics_asset_age,
     rbvm.finding_lifecycle_event,
     rbvm.analytics_lifecycle_daily,
-    rbvm.analytics_lifecycle_weekly
+    rbvm.analytics_lifecycle_weekly,
+    rbvm.current_applicability_assessment,
+    rbvm.finding_applicability
 TO rbvm_runtime;
 
 GRANT USAGE, SELECT ON SEQUENCE rbvm.case_audit_event_database_sequence TO rbvm_runtime;
 
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.case_audit_event FROM rbvm_runtime;
+REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.applicability_assessment FROM rbvm_runtime;
