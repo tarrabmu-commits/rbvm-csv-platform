@@ -41,7 +41,10 @@ GRANT SELECT, INSERT ON
     rbvm.network_reachability_snapshot,
     rbvm.network_reachability_evidence,
     rbvm.business_impact_snapshot,
-    rbvm.business_impact_evidence
+    rbvm.business_impact_evidence,
+    rbvm.decision_methodology_policy,
+    rbvm.decision_methodology_evidence_policy,
+    rbvm.decision_methodology_source_allowlist
 TO rbvm_runtime;
 
 GRANT SELECT ON
@@ -91,3 +94,6 @@ REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.network_reachability_snapshot FROM rbvm_
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.network_reachability_evidence FROM rbvm_runtime;
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.business_impact_snapshot FROM rbvm_runtime;
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.business_impact_evidence FROM rbvm_runtime;
+REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.decision_methodology_policy FROM rbvm_runtime;
+REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.decision_methodology_evidence_policy FROM rbvm_runtime;
+REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.decision_methodology_source_allowlist FROM rbvm_runtime;

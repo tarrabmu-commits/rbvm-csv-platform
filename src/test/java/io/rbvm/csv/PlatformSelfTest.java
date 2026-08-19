@@ -1,6 +1,7 @@
 package io.rbvm.csv;
 
 import io.rbvm.decision.RbvmDecisionMethodologyPolicySelfTest;
+import io.rbvm.postgres.PostgresDecisionMethodologyPolicyStoreSelfTest;
 import io.rbvm.postgres.PostgresFoundationSelfTest;
 
 import io.rbvm.domain.DomainCatalogSelfTest;
@@ -35,6 +36,7 @@ public final class PlatformSelfTest {
         CsvBusinessImpactHttpSelfTest.main(args);
         CanonicalProjectionSelfTest.main(args);
         PostgresFoundationSelfTest.main(args);
+        PostgresDecisionMethodologyPolicyStoreSelfTest.main(args);
         System.out.println("PlatformSelfTest: PASS");
     }
 }
