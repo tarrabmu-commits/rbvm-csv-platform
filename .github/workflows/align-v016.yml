@@ -1,0 +1,27 @@
+name: align-v016-once
+
+on:
+  push:
+    branches: [agent/asset-context-api-contract-v016]
+
+permissions:
+  contents: write
+
+jobs:
+  align:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - name: Apply deterministic alignment and remove one-shot tooling
+        run: |
+          python3 scripts/align-v016.py
+          rm scripts/align-v016.py .github/workflows/align-v016.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m 'Align Asset Context OpenAPI and release docs to 0.16.0'
+          git push origin HEAD:agent/asset-context-api-contract-v016
