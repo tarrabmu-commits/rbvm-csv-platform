@@ -30,9 +30,9 @@ public final class PostgresMigratorSelfTest {
     private static void appliesAndReplaysVersionedMigrations() throws Exception {
         FakeDatabase database = new FakeDatabase();
         PostgresMigrator migrator = new PostgresMigrator(database::connection);
-        assert migrator.migrate() == 14;
-        assert database.checksums.size() == 14;
-        assert database.commits == 14;
+        assert migrator.migrate() == 15;
+        assert database.checksums.size() == 15;
+        assert database.commits == 15;
         assert database.rollbacks == 0;
         assert database.executedSql.stream()
                 .anyMatch(sql -> sql.contains("CREATE TABLE rbvm.observation"));
@@ -80,6 +80,14 @@ public final class PostgresMigratorSelfTest {
                 .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.current_network_reachability_evidence"));
         assert database.executedSql.stream()
                 .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.finding_network_reachability_evidence"));
+        assert database.executedSql.stream()
+                .anyMatch(sql -> sql.contains("CREATE TABLE rbvm.business_impact_snapshot"));
+        assert database.executedSql.stream()
+                .anyMatch(sql -> sql.contains("CREATE TABLE rbvm.business_impact_evidence"));
+        assert database.executedSql.stream()
+                .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.current_business_impact_evidence"));
+        assert database.executedSql.stream()
+                .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.finding_business_impact_evidence"));
 
         long observationCreates = database.executedSql.stream()
                 .filter(sql -> sql.contains("CREATE TABLE rbvm.observation (")).count();
@@ -105,8 +113,12 @@ public final class PostgresMigratorSelfTest {
                 .filter(sql -> sql.contains("CREATE TABLE rbvm.network_reachability_snapshot")).count();
         long networkReachabilityEvidenceCreates = database.executedSql.stream()
                 .filter(sql -> sql.contains("CREATE TABLE rbvm.network_reachability_evidence")).count();
+        long businessImpactSnapshotCreates = database.executedSql.stream()
+                .filter(sql -> sql.contains("CREATE TABLE rbvm.business_impact_snapshot")).count();
+        long businessImpactEvidenceCreates = database.executedSql.stream()
+                .filter(sql -> sql.contains("CREATE TABLE rbvm.business_impact_evidence")).count();
 
-        assert migrator.migrate() == 14;
+        assert migrator.migrate() == 15;
         assert database.commits == 13 : "replay must not reapply migrations";
         assert database.executedSql.stream()
                 .filter(sql -> sql.contains("CREATE TABLE rbvm.observation (")).count()
@@ -144,6 +156,12 @@ public final class PostgresMigratorSelfTest {
         assert database.executedSql.stream()
                 .filter(sql -> sql.contains("CREATE TABLE rbvm.network_reachability_evidence")).count()
                 == networkReachabilityEvidenceCreates;
+        assert database.executedSql.stream()
+                .filter(sql -> sql.contains("CREATE TABLE rbvm.business_impact_snapshot")).count()
+                == businessImpactSnapshotCreates;
+        assert database.executedSql.stream()
+                .filter(sql -> sql.contains("CREATE TABLE rbvm.business_impact_evidence")).count()
+                == businessImpactEvidenceCreates;
         assert database.advisoryLocks == 2;
         assert database.advisoryUnlocks == 2;
     }
