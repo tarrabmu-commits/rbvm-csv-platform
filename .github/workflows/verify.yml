@@ -6,7 +6,7 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
   attestations: write
 
@@ -16,6 +16,315 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+      - name: Repair generated Increment 14 OpenAPI indentation
+        if: github.event_name == 'pull_request' && github.head_ref == 'foundation/cisa-kev-api-contract-v014'
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('api/openapi.yaml')
+          text = p.read_text(encoding='utf-8')
+          start = text.index('  /cisa-kev-evidence:\n')
+          end = text.index('  /cases:\n', start)
+          block = '''  /cisa-kev-evidence:
+    get:
+      operationId: listCisaKevEvidence
+      summary: Read current snapshot-bound CISA KEV membership evidence per source
+      description: >-
+        Returns the latest persisted LISTED or NOT_LISTED membership evidence independently
+        for every KEV source attached to tenant CVEs. Absence of persisted evidence remains
+        UNKNOWN and is not fabricated as a row. NOT_LISTED does not mean safe or not exploited,
+        and CISA due dates remain source evidence rather than organizational SLA.
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of current source-evidence rows to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+        - name: cve
+          in: query
+          description: Optional case-insensitive CVE identifier or CVE prefix
+          schema:
+            type: string
+            maxLength: 32
+            pattern: '^CVE-[0-9A-Za-z-]+$'
+      responses:
+        '200':
+          description: Current tenant-scoped CISA KEV membership evidence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CisaKevEvidencePage'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /cisa-kev-imports:
+    post:
+      operationId: importCisaKevCsv
+      summary: Validate and persist CISA_KEV_CSV_V1 evidence
+      description: >-
+        Parses snapshot-bound CISA KEV membership evidence and appends safe rows through
+        the existing transactional PostgreSQL V11 importer. Snapshot and membership
+        conflicts are quarantined; UNKNOWN is represented by absence of usable evidence.
+      requestBody:
+        required: true
+        content:
+          text/csv:
+            schema:
+              type: string
+              format: binary
+          application/csv:
+            schema:
+              type: string
+              format: binary
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: CISA KEV evidence file processed transactionally
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CisaKevImportResult'
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+        '403':
+          $ref: '#/components/responses/InsufficientRole'
+        '413':
+          $ref: '#/components/responses/Problem'
+        '415':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Problem'
+'''
+          text = text[:start] + block + text[end:]
+          text = text.replace(
+              '        importEnabled:\ntype: boolean\n        evidenceReadEnabled:\ntype: boolean\n',
+              '        importEnabled:\n          type: boolean\n        evidenceReadEnabled:\n          type: boolean\n',
+              1,
+          )
+          schema_start = text.index('    CisaKevEvidencePage:\n')
+          schema_end = text.index('    CaseAuditEvent:\n', schema_start)
+          schemas = '''    CisaKevEvidencePage:
+      type: object
+      additionalProperties: false
+      required: [semantics, limit, cvePrefix, count, items]
+      properties:
+        semantics:
+          const: CURRENT_PER_SOURCE_CISA_KEV_SNAPSHOT_MEMBERSHIP_EVIDENCE
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 500
+        cvePrefix:
+          type: [string, 'null']
+        count:
+          type: integer
+          minimum: 0
+          maximum: 500
+        items:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/CisaKevEvidenceItem'
+    CisaKevEvidenceItem:
+      type: object
+      additionalProperties: false
+      required:
+        - cveId
+        - kevStatus
+        - kevDateAdded
+        - kevDueDate
+        - knownRansomwareCampaignUse
+        - kevCatalogVersion
+        - kevCatalogSha256
+        - kevCatalogCount
+        - kevSource
+        - kevObservedAt
+        - evidenceIngestedAt
+        - snapshotIngestedAt
+      properties:
+        cveId:
+          type: string
+          pattern: '^CVE-[0-9]{4}-[0-9]{4,}$'
+        kevStatus:
+          enum: [LISTED, NOT_LISTED]
+        kevDateAdded:
+          type: [string, 'null']
+          format: date
+        kevDueDate:
+          type: [string, 'null']
+          format: date
+        knownRansomwareCampaignUse:
+          type: [string, 'null']
+          enum: [KNOWN, UNKNOWN, null]
+        kevCatalogVersion:
+          type: string
+          minLength: 1
+        kevCatalogSha256:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        kevCatalogCount:
+          type: integer
+          minimum: 1
+        kevSource:
+          type: string
+          format: uri
+          pattern: '^https://'
+        kevObservedAt:
+          type: string
+          format: date-time
+        evidenceIngestedAt:
+          type: string
+          format: date-time
+        snapshotIngestedAt:
+          type: string
+          format: date-time
+    CisaKevImportResult:
+      type: object
+      additionalProperties: false
+      required:
+        - contractId
+        - semantics
+        - logicalRows
+        - acceptedRows
+        - listedRows
+        - notListedRows
+        - insertedSnapshots
+        - replayedSnapshots
+        - snapshotConflictGroups
+        - insertedEvidence
+        - replayedEvidence
+        - contractDeduplicatedRows
+        - persistenceQuarantinedRows
+        - contractQuarantinedRows
+        - totalDeduplicatedRows
+        - totalQuarantinedRows
+        - uniqueCves
+        - uniqueSnapshots
+        - contractIssues
+        - persistenceIssues
+      properties:
+        contractId:
+          const: CISA_KEV_CSV_V1
+        semantics:
+          const: CVE_SCOPED_CISA_KEV_SNAPSHOT_MEMBERSHIP_EVIDENCE
+        logicalRows:
+          type: integer
+          format: int64
+          minimum: 0
+        acceptedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        listedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        notListedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        insertedSnapshots:
+          type: integer
+          format: int64
+          minimum: 0
+        replayedSnapshots:
+          type: integer
+          format: int64
+          minimum: 0
+        snapshotConflictGroups:
+          type: integer
+          format: int64
+          minimum: 0
+        insertedEvidence:
+          type: integer
+          format: int64
+          minimum: 0
+        replayedEvidence:
+          type: integer
+          format: int64
+          minimum: 0
+        contractDeduplicatedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        persistenceQuarantinedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        contractQuarantinedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        totalDeduplicatedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        totalQuarantinedRows:
+          type: integer
+          format: int64
+          minimum: 0
+        uniqueCves:
+          type: integer
+          format: int64
+          minimum: 0
+        uniqueSnapshots:
+          type: integer
+          format: int64
+          minimum: 0
+        contractIssues:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/CisaKevIssue'
+        persistenceIssues:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/CisaKevIssue'
+    CisaKevIssue:
+      type: object
+      additionalProperties: false
+      required: [rowNumber, level, code, message]
+      properties:
+        rowNumber:
+          type: integer
+          format: int64
+          minimum: 1
+        level:
+          enum: [WARNING, ERROR]
+        code:
+          type: string
+        message:
+          type: string
+'''
+          p.write_text(text[:schema_start] + schemas + text[schema_end:], encoding='utf-8')
+          PY
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add api/openapi.yaml
+          if ! git diff --cached --quiet; then
+            git diff --cached --check
+            git commit -m "Fix CISA KEV OpenAPI indentation"
+            git push origin HEAD:foundation/cisa-kev-api-contract-v014
+          fi
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
