@@ -88,10 +88,11 @@ Multiple assessments for the same finding are allowed when `Evaluated_At` differ
 
 For the same `Finding_ID + Evaluated_At`:
 
-- an exact replay is deduplicated;
-- conflicting content is quarantined as `CONFLICTING_ASSESSMENT_TIMESTAMP`.
+- an exact replay inside one CSV is deduplicated by the contract analyzer;
+- an exact replay of evidence already stored in PostgreSQL is treated idempotently and is not inserted again;
+- conflicting content is quarantined rather than overwriting history.
 
-The PostgreSQL persistence schema enforces one stored assessment per `tenant_id + finding_id + evaluated_at`. The importer is responsible for treating exact replay idempotently and distinguishing it from conflicting same-time content before insert.
+Each persisted row carries an `evidence_sha256` derived from the normalized finding ID, status, reason, evidence source, and evaluation timestamp. The importer also derives a deterministic assessment UUID from that digest.
 
 ## PostgreSQL persistence model
 
@@ -133,18 +134,55 @@ applicability_assessed = false
 
 The assessment history is append-only for the runtime role; UPDATE, DELETE, and TRUNCATE are revoked.
 
+## Transactional importer
+
+`PostgresApplicabilityImporter` is the persistence boundary for the contract.
+
+The import flow is:
+
+```text
+APPLICABILITY_CSV_V1
+        |
+        v
+contract validation
+        |
+        v
+accepted assessment rows
+        |
+        v
+serializable PostgreSQL transaction
+        |
+        +---- Finding_ID absent from tenant ------> persistence quarantine
+        |
+        +---- exact persisted replay -------------> replay / no insert
+        |
+        +---- same-time different evidence -------> persistence quarantine
+        |
+        +---- valid new assessment ---------------> immutable INSERT
+        |
+        v
+commit + catalog revision when new evidence was inserted
+```
+
+A fatal database error rolls back the persistence transaction. Contract-level invalid rows and persistence-level unsafe rows remain distinguishable in `ApplicabilityImportResult`.
+
+Cross-tenant finding references are not reassigned: lookup is tenant-scoped, so a UUID that exists only under another tenant is treated as unavailable to the current import and is quarantined.
+
 ## Current boundary
 
-The domain model, CSV contract, validation, persistent Finding_ID mapping, historical schema, tenant/finding foreign-key boundary, and current-state read views are now defined.
+The following applicability foundation is now implemented:
 
-The next increment is the transactional applicability importer. It must:
+- finding-scoped domain states (`APPLICABLE`, `NOT_APPLICABLE`, `UNKNOWN`);
+- explicit unassessed vs assessed-UNKNOWN semantics;
+- separate `APPLICABILITY_CSV_V1` contract;
+- CSV validation and deterministic within-file replay handling;
+- persistent `Finding_ID = rbvm.exposure.id` mapping;
+- immutable PostgreSQL assessment history;
+- tenant/finding foreign-key boundary;
+- latest/current applicability read views;
+- transactional PostgreSQL importer with persisted replay idempotency and conflict quarantine.
 
-1. parse `APPLICABILITY_CSV_V1`;
-2. resolve each `Finding_ID` in the selected tenant;
-3. treat exact replay idempotently;
-4. reject/quarantine unknown or cross-tenant findings;
-5. reject/quarantine conflicting same-time evidence;
-6. append valid assessments without rewriting history.
+The next product increment is to expose this importer through the platform's operator/API workflow and surface current applicability in normal finding reads. That integration remains separate from CVSS and RBVM decision logic.
 
 Applicability remains independent from:
 
