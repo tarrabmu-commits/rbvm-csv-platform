@@ -15,7 +15,8 @@ public final class PostgresFoundationSelfTest {
             "/db/migration/V5__postgres_read_catalog.sql",
             "/db/migration/V6__explicit_finding_lifecycle.sql",
             "/db/migration/V7__vulnerability_intelligence.sql",
-            "/db/migration/V8__operational_analytics.sql"
+            "/db/migration/V8__operational_analytics.sql",
+            "/db/migration/V9__applicability_persistence.sql"
     );
 
     private PostgresFoundationSelfTest() {
@@ -28,6 +29,7 @@ public final class PostgresFoundationSelfTest {
         splitsMigrationScriptsLexically();
         bundlesEveryMigrationInTheRuntime();
         operationalAnalyticsPreservesEvidenceSemantics();
+        applicabilityPersistencePreservesEvidenceSemantics();
         PostgresMigratorSelfTest.main(args);
         PostgresProjectionJdbcSelfTest.main(args);
         System.out.println("PostgresFoundationSelfTest: PASS");
@@ -137,6 +139,18 @@ public final class PostgresFoundationSelfTest {
         assert !script.contains("remediated = active_keys - current_keys");
         assert !script.contains("priority_tier");
         assert !script.contains("SLA_Days");
+    }
+
+    private static void applicabilityPersistencePreservesEvidenceSemantics() throws Exception {
+        String script = resource("/db/migration/V9__applicability_persistence.sql");
+        assert script.contains("REFERENCES rbvm.exposure(tenant_id, id)");
+        assert script.contains("f.exposure_id AS finding_id");
+        assert script.contains("COALESCE(a.status, 'UNKNOWN')");
+        assert script.contains("(a.id IS NOT NULL) AS applicability_assessed");
+        assert script.contains("UNIQUE (tenant_id, finding_id, evaluated_at)");
+        assert !script.contains("priority_tier");
+        assert !script.contains("risk_score");
+        assert !script.contains("SLA");
     }
 
     private static String resource(String name) throws Exception {
