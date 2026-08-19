@@ -5,7 +5,6 @@ import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -196,6 +195,6 @@ public record RbvmDecisionMethodologyPolicy(
         if (normalized.isEmpty() || normalized.length() > 256 || normalized.indexOf('\u0000') >= 0) {
             throw new IllegalArgumentException("sourceAllowlist contains an invalid source");
         }
-        return normalized.toLowerCase(Locale.ROOT);
+        return normalized;
     }
 }
