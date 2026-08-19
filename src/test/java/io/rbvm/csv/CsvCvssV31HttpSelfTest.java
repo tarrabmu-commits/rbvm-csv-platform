@@ -62,7 +62,7 @@ public final class CsvCvssV31HttpSelfTest {
                     "items", List.of(Map.of(
                             "cveId", "CVE-2026-25087",
                             "cvssVersion", "3.1",
-                            "cvssBaseScore", 7.0,
+                            "cvssBaseScore", 8.1,
                             "cvssVector", "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H",
                             "cvssSource", "https://nvd.nist.gov/vuln/detail/CVE-2026-25087",
                             "cvssObservedAt", "2026-08-19T08:00:00Z",
@@ -105,7 +105,7 @@ public final class CsvCvssV31HttpSelfTest {
             assert evidence.statusCode() == 200 : evidence.body();
             assert evidence.body().contains("CURRENT_PER_SOURCE_CVSS_V31_BASE_EVIDENCE");
             assert evidence.body().contains("CVE-2026-25087");
-            assert evidence.body().contains("\"cvssBaseScore\": 7.0");
+            assert evidence.body().contains("\"cvssBaseScore\": 8.1");
 
             HttpResponse<String> invalidFilter = get(
                     client,
@@ -114,7 +114,7 @@ public final class CsvCvssV31HttpSelfTest {
             assert invalidFilter.statusCode() == 400 : invalidFilter.body();
 
             String csv = "CVE_ID,CVSS_Version,CVSS_Base_Score,CVSS_Vector,CVSS_Source,CVSS_Observed_At\r\n"
-                    + "CVE-2026-25087,3.1,7.0,CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H,"
+                    + "CVE-2026-25087,3.1,8.1,CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H,"
                     + "https://nvd.nist.gov/vuln/detail/CVE-2026-25087,2026-08-19T08:00:00Z\r\n";
             HttpRequest request = HttpRequest.newBuilder(base.resolve("/api/v1/cvss-v31-imports"))
                     .timeout(Duration.ofSeconds(10))
