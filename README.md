@@ -1,4 +1,4 @@
-# RBVM CSV Platform — Increment 14
+# RBVM CSV Platform — Increment 15
 
 منصة محلية قابلة للتشغيل لإدخال `WAZUH_CSV_V1` أوعقد `WAZUH_CSV_V2` الاختياري وتحويل الأدلة إلى
 نموذج RBVM موحّد: Assets وVulnerabilities وComponents وObservations وExposures
@@ -12,12 +12,14 @@
 - RFC 4180 وUTF-8 صارم، بما فيه الحقول ذات الأسطر الداخلية.
 - تحقق من headers وCVE والتوقيت والحقول المطلوبة.
 - V2 يضيف Agent ID ثابتاً وإصدار/معمارية الحزمة و`ACTIVE|RESOLVED` مع وقت حل صريح.
-- المسار القديم الذي يجمع CVSS/EPSS/KEV داخل V2 ما يزال موجوداً للتوافق، لكنه ليس نموذج CVSS الكانوني الجديد.
+- المسار القديم الذي يجمع CVSS/EPSS/KEV داخل V2 ما يزال موجوداً للتوافق، لكنه ليس نموذج الاستخبارات الكانوني الجديد.
 - Applicability مستقلة عن Wazuh عبر `APPLICABILITY_CSV_V1` مع `APPLICABLE|NOT_APPLICABLE|UNKNOWN` وprovenance ووقت تقييم صريح.
 - CVSS v3.1 Base مستقلة عبر `CVSS_V31_CSV_V1` كدليل Technical Severity على مستوى CVE، مع source وobserved-at خاصين بها.
-- PostgreSQL V9 يحفظ Applicability history ويعرض current applicability على finding reads؛ V10 يحفظ CVSS history ويعرض أحدث evidence لكل source دون اختيار winner مخفي.
-- API مخصصة لاستيراد Applicability وCVSS وKEV وقراءة current evidence، مع صفحات تشغيل مستقلة على `/cvss` و`/kev`.
 - CISA KEV مستقلة عبر `CISA_KEV_CSV_V1` كدليل Threat Evidence مربوط بلقطة كاملة ومتحقق منها، مع `LISTED|NOT_LISTED` وprovenance صريح؛ غياب الدليل يبقى `UNKNOWN`.
+- FIRST EPSS مستقلة عبر `EPSS_CSV_V1` كدليل exploitation probability على مستوى CVE، مع probability وpercentile وmodel version وscore date وsource SHA-256؛ غياب score evidence لا يتحول إلى `0`.
+- PostgreSQL V9 يحفظ Applicability history، V10 يحفظ CVSS history، V11 يحفظ CISA KEV snapshot-bound history، وV12 يحفظ EPSS score snapshots وCVE score history.
+- API مخصصة لاستيراد Applicability وCVSS وKEV وEPSS وقراءة current evidence، مع صفحات تشغيل مستقلة على `/cvss` و`/kev` و`/epss`.
+- current CVSS/KEV/EPSS evidence تبقى per-source من دون اختيار winner مخفي أوthreshold-to-priority mapping.
 - ملخص coverage وfreshness للاستخبارات القديمة مع حد stale معلن قدره 7 أيام وتوزيع الأولوية.
 - تحديث استخبارات مجدول وآمن مع cache مربوط ببصمة CVE ولقطات ذرية قابلة للعمل offline.
 - حل تقني وإعادة فتح من دليل V2 صريح فقط؛ لا يوجد أي إغلاق مبني على غياب الصف.
@@ -38,10 +40,10 @@
 - PostgreSQL projection متزامنة: Import لا يكتمل قبل Commit معاملة قاعدة البيانات.
 - إعادة إرسال آمنة للـImports وأحداث Workflow من الأدلة المحلية بعد الانقطاع.
 - PostgreSQL Read Catalog لملخص الكاتالوج والبحث وتفاصيل الحالات.
-- Migration runner بتدقيق SHA-256 وقفل PostgreSQL advisory وتسلسل V1–V11.
-- دور Runtime محدود، وحراس append-only يمنعون تعديل أوحذف أدلة التدقيق وApplicability/CVSS/KEV history.
+- Migration runner بتدقيق SHA-256 وقفل PostgreSQL advisory وتسلسل V1–V12.
+- دور Runtime محدود، وحراس append-only يمنعون تعديل أوحذف أدلة التدقيق وApplicability/CVSS/KEV/EPSS history.
 - TLS `verify-full` وأدوات Backup/Restore واختبار قطع الاتصال.
-- Health يصرّح بمصدر القراءة وحالة PostgreSQL reconciliation وبقدرات Applicability وCVSS v3.1 وCISA KEV.
+- Health يصرّح بمصدر القراءة وحالة PostgreSQL reconciliation وبقدرات Applicability وCVSS v3.1 وCISA KEV وEPSS.
 - Bearer API keys ببصمات SHA-256 فقط وRBAC لأدوار Viewer/Operator/Admin.
 - هوية Actor موثقة في Audit Trail، مع liveness/readiness وPrometheus metrics.
 - انتهاء اختياري لمفاتيح API وحدود طلبات مستقلة للـActors ومحاولات الدخول الفاشلة.
@@ -49,7 +51,7 @@
 - JAR reproducible مع SHA-256 وSPDX 2.3 SBOM وGitHub artifact attestations.
 - كل GitHub Action مثبت على commit SHA كامل، مع CodeQL وجدول release موثّق.
 - GitHub Actions للتحقق والبناء، واختبار تعافي حي بعد إعادة تشغيل PostgreSQL.
-- OpenAPI 0.14.0 موحّد مع runtime Applicability/CVSS/CISA KEV الحالي، إضافة إلى migrations واختبارات contract/domain/HTTP.
+- OpenAPI 0.15.0 موحّد مع runtime Applicability/CVSS/CISA KEV/EPSS الحالي، إضافة إلى migrations واختبارات contract/domain/HTTP.
 
 ## التشغيل المحلي
 
@@ -79,11 +81,17 @@ http://127.0.0.1:8080/cvss
 http://127.0.0.1:8080/kev
 ```
 
+واجهة FIRST EPSS المستقلة:
+
+```text
+http://127.0.0.1:8080/epss
+```
+
 لبناء JAR مستقل:
 
 ```bash
 ./scripts/build-distribution.sh
-java -jar dist/rbvm-csv-platform-0.14.0.jar
+java -jar dist/rbvm-csv-platform-0.15.0.jar
 ```
 
 ولتشغيل الاختبارات ثم تحليل ملف من CLI:
@@ -96,10 +104,10 @@ java -jar dist/rbvm-csv-platform-0.14.0.jar
 
 ```bash
 ./scripts/verify-reproducible-build.sh
-sha256sum --check dist/rbvm-csv-platform-0.14.0.jar.sha256
+sha256sum --check dist/rbvm-csv-platform-0.15.0.jar.sha256
 ```
 
-ينشر tag مطابق مثل `v0.14.0` Release يحتوي JAR وchecksum وSPDX SBOM، ويولد
+ينشر tag مطابق مثل `v0.15.0` Release يحتوي JAR وchecksum وSPDX SBOM، ويولد
 GitHub build-provenance وSBOM attestations. يتحقق workflow من تطابق tag مع
 Gradle وOpenAPI واسم الحزمة قبل النشر.
 
@@ -128,7 +136,7 @@ Gradle وOpenAPI واسم الحزمة قبل النشر.
 حالي، مع checksum وتقرير JSON وروابط `latest.csv` و`latest.csv.sha256` و`latest.json`. يربط cache
 ببصمة مجموعة CVE كي لا يعيد وضع offline بيانات دفعة سابقة مختلفة، ويحتفظ افتراضياً
 بآخر 14 لقطة. هذا المسار هو compatibility للـlegacy combined intelligence ولا يغيّر
-العقد المستقل لـCVSS v3.1. لا يرفع المشغّل الناتج إلى API تلقائياً، لأن إعادة استيراد
+العقود المستقلة لـCVSS v3.1 أوCISA KEV أوFIRST EPSS. لا يرفع المشغّل الناتج إلى API تلقائياً، لأن إعادة استيراد
 تصدير قديم قد تعيد حالة finding من دليل lifecycle متقادم؛ يظل الاعتماد خطوة صريحة على
 تصدير Wazuh الحالي.
 
@@ -218,6 +226,11 @@ curl -H "Authorization: Bearer $RBVM_API_TOKEN" \
 ```bash
 curl -H "Authorization: Bearer $RBVM_API_TOKEN" http://127.0.0.1:8080/api/v1/catalog/summary
 curl -H "Authorization: Bearer $RBVM_API_TOKEN" 'http://127.0.0.1:8080/api/v1/cases?limit=20&severity=CRITICAL,HIGH&status=OPEN'
+```
+
+قراءة حالة محددة وسجل تدقيقها:
+
+```bash
 curl -H "Authorization: Bearer $RBVM_API_TOKEN" http://127.0.0.1:8080/api/v1/cases/CASE_ID
 ```
 
@@ -254,6 +267,19 @@ curl -H "Authorization: Bearer $RBVM_API_TOKEN" \
 
 `NOT_LISTED` يعني أن الـCVE غير موجود في لقطة KEV كاملة ومتحقق منها؛ لا يعني أن الثغرة آمنة أو غير مستغلة. `KEV_Due_Date` يبقى دليل مصدر من CISA ولا يتحول تلقائياً إلى SLA للمؤسسة.
 
+FIRST EPSS Exploitation Probability Evidence:
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/v1/epss-imports \
+  -H "Authorization: Bearer $RBVM_API_TOKEN" \
+  -H 'Content-Type: text/csv' \
+  --data-binary @epss.csv
+
+curl -H "Authorization: Bearer $RBVM_API_TOKEN" \
+  'http://127.0.0.1:8080/api/v1/epss-evidence?limit=100&cve=CVE-2026-'
+```
+
+EPSS probability وpercentile تبقيان evidence من FIRST وليستا Risk Score أوPriority. `EPSS_Score_Date` هو تاريخ score المنشورة، بينما `EPSS_Observed_At` وقت حصول المنصة على الدليل؛ والـCVE المفقودة لا تتحول إلى probability بقيمة صفر.
 
 ## نتيجة CSV المرجعية
 
@@ -304,6 +330,7 @@ data/
 - [`db/migration/V9__applicability_persistence.sql`](db/migration/V9__applicability_persistence.sql)
 - [`db/migration/V10__cvss_v31_base_persistence.sql`](db/migration/V10__cvss_v31_base_persistence.sql)
 - [`db/migration/V11__cisa_kev_persistence.sql`](db/migration/V11__cisa_kev_persistence.sql)
+- [`db/migration/V12__epss_persistence.sql`](db/migration/V12__epss_persistence.sql)
 
 لتفعيل الإسقاط، ضع pgJDBC على الـclasspath من دون تضمينه داخل حزمة التطبيق:
 
@@ -319,8 +346,8 @@ export RBVM_DB_PASSWORD='from-a-secret-manager'
 
 المخطط يثبت Tenant boundaries والمفاتيح الطبيعية والـforeign keys والـindexes
 وسياسة V1 الإيجابية وسياسة V2 القائمة على دليل lifecycle صريح. يكتب المحرك البيانات والأحداث داخل
-معاملات Serializable ويقرأ الكاتالوج من PostgreSQL. Applicability وCVSS histories
-append-only، وCVSS current view تبقى per-source من دون source precedence مخفي.
+معاملات Serializable ويقرأ الكاتالوج من PostgreSQL. Applicability وCVSS وCISA KEV وEPSS histories
+append-only؛ CVSS/KEV/EPSS current views تبقى per-source من دون source precedence مخفي، وEPSS current ordering يقدّم `score_date` على وقت الاستحواذ حتى replay قديم لا يستبدل score أحدث.
 استخدم دور مالك للمigrations ودور Runtime محدود للتشغيل اليومي؛ راجع وثيقة PostgreSQL وسجل التحقق الحي.
 
 للنسخ الاحتياطي المجدول، يشغّل `scripts/scheduled-backup.sh` نسخة custom مضغوطة،
@@ -335,6 +362,10 @@ append-only، وCVSS current view تبقى per-source من دون source precede
 و[`docs/WAZUH_CSV_V2.md`](docs/WAZUH_CSV_V2.md) للعقد ذي الهوية والحل الصريح،
 و[`docs/APPLICABILITY_CSV_V1.md`](docs/APPLICABILITY_CSV_V1.md) لعقد Applicability المستقل،
 و[`docs/CVSS_V31_BASE_EVIDENCE.md`](docs/CVSS_V31_BASE_EVIDENCE.md) لعقد Technical Severity المستقل،
+و[`docs/CISA_KEV_EVIDENCE.md`](docs/CISA_KEV_EVIDENCE.md) لحدود Threat Evidence المستقلة،
+و[`docs/EPSS_CSV_V1.md`](docs/EPSS_CSV_V1.md) لعقد FIRST EPSS المستقل،
+و[`docs/FIRST_EPSS_SOURCE_ADAPTER.md`](docs/FIRST_EPSS_SOURCE_ADAPTER.md) لحد acquisition الرسمي،
+و[`docs/EPSS_PERSISTENCE.md`](docs/EPSS_PERSISTENCE.md) لحدود V12 والتاريخ الحالي،
 و[`docs/POSTGRES_PROJECTION.md`](docs/POSTGRES_PROJECTION.md) لحدود الإسقاط والتشغيل،
 و[`docs/VALIDATION.md`](docs/VALIDATION.md) لنتائج الاختبار الكامل وحدوده.
 وسجل [`docs/INCREMENT_6_VALIDATION.md`](docs/INCREMENT_6_VALIDATION.md) لنتائج المحرك الحي.
@@ -351,7 +382,8 @@ append-only، وCVSS current view تبقى per-source من دون source precede
 - يوجد API-key RBAC محلي، لكن لا يوجد SSO/OIDC أوMFA أوعزل تنفيذي لعدة Tenants بعد.
 - عند `RBVM_AUTH_MODE=DISABLED` يبقى الفاعل `local-operator` غير موثّق؛ وضع الإنتاج هو `API_KEY`.
 - الـlegacy combined intelligence اختيارية وتحتاج snapshot حديثاً؛ لا يدعي النظام freshness بعد وقت `Intel_Observed_At`.
-- CVSS v3.1 المستقلة تحفظ evidence per source، لكن لا توجد بعد سياسة source precedence ولا fetcher رسمي آلي يغذي العقد الجديد.
+- CVSS v3.1 وCISA KEV وFIRST EPSS المستقلة تحفظ evidence per source ولا تطبق source precedence أوformula مشتركة بينها.
+- CVSS وCISA KEV لديهما مسارات collection/handoff مجدولة مستقلة؛ FIRST EPSS يملك source adapter وCSV contract وV12/API/UI، لكن safe handoff المجدول ما يزال increment لاحقاً.
 - مؤقت legacy enrichment ينتج لقطة جاهزة ومدققة لكنه لا يعتمدها تلقائياً، حفاظاً على دلالة lifecycle الصريحة.
 - V1 لا يحمل package version ولا يثبت remediation؛ V2 يثبتها فقط من الحقول الصريحة.
 - لا يوجد إغلاق من الغياب؛ `SOURCE_RESOLVED` يحتاج صف V2 صريحاً ومطابقاً.
