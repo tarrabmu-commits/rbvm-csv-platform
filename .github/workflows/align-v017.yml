@@ -1,0 +1,27 @@
+name: align-v017-once
+
+on:
+  push:
+    branches: [agent/network-reachability-api-contract-v017]
+
+permissions:
+  contents: write
+
+jobs:
+  align:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - name: Apply deterministic alignment and remove one-shot tooling
+        run: |
+          python3 scripts/align-v017.py
+          rm -f scripts/align-v017.py .github/workflows/align-v017.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m 'Align Network Reachability API and release contract to 0.17.0'
+          git push origin HEAD:agent/network-reachability-api-contract-v017
