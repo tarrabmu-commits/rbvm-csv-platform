@@ -20,6 +20,9 @@ import io.rbvm.postgres.ApplicabilityImporter;
 import io.rbvm.postgres.AssetContextEvidenceReader;
 import io.rbvm.postgres.AssetContextImportResult;
 import io.rbvm.postgres.AssetContextImporter;
+import io.rbvm.postgres.BusinessImpactEvidenceReader;
+import io.rbvm.postgres.BusinessImpactImportResult;
+import io.rbvm.postgres.BusinessImpactImporter;
 import io.rbvm.postgres.CanonicalProjectionFactory;
 import io.rbvm.postgres.CanonicalProjectionFactory.RuntimeComponents;
 import io.rbvm.postgres.CisaKevEvidenceReader;
@@ -87,6 +90,7 @@ public final class CsvPlatformServer implements AutoCloseable {
     private final byte[] epssUi;
     private final byte[] assetContextUi;
     private final byte[] networkReachabilityUi;
+    private final byte[] businessImpactUi;
     private final ApiKeyAuthenticator authenticator;
     private final RequestRateLimiter rateLimiter;
     private final long maximumUploadBytes;
@@ -102,6 +106,8 @@ public final class CsvPlatformServer implements AutoCloseable {
     private final Optional<AssetContextEvidenceReader> assetContextEvidenceReader;
     private final Optional<NetworkReachabilityImporter> networkReachabilityImporter;
     private final Optional<NetworkReachabilityEvidenceReader> networkReachabilityEvidenceReader;
+    private final Optional<BusinessImpactImporter> businessImpactImporter;
+    private final Optional<BusinessImpactEvidenceReader> businessImpactEvidenceReader;
     private final Instant startedAt = Instant.now();
     private final AtomicLong requestsTotal = new AtomicLong();
     private final AtomicLong problemsTotal = new AtomicLong();
@@ -150,12 +156,15 @@ public final class CsvPlatformServer implements AutoCloseable {
         this.assetContextEvidenceReader = Optional.empty();
         this.networkReachabilityImporter = Optional.empty();
         this.networkReachabilityEvidenceReader = Optional.empty();
+        this.businessImpactImporter = Optional.empty();
+        this.businessImpactEvidenceReader = Optional.empty();
         this.webUi = loadResource("/web/index.html");
         this.cvssUi = loadResource("/web/cvss-v31.html");
         this.kevUi = loadResource("/web/cisa-kev.html");
         this.epssUi = loadResource("/web/epss.html");
         this.assetContextUi = loadResource("/web/asset-context.html");
         this.networkReachabilityUi = loadResource("/web/network-reachability.html");
+        this.businessImpactUi = loadResource("/web/business-impact.html");
         this.server = HttpServer.create(new InetSocketAddress(host, port), 32);
         int workers = Math.max(4, Math.min(16, Runtime.getRuntime().availableProcessors()));
         this.executor = Executors.newFixedThreadPool(workers);
@@ -397,6 +406,7 @@ public final class CsvPlatformServer implements AutoCloseable {
         );
     }
 
+    /** Backward-compatible runtime constructor through the Network Reachability V14 capability layer. */
     public CsvPlatformServer(
             String host,
             int port,
@@ -416,6 +426,42 @@ public final class CsvPlatformServer implements AutoCloseable {
             Optional<AssetContextEvidenceReader> assetContextEvidenceReader,
             Optional<NetworkReachabilityImporter> networkReachabilityImporter,
             Optional<NetworkReachabilityEvidenceReader> networkReachabilityEvidenceReader,
+            ApiKeyAuthenticator authenticator,
+            RequestRateLimiter rateLimiter
+    ) throws IOException {
+        this(
+                host, port, dataDirectory, maximumUploadBytes, canonicalProjection, readCatalog,
+                applicabilityImporter, applicabilityFindingExporter,
+                cvssV31Importer, cvssV31EvidenceReader,
+                cisaKevImporter, cisaKevEvidenceReader,
+                epssImporter, epssEvidenceReader,
+                assetContextImporter, assetContextEvidenceReader,
+                networkReachabilityImporter, networkReachabilityEvidenceReader,
+                Optional.empty(), Optional.empty(), authenticator, rateLimiter
+        );
+    }
+
+    public CsvPlatformServer(
+            String host,
+            int port,
+            Path dataDirectory,
+            long maximumUploadBytes,
+            CanonicalProjection canonicalProjection,
+            DomainCatalog readCatalog,
+            Optional<ApplicabilityImporter> applicabilityImporter,
+            Optional<ApplicabilityFindingExporter> applicabilityFindingExporter,
+            Optional<CvssV31Importer> cvssV31Importer,
+            Optional<CvssV31EvidenceReader> cvssV31EvidenceReader,
+            Optional<CisaKevImporter> cisaKevImporter,
+            Optional<CisaKevEvidenceReader> cisaKevEvidenceReader,
+            Optional<EpssImporter> epssImporter,
+            Optional<EpssEvidenceReader> epssEvidenceReader,
+            Optional<AssetContextImporter> assetContextImporter,
+            Optional<AssetContextEvidenceReader> assetContextEvidenceReader,
+            Optional<NetworkReachabilityImporter> networkReachabilityImporter,
+            Optional<NetworkReachabilityEvidenceReader> networkReachabilityEvidenceReader,
+            Optional<BusinessImpactImporter> businessImpactImporter,
+            Optional<BusinessImpactEvidenceReader> businessImpactEvidenceReader,
             ApiKeyAuthenticator authenticator,
             RequestRateLimiter rateLimiter
     ) throws IOException {
@@ -472,12 +518,21 @@ public final class CsvPlatformServer implements AutoCloseable {
                 networkReachabilityEvidenceReader,
                 "networkReachabilityEvidenceReader"
         );
+        this.businessImpactImporter = Objects.requireNonNull(
+                businessImpactImporter,
+                "businessImpactImporter"
+        );
+        this.businessImpactEvidenceReader = Objects.requireNonNull(
+                businessImpactEvidenceReader,
+                "businessImpactEvidenceReader"
+        );
         this.webUi = loadResource("/web/index.html");
         this.cvssUi = loadResource("/web/cvss-v31.html");
         this.kevUi = loadResource("/web/cisa-kev.html");
         this.epssUi = loadResource("/web/epss.html");
         this.assetContextUi = loadResource("/web/asset-context.html");
         this.networkReachabilityUi = loadResource("/web/network-reachability.html");
+        this.businessImpactUi = loadResource("/web/business-impact.html");
         this.server = HttpServer.create(new InetSocketAddress(host, port), 32);
         int workers = Math.max(4, Math.min(16, Runtime.getRuntime().availableProcessors()));
         this.executor = Executors.newFixedThreadPool(workers);
@@ -541,6 +596,11 @@ public final class CsvPlatformServer implements AutoCloseable {
             if ("/reachability".equals(path) || "/reachability/".equals(path)) {
                 requireMethod(exchange, method, "GET");
                 sendBytes(exchange, 200, "text/html; charset=utf-8", networkReachabilityUi);
+                return;
+            }
+            if ("/business-impact".equals(path) || "/business-impact/".equals(path)) {
+                requireMethod(exchange, method, "GET");
+                sendBytes(exchange, 200, "text/html; charset=utf-8", businessImpactUi);
                 return;
             }
             if ("/api/v1/health".equals(path)) {
@@ -654,6 +714,18 @@ public final class CsvPlatformServer implements AutoCloseable {
                 createNetworkReachabilityImport(exchange);
                 return;
             }
+            if ("/api/v1/business-impact-evidence".equals(path)) {
+                requireMethod(exchange, method, "GET");
+                authorize(exchange, ApiRole.VIEWER);
+                readBusinessImpactEvidence(exchange);
+                return;
+            }
+            if ("/api/v1/business-impact-imports".equals(path)) {
+                requireMethod(exchange, method, "POST");
+                authorize(exchange, ApiRole.OPERATOR);
+                createBusinessImpactImport(exchange);
+                return;
+            }
             if ("/api/v1/csv-imports".equals(path)) {
                 requireMethod(exchange, method, "POST");
                 authorize(exchange, ApiRole.OPERATOR);
@@ -764,6 +836,10 @@ public final class CsvPlatformServer implements AutoCloseable {
         health.put("networkReachability", Map.of(
                 "importEnabled", networkReachabilityImporter.isPresent(),
                 "evidenceReadEnabled", networkReachabilityEvidenceReader.isPresent()
+        ));
+        health.put("businessImpact", Map.of(
+                "importEnabled", businessImpactImporter.isPresent(),
+                "evidenceReadEnabled", businessImpactEvidenceReader.isPresent()
         ));
         return health;
     }
@@ -1072,6 +1148,61 @@ public final class CsvPlatformServer implements AutoCloseable {
         }
     }
 
+    private void readBusinessImpactEvidence(HttpExchange exchange) throws IOException {
+        BusinessImpactEvidenceReader reader = businessImpactEvidenceReader.orElseThrow(() ->
+                new HttpProblem(
+                        503,
+                        "BUSINESS_IMPACT_PERSISTENCE_UNAVAILABLE",
+                        "Business Impact evidence reads require PostgreSQL schema version 15 or newer"
+                ));
+        BusinessImpactEvidenceQuery query = parseBusinessImpactEvidenceQuery(exchange.getRequestURI());
+        sendJson(exchange, 200, reader.currentEvidence(
+                query.limit(),
+                query.assetPrefix(),
+                query.sourceProfileKey(),
+                query.businessService(),
+                query.impactSource(),
+                query.impactDimension(),
+                query.impactLevel()
+        ));
+    }
+
+    private void createBusinessImpactImport(HttpExchange exchange) throws IOException {
+        BusinessImpactImporter importer = businessImpactImporter.orElseThrow(() ->
+                new HttpProblem(
+                        503,
+                        "BUSINESS_IMPACT_PERSISTENCE_UNAVAILABLE",
+                        "Business Impact import requires PostgreSQL schema version 15 or newer"
+                ));
+        String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
+        if (!isCsvContentType(contentType)) {
+            throw new HttpProblem(
+                    415,
+                    "UNSUPPORTED_MEDIA_TYPE",
+                    "Content-Type must be text/csv, application/csv, or application/octet-stream"
+            );
+        }
+        long contentLength = parseContentLength(exchange.getRequestHeaders().getFirst("Content-Length"));
+        if (contentLength > maximumUploadBytes) {
+            throw new HttpProblem(
+                    413,
+                    "UPLOAD_TOO_LARGE",
+                    "Business Impact CSV exceeds the configured upload limit"
+            );
+        }
+        Path staged = Files.createTempFile("rbvm-business-impact-upload-", ".csv");
+        try {
+            try (InputStream body = exchange.getRequestBody();
+                 OutputStream output = Files.newOutputStream(staged)) {
+                copyBounded(body, output, maximumUploadBytes, "Business Impact CSV");
+            }
+            BusinessImpactImportResult result = importer.importFile(staged);
+            sendJson(exchange, 200, result.toMap());
+        } finally {
+            Files.deleteIfExists(staged);
+        }
+    }
+
     private static void copyBounded(
             InputStream input,
             OutputStream output,
@@ -1296,6 +1427,25 @@ public final class CsvPlatformServer implements AutoCloseable {
                         "LOCAL_SEGMENT", "OTHER", "UNKNOWN")),
                 queryEnum(query, "reachabilityStatus", Set.of(
                         "REACHABLE", "NOT_REACHABLE", "UNKNOWN"))
+        );
+    }
+
+    private static BusinessImpactEvidenceQuery parseBusinessImpactEvidenceQuery(URI uri) {
+        Map<String, String> query = parseParameters(uri.getRawQuery());
+        rejectUnknownFields(query, Set.of(
+                "limit", "asset", "sourceProfile", "businessService", "impactSource",
+                "impactDimension", "impactLevel"));
+        return new BusinessImpactEvidenceQuery(
+                queryLimit(query),
+                queryOptional(query, "asset", 160),
+                querySourceProfile(query),
+                queryOptional(query, "businessService", 256),
+                queryOptional(query, "impactSource", 256),
+                queryEnum(query, "impactDimension", Set.of(
+                        "AVAILABILITY", "INTEGRITY", "CONFIDENTIALITY", "SAFETY", "FINANCIAL",
+                        "REGULATORY", "OPERATIONAL", "REPUTATIONAL", "MISSION", "OTHER", "UNKNOWN")),
+                queryEnum(query, "impactLevel", Set.of(
+                        "SEVERE", "HIGH", "MODERATE", "LOW", "NEGLIGIBLE", "UNKNOWN"))
         );
     }
 
@@ -1571,6 +1721,10 @@ public final class CsvPlatformServer implements AutoCloseable {
                 + "rbvm_network_reachability_import_enabled " + (networkReachabilityImporter.isPresent() ? 1 : 0) + "\n"
                 + "# TYPE rbvm_network_reachability_evidence_read_enabled gauge\n"
                 + "rbvm_network_reachability_evidence_read_enabled " + (networkReachabilityEvidenceReader.isPresent() ? 1 : 0) + "\n"
+                + "# TYPE rbvm_business_impact_import_enabled gauge\n"
+                + "rbvm_business_impact_import_enabled " + (businessImpactImporter.isPresent() ? 1 : 0) + "\n"
+                + "# TYPE rbvm_business_impact_evidence_read_enabled gauge\n"
+                + "rbvm_business_impact_evidence_read_enabled " + (businessImpactEvidenceReader.isPresent() ? 1 : 0) + "\n"
                 + "# TYPE rbvm_process_uptime_seconds gauge\n"
                 + "rbvm_process_uptime_seconds " + uptime + "\n"
                 + "# TYPE rbvm_imports_stored gauge\n"
@@ -1632,6 +1786,8 @@ public final class CsvPlatformServer implements AutoCloseable {
                 runtime.assetContextEvidenceReader(),
                 runtime.networkReachabilityImporter(),
                 runtime.networkReachabilityEvidenceReader(),
+                runtime.businessImpactImporter(),
+                runtime.businessImpactEvidenceReader(),
                 authenticator,
                 rateLimiter
         );
@@ -1643,6 +1799,7 @@ public final class CsvPlatformServer implements AutoCloseable {
         System.out.println("EPSS operator UI: " + application.baseUri().resolve("/epss"));
         System.out.println("Asset Context operator UI: " + application.baseUri().resolve("/asset-context"));
         System.out.println("Network Reachability operator UI: " + application.baseUri().resolve("/reachability"));
+        System.out.println("Business Impact operator UI: " + application.baseUri().resolve("/business-impact"));
         System.out.println("Data directory: " + configuration.dataDirectory().toAbsolutePath().normalize());
         System.out.println("Canonical projection: "
                 + canonicalProjection.health().get("backend"));
@@ -1658,6 +1815,8 @@ public final class CsvPlatformServer implements AutoCloseable {
                 + (runtime.assetContextImporter().isPresent() ? "ENABLED" : "DISABLED"));
         System.out.println("Network Reachability persistence: "
                 + (runtime.networkReachabilityImporter().isPresent() ? "ENABLED" : "DISABLED"));
+        System.out.println("Business Impact persistence: "
+                + (runtime.businessImpactImporter().isPresent() ? "ENABLED" : "DISABLED"));
         System.out.println("API authentication: "
                 + (authenticator.enabled() ? "API_KEY" : "DISABLED"));
         new CountDownLatch(1).await();
@@ -1687,6 +1846,17 @@ public final class CsvPlatformServer implements AutoCloseable {
             String evidenceSource,
             String originScope,
             String reachabilityStatus
+    ) {
+    }
+
+    private record BusinessImpactEvidenceQuery(
+            int limit,
+            String assetPrefix,
+            String sourceProfileKey,
+            String businessService,
+            String impactSource,
+            String impactDimension,
+            String impactLevel
     ) {
     }
 
