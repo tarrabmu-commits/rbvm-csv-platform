@@ -14,6 +14,7 @@ def cache_name(cves):
 
 def main():
     root = Path(__file__).resolve().parent.parent
+    collector = str(root / "scripts/collect-nvd-cvss-v31.py")
     with tempfile.TemporaryDirectory(prefix="rbvm-nvd-cvss-test-") as directory:
         work = Path(directory)
         source = work / "wazuh-v1.csv"
@@ -80,7 +81,7 @@ def main():
         (cache / cache_name(cves)).write_text(json.dumps(payload), encoding="utf-8")
 
         result = subprocess.run([
-            str(root / "scripts/collect-nvd-cvss-v31.py"),
+            "python3", collector,
             str(source),
             str(output),
             "--cache-dir", str(cache),
@@ -117,7 +118,7 @@ def main():
         changed = work / "changed.csv"
         changed.write_text(source.read_text(encoding="utf-8").replace("CVE-2026-4244", "CVE-2026-9999"), encoding="utf-8")
         missing_cache = subprocess.run([
-            str(root / "scripts/collect-nvd-cvss-v31.py"),
+            "python3", collector,
             str(changed),
             str(work / "bad.csv"),
             "--cache-dir", str(cache),
