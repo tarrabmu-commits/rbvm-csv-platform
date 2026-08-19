@@ -1,0 +1,16 @@
+[Unit]
+Description=RBVM FIRST EPSS safe refresh
+After=network-online.target rbvm-csv-platform.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.config/rbvm-platform/epss-refresh.env
+ExecStart=/bin/bash %h/rbvm-csv-platform/scripts/scheduled-epss-refresh.sh
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=-%h/.local/share/rbvm-platform/epss
+UMask=0077

@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily RBVM FIRST EPSS refresh schedule
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=30m
+Persistent=true
+Unit=rbvm-epss-refresh.service
+
+[Install]
+WantedBy=timers.target
