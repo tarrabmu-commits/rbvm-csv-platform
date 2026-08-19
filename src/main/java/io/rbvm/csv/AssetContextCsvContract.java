@@ -17,6 +17,20 @@ public final class AssetContextCsvContract {
 
     public static final List<String> HEADERS = List.of(
             "Source_Profile_Key",
+            "Asset_Identity_Basis",
+            "Asset_Name",
+            "Asset_Source_ID",
+            "Environment",
+            "Business_Service",
+            "Business_Owner",
+            "Business_Criticality",
+            "Context_Source",
+            "Context_Observed_At",
+            "Context_Source_SHA256"
+    );
+    public static final Set<String> ROW_REQUIRED = Set.of(
+            "Source_Profile_Key",
+            "Asset_Identity_Basis",
             "Asset_Name",
             "Environment",
             "Business_Service",
@@ -26,7 +40,6 @@ public final class AssetContextCsvContract {
             "Context_Observed_At",
             "Context_Source_SHA256"
     );
-    public static final Set<String> ROW_REQUIRED = Set.copyOf(HEADERS);
 
     private AssetContextCsvContract() {
     }
@@ -70,6 +83,15 @@ public final class AssetContextCsvContract {
             throw new IllegalArgumentException("Missing values: " + missingValues);
         }
 
+        AssetContextCsvEvidence.AssetIdentityBasis identityBasis;
+        try {
+            identityBasis = AssetContextCsvEvidence.AssetIdentityBasis.valueOf(
+                    mapping.value(row, "Asset_Identity_Basis").trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException(
+                    "Asset_Identity_Basis must be SOURCE_NAME_ONLY or SOURCE_STABLE_ID", exception);
+        }
+
         AssetContextCsvEvidence.Environment environment;
         try {
             environment = AssetContextCsvEvidence.Environment.valueOf(
@@ -101,7 +123,9 @@ public final class AssetContextCsvContract {
         return new AssetContextCsvEvidence(
                 sourceRowNumber,
                 mapping.value(row, "Source_Profile_Key"),
+                identityBasis,
                 mapping.value(row, "Asset_Name"),
+                mapping.value(row, "Asset_Source_ID"),
                 environment,
                 mapping.value(row, "Business_Service"),
                 mapping.value(row, "Business_Owner"),
