@@ -19,6 +19,7 @@ python3 "$ROOT_DIR/scripts/verify-cisa-kev-source.py"
 python3 "$ROOT_DIR/scripts/verify-cisa-kev-contract.py"
 python3 "$ROOT_DIR/scripts/verify-cisa-kev-handoff.py"
 python3 "$ROOT_DIR/scripts/verify-cisa-kev-refresh.py"
+python3 "$ROOT_DIR/scripts/verify-first-epss-source.py"
 for script in "$ROOT_DIR"/scripts/*.sh; do
   bash -n "$script"
 done
