@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RBVM · CISA KEV Evidence</title>
+  <style>
+    :root { color-scheme: dark; --bg:#071a18; --panel:#0c2a26; --text:#f4fffc; --muted:#9fc7bf; --accent:#5ee6c2; --warn:#ffd166; --danger:#ff7b9c; --border:rgba(255,255,255,.13); }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; font-family:system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif; background:radial-gradient(circle at 85% 10%,rgba(94,230,194,.16),transparent 32rem),linear-gradient(145deg,#04110f,var(--bg)); color:var(--text); }
+    main { width:min(1240px,calc(100% - 32px)); margin:0 auto; padding:46px 0 72px; }
+    header { display:flex; justify-content:space-between; gap:24px; align-items:flex-start; }
+    h1 { margin:0 0 8px; font-size:clamp(2rem,5vw,4rem); letter-spacing:-.04em; }
+    h2 { margin:0 0 16px; font-size:1.25rem; }
+    p { margin:0; color:var(--muted); line-height:1.8; }
+    a { color:var(--accent); }
+    .badge { border:1px solid var(--border); border-radius:999px; padding:9px 13px; color:var(--accent); white-space:nowrap; }
+    .panel { margin-top:18px; padding:24px; border:1px solid var(--border); border-radius:22px; background:linear-gradient(145deg,rgba(14,52,47,.88),rgba(8,35,31,.94)); box-shadow:0 18px 70px rgba(0,0,0,.25); }
+    .grid { display:grid; grid-template-columns:1.5fr auto; gap:14px; align-items:end; }
+    .triple { display:grid; grid-template-columns:1.4fr 1fr auto; gap:14px; align-items:end; }
+    label { display:grid; gap:8px; color:var(--muted); font-size:.9rem; }
+    input { width:100%; min-height:49px; border:1px solid var(--border); background:rgba(0,10,8,.45); color:var(--text); border-radius:12px; padding:13px 14px; font:inherit; }
+    input[type=file]::file-selector-button { background:#12483f; color:var(--text); border:0; border-radius:8px; padding:8px 12px; margin-inline-end:10px; cursor:pointer; }
+    button { min-height:49px; border:0; border-radius:12px; padding:14px 20px; background:var(--accent); color:#031713; font-weight:800; cursor:pointer; }
+    button.secondary { background:#d9fff5; }
+    button:disabled { opacity:.5; cursor:wait; }
+    .status { min-height:28px; margin-top:14px; color:var(--muted); }
+    .status.error { color:var(--danger); }
+    .cards { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:18px; }
+    .card { padding:17px; background:rgba(0,10,8,.35); border:1px solid var(--border); border-radius:15px; }
+    .card span { display:block; color:var(--muted); font-size:.82rem; margin-bottom:8px; }
+    .card strong { font-size:1.7rem; }
+    .note { border-inline-start:3px solid var(--accent); padding-inline-start:14px; margin-top:18px; }
+    .warning { border-inline-start-color:var(--warn); }
+    .scroll { overflow-x:auto; margin-top:18px; }
+    table { width:100%; border-collapse:collapse; font-size:.84rem; direction:ltr; min-width:1180px; }
+    th,td { padding:11px 10px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }
+    th { color:var(--muted); font-weight:600; }
+    code { direction:ltr; unicode-bidi:embed; }
+    .issues { margin-top:16px; white-space:pre-wrap; direction:ltr; text-align:left; color:var(--muted); font-size:.82rem; }
+    .hidden { display:none !important; }
+    .listed { color:var(--danger); font-weight:800; }
+    .not-listed { color:var(--accent); font-weight:800; }
+    @media (max-width:800px) { header{display:block}.badge{display:inline-block;margin-top:16px}.grid,.triple{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)} }
+    @media (max-width:480px) { .cards{grid-template-columns:1fr} }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>CISA KEV Evidence</h1>
+      <p>Threat evidence على مستوى CVE مبني على catalog snapshot كامل ومتحقق، بدون تحويل KEV تلقائياً إلى Priority أو Risk Score أو SLA.</p>
+      <p><a href="/">العودة للمنصة الرئيسية</a> · <a href="/cvss">CVSS v3.1</a></p>
+    </div>
+    <div class="badge">CISA_KEV_CSV_V1 · PostgreSQL V11+</div>
+  </header>
+
+  <section class="panel">
+    <h2>الدخول</h2>
+    <div class="grid">
+      <label>API access token
+        <input id="apiToken" type="password" autocomplete="off" spellcheck="false" placeholder="الصق مفتاح الوصول هنا">
+      </label>
+      <button id="saveToken" class="secondary">استخدام المفتاح</button>
+    </div>
+    <div id="healthMessage" class="status">جاري التحقق من CISA KEV runtime capability…</div>
+  </section>
+
+  <section class="panel">
+    <h2>1. استيراد CISA_KEV_CSV_V1</h2>
+    <div class="grid">
+      <label>ملف CISA KEV CSV
+        <input id="kevFile" type="file" accept=".csv,text/csv">
+      </label>
+      <button id="importKev">استيراد الدليل</button>
+    </div>
+    <div id="importMessage" class="status"></div>
+    <div id="importResult" class="hidden">
+      <div id="importCards" class="cards"></div>
+      <div id="issues" class="issues"></div>
+    </div>
+    <p class="note">الملف المقبول يحمل snapshot provenance كاملة. <code>LISTED</code> و<code>NOT_LISTED</code> فقط يمكن تخزينهما؛ <code>UNKNOWN</code> يعني عدم وجود evidence صالح ولا يتم اختراع row له.</p>
+  </section>
+
+  <section class="panel">
+    <h2>2. Current CISA KEV Evidence</h2>
+    <div class="triple">
+      <label>CVE أو prefix اختياري
+        <input id="cveFilter" placeholder="CVE-2026-">
+      </label>
+      <label>Limit (1–500)
+        <input id="limit" type="number" min="1" max="500" value="100">
+      </label>
+      <button id="refresh" class="secondary">تحديث</button>
+    </div>
+    <div id="evidenceMessage" class="status"></div>
+    <div id="evidenceCards" class="cards"></div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>CVE</th><th>Status</th><th>Date Added</th><th>CISA Due Date</th><th>Ransomware Use</th><th>Catalog Version</th><th>Catalog Count</th><th>Source</th><th>Observed At</th><th>Evidence Ingested</th></tr></thead>
+        <tbody id="evidenceRows"></tbody>
+      </table>
+    </div>
+    <p class="note warning"><code>NOT_LISTED</code> يعني فقط أن الـCVE لم تكن موجودة في الـvalidated snapshot المحددة. لا يعني safe أو not exploited. وCISA Due Date تبقى source evidence وليست organizational SLA.</p>
+  </section>
+</main>
+<script>
+  const byId = id => document.getElementById(id);
+  let apiToken = sessionStorage.getItem('rbvmApiToken') || '';
+  let importEnabled = false;
+  let readEnabled = false;
+
+  function apiFetch(resource, options = {}) {
+    const headers = new Headers(options.headers || {});
+    if (apiToken) headers.set('Authorization', `Bearer ${apiToken}`);
+    return fetch(resource, {...options, headers});
+  }
+
+  function setStatus(id, text, error = false) {
+    const node = byId(id);
+    node.textContent = text;
+    node.classList.toggle('error', error);
+  }
+
+  function card(label, value) {
+    const node = document.createElement('div');
+    node.className = 'card';
+    const caption = document.createElement('span');
+    const number = document.createElement('strong');
+    caption.textContent = label;
+    number.textContent = Number(value ?? 0).toLocaleString('en-US');
+    node.append(caption, number);
+    return node;
+  }
+
+  async function errorFrom(response) {
+    try {
+      const problem = await response.json();
+      return problem.detail || problem.title || `HTTP ${response.status}`;
+    } catch (_) {
+      return `HTTP ${response.status}`;
+    }
+  }
+
+  async function loadHealth() {
+    try {
+      const response = await apiFetch('/api/v1/health', {cache:'no-store'});
+      if (!response.ok) throw new Error(await errorFrom(response));
+      const data = await response.json();
+      const capability = data.cisaKev || {};
+      importEnabled = capability.importEnabled === true;
+      readEnabled = capability.evidenceReadEnabled === true;
+      byId('importKev').disabled = !importEnabled;
+      byId('refresh').disabled = !readEnabled;
+      if (importEnabled && readEnabled) {
+        setStatus('healthMessage', 'CISA KEV persistence جاهز: import + current evidence read متاحان.');
+      } else {
+        setStatus('healthMessage', 'CISA KEV persistence يحتاج PostgreSQL schema V11 أو أحدث.', true);
+      }
+    } catch (error) {
+      importEnabled = false;
+      readEnabled = false;
+      byId('importKev').disabled = true;
+      byId('refresh').disabled = true;
+      setStatus('healthMessage', error.message || 'تعذر قراءة runtime health.', true);
+    }
+  }
+
+  function renderImport(data) {
+    byId('importResult').classList.remove('hidden');
+    byId('importCards').replaceChildren(
+      card('Evidence inserted', data.insertedEvidence),
+      card('Evidence replayed', data.replayedEvidence),
+      card('Snapshots inserted', data.insertedSnapshots),
+      card('Quarantined', data.totalQuarantinedRows)
+    );
+    const issues = [...(data.contractIssues || []), ...(data.persistenceIssues || [])];
+    byId('issues').textContent = issues.length === 0
+      ? 'No quarantine issues.'
+      : issues.map(issue => `row ${issue.rowNumber} · ${issue.code} · ${issue.message}`).join('\n');
+  }
+
+  async function loadEvidence() {
+    if (!readEnabled) return;
+    const parameters = new URLSearchParams();
+    const limit = byId('limit').value || '100';
+    parameters.set('limit', limit);
+    const cve = byId('cveFilter').value.trim();
+    if (cve) parameters.set('cve', cve);
+    setStatus('evidenceMessage', 'جاري تحميل current KEV evidence…');
+    try {
+      const response = await apiFetch(`/api/v1/cisa-kev-evidence?${parameters}`, {cache:'no-store'});
+      if (!response.ok) throw new Error(await errorFrom(response));
+      const data = await response.json();
+      const listed = (data.items || []).filter(item => item.kevStatus === 'LISTED').length;
+      const notListed = (data.items || []).filter(item => item.kevStatus === 'NOT_LISTED').length;
+      byId('evidenceCards').replaceChildren(
+        card('Rows', data.count),
+        card('LISTED', listed),
+        card('NOT_LISTED', notListed),
+        card('Limit', data.limit)
+      );
+      const body = byId('evidenceRows');
+      body.replaceChildren();
+      for (const item of data.items || []) {
+        const tr = document.createElement('tr');
+        const values = [
+          item.cveId,
+          item.kevStatus,
+          item.kevDateAdded,
+          item.kevDueDate,
+          item.knownRansomwareCampaignUse,
+          item.kevCatalogVersion,
+          item.kevCatalogCount,
+          item.kevSource,
+          item.kevObservedAt,
+          item.evidenceIngestedAt
+        ];
+        values.forEach((value, index) => {
+          const td = document.createElement('td');
+          td.textContent = String(value ?? '');
+          if (index === 1) td.className = item.kevStatus === 'LISTED' ? 'listed' : 'not-listed';
+          tr.appendChild(td);
+        });
+        body.appendChild(tr);
+      }
+      setStatus('evidenceMessage', `${data.count} current per-source CISA KEV evidence row(s).`);
+    } catch (error) {
+      setStatus('evidenceMessage', error.message || 'تعذر قراءة CISA KEV evidence.', true);
+    }
+  }
+
+  byId('saveToken').addEventListener('click', async () => {
+    const supplied = byId('apiToken').value.trim();
+    if (!supplied) { setStatus('healthMessage', 'ألصق مفتاح الوصول أولاً.', true); return; }
+    apiToken = supplied;
+    sessionStorage.setItem('rbvmApiToken', supplied);
+    byId('apiToken').value = '';
+    await loadHealth();
+    await loadEvidence();
+  });
+
+  byId('importKev').addEventListener('click', async () => {
+    const file = byId('kevFile').files[0];
+    if (!importEnabled) return;
+    if (!file) { setStatus('importMessage', 'اختر ملف CISA_KEV_CSV_V1 أولاً.', true); return; }
+    const button = byId('importKev');
+    button.disabled = true;
+    setStatus('importMessage', `جاري استيراد ${file.name}…`);
+    try {
+      const response = await apiFetch('/api/v1/cisa-kev-imports', {
+        method:'POST', headers:{'Content-Type':'text/csv; charset=utf-8'}, body:file
+      });
+      if (!response.ok) throw new Error(await errorFrom(response));
+      const data = await response.json();
+      renderImport(data);
+      setStatus('importMessage', `تم: ${data.insertedEvidence} evidence جديد، ${data.replayedEvidence} replay، ${data.totalQuarantinedRows} quarantine.`);
+      await loadEvidence();
+      await loadHealth();
+    } catch (error) {
+      setStatus('importMessage', error.message || 'تعذر استيراد CISA KEV evidence.', true);
+    } finally {
+      button.disabled = !importEnabled;
+    }
+  });
+
+  byId('refresh').addEventListener('click', loadEvidence);
+  if (apiToken) setStatus('healthMessage', 'مفتاح وصول مفعّل لهذه النافذة.');
+  loadHealth().then(loadEvidence);
+</script>
+</body>
+</html>
