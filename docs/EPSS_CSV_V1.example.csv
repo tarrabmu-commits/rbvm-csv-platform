@@ -1,2 +1,0 @@
-CVE_ID,EPSS_Probability,EPSS_Percentile,EPSS_Model_Version,EPSS_Score_Date,EPSS_Source,EPSS_Observed_At,EPSS_Source_SHA256
-CVE-2026-10001,0.125,0.875,2025.03.14,2026-08-19,https://epss.empiricalsecurity.com/epss_scores-current.csv.gz,2026-08-19T10:00:00Z,aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
