@@ -13,6 +13,7 @@ python3 "$ROOT_DIR/scripts/verify-sql.py"
 python3 "$ROOT_DIR/scripts/verify-web.py"
 python3 "$ROOT_DIR/scripts/verify-workflows.py"
 python3 "$ROOT_DIR/scripts/verify-enrichment.py"
+python3 "$ROOT_DIR/scripts/verify-nvd-cvss-v31.py"
 for script in "$ROOT_DIR"/scripts/*.sh; do
   bash -n "$script"
 done
