@@ -89,6 +89,8 @@ def main():
         "/csv-imports/{importId}",
         "/csv-imports/{importId}/confirm",
         "/catalog/summary",
+        "/applicability-findings.csv",
+        "/applicability-imports",
         "/cases",
         "/cases/{caseId}",
         "/cases/{caseId}/actions",
@@ -103,6 +105,16 @@ def main():
         "OPEN", "SOURCE_RESOLVED", "ACCEPTED_RISK", "FALSE_POSITIVE", "CLOSED_MANUAL"
     }:
         raise AssertionError("Case workflow statuses are incomplete")
+    applicability = schemas.get("ApplicabilityImportResult", {})
+    required_applicability_fields = {
+        "insertedAssessments",
+        "replayedAssessments",
+        "persistenceQuarantinedRows",
+        "contractQuarantinedRows",
+        "totalQuarantinedRows",
+    }
+    if not required_applicability_fields.issubset(set(applicability.get("required", []))):
+        raise AssertionError("Applicability import result schema is incomplete")
 
     print("OpenAPI structural checks: PASS")
 

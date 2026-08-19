@@ -168,6 +168,85 @@ A fatal database error rolls back the persistence transaction. Contract-level in
 
 Cross-tenant finding references are not reassigned: lookup is tenant-scoped, so a UUID that exists only under another tenant is treated as unavailable to the current import and is quarantined.
 
+## Operator/API workflow
+
+Applicability operations are enabled only when the PostgreSQL runtime is available with schema version 9 or newer. The platform exposes two dedicated operations:
+
+```text
+GET  /api/v1/applicability-findings.csv
+POST /api/v1/applicability-imports
+```
+
+The operator flow is:
+
+```text
+Wazuh CSV materialized
+        |
+        v
+GET applicability-findings.csv
+        |
+        v
+review canonical Finding_ID + asset/CVE/product context
+        |
+        v
+create APPLICABILITY_CSV_V1 for findings actually assessed
+        |
+        v
+POST applicability-imports
+        |
+        v
+Inserted / Replayed / Quarantined result
+        |
+        v
+current applicability read model
+```
+
+The reference export is intentionally **not** an assessment file. Its columns are:
+
+```text
+Finding_ID
+Agent
+CVE_ID
+Affected_Product
+Severity
+Current_Applicability_Status
+Current_Applicability_Assessed
+Current_Applicability_Reason
+Current_Evidence_Source
+Current_Evaluated_At
+```
+
+The `Current_*` names are deliberate. They prevent the reference export from being accidentally uploaded as `APPLICABILITY_CSV_V1` and falsely turning every listed finding into an explicit assessment. The operator must create the five-column assessment contract and include only findings for which an applicability evaluation was actually performed.
+
+The import response keeps contract-level and persistence-level results separate, including:
+
+```text
+insertedAssessments
+replayedAssessments
+contractDeduplicatedRows
+contractQuarantinedRows
+persistenceQuarantinedRows
+totalDeduplicatedRows
+totalQuarantinedRows
+```
+
+The HTTP upload is streamed to a bounded temporary file using the platform upload limit. The temporary file is deleted after the transactional importer completes or fails.
+
+### Normal finding reads
+
+When PostgreSQL schema V9+ is active, normal case detail reads also decorate each exposure with the canonical finding UUID and current applicability evidence. The existing hashed `exposureId` remains unchanged for API compatibility; the additional fields are:
+
+```text
+findingId
+applicabilityStatus
+applicabilityAssessed
+applicabilityReason
+applicabilityEvidenceSource
+applicabilityEvaluatedAt
+```
+
+This prevents the operator from having to infer a `Finding_ID` from Agent/CVE/Product text and makes current applicability visible alongside the finding itself. Local-memory or pre-V9 runtimes do not fabricate these fields.
+
 ## Current boundary
 
 The following applicability foundation is now implemented:
@@ -180,9 +259,11 @@ The following applicability foundation is now implemented:
 - immutable PostgreSQL assessment history;
 - tenant/finding foreign-key boundary;
 - latest/current applicability read views;
-- transactional PostgreSQL importer with persisted replay idempotency and conflict quarantine.
-
-The next product increment is to expose this importer through the platform's operator/API workflow and surface current applicability in normal finding reads. That integration remains separate from CVSS and RBVM decision logic.
+- transactional PostgreSQL importer with persisted replay idempotency and conflict quarantine;
+- authenticated finding-reference CSV export for operators;
+- authenticated applicability upload endpoint and structured import result;
+- current applicability surfaced on normal PostgreSQL finding/exposure reads;
+- runtime health/metrics capability visibility for applicability operations.
 
 Applicability remains independent from:
 

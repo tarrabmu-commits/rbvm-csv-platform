@@ -33,6 +33,8 @@ public final class PostgresFoundationSelfTest {
         PostgresMigratorSelfTest.main(args);
         PostgresProjectionJdbcSelfTest.main(args);
         PostgresApplicabilityImporterSelfTest.main(args);
+        PostgresApplicabilityFindingExporterSelfTest.main(args);
+        PostgresApplicabilityAwareCatalogSelfTest.main(args);
         System.out.println("PostgresFoundationSelfTest: PASS");
     }
 

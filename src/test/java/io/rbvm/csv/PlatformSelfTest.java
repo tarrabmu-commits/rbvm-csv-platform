@@ -18,6 +18,7 @@ public final class PlatformSelfTest {
         DomainCatalogSelfTest.main(args);
         ApiSecuritySelfTest.main(args);
         CsvHttpSelfTest.main(args);
+        CsvApplicabilityHttpSelfTest.main(args);
         CanonicalProjectionSelfTest.main(args);
         PostgresFoundationSelfTest.main(args);
         System.out.println("PlatformSelfTest: PASS");
