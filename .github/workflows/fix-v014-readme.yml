@@ -1,0 +1,39 @@
+name: fix-v014-readme
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix-readme:
+    if: github.head_ref == 'foundation/cisa-kev-api-contract-v014' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.head_ref }}
+      - name: Add V11 migration to README inventory
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('README.md')
+          text = p.read_text(encoding='utf-8')
+          anchor = '- [`db/migration/V10__cvss_v31_base_persistence.sql`](db/migration/V10__cvss_v31_base_persistence.sql)\n'
+          replacement = anchor + '- [`db/migration/V11__cisa_kev_persistence.sql`](db/migration/V11__cisa_kev_persistence.sql)\n'
+          if text.count(anchor) != 1:
+              raise SystemExit('README V10 migration anchor mismatch')
+          p.write_text(text.replace(anchor, replacement, 1), encoding='utf-8')
+          PY
+      - name: Commit README fix
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add README.md
+          git diff --cached --check
+          git commit -m "Document CISA KEV PostgreSQL V11 migration"
+          git push origin HEAD:${{ github.head_ref }}
