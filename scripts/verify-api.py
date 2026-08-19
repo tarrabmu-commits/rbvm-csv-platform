@@ -55,8 +55,8 @@ def main():
 
     if document.get("openapi") != "3.1.1":
         raise AssertionError("OpenAPI document must declare 3.1.1")
-    if document.get("info", {}).get("version") != "0.16.0":
-        raise AssertionError("OpenAPI info.version must match Increment 16")
+    if document.get("info", {}).get("version") != "0.18.0":
+        raise AssertionError("OpenAPI info.version must match Increment 18")
 
     bearer = document.get("components", {}).get("securitySchemes", {}).get("bearerAuth", {})
     if bearer.get("type") != "http" or bearer.get("scheme") != "bearer":
@@ -99,6 +99,10 @@ def main():
         "/epss-imports",
         "/asset-context-evidence",
         "/asset-context-imports",
+        "/network-reachability-evidence",
+        "/network-reachability-imports",
+        "/business-impact-evidence",
+        "/business-impact-imports",
         "/cases",
         "/cases/{caseId}",
         "/cases/{caseId}/actions",
@@ -140,6 +144,22 @@ def main():
         "importEnabled", "evidenceReadEnabled"
     }:
         raise AssertionError("Asset Context capability schema is incomplete")
+
+    if "networkReachability" not in health_required:
+        raise AssertionError("Health schema must expose Network Reachability runtime capability")
+    reachability_capability = schemas.get("NetworkReachabilityCapability", {})
+    if set(reachability_capability.get("required", [])) != {
+        "importEnabled", "evidenceReadEnabled"
+    }:
+        raise AssertionError("Network Reachability capability schema is incomplete")
+
+    if "businessImpact" not in health_required:
+        raise AssertionError("Health schema must expose Business Impact runtime capability")
+    business_impact_capability = schemas.get("BusinessImpactCapability", {})
+    if set(business_impact_capability.get("required", [])) != {
+        "importEnabled", "evidenceReadEnabled"
+    }:
+        raise AssertionError("Business Impact capability schema is incomplete")
 
     kev_import = schemas.get("CisaKevImportResult", {})
     required_kev_import_fields = {
@@ -279,6 +299,102 @@ def main():
         raise AssertionError(
             "Independent Asset Context evidence must not contain decision or reachability fields"
         )
+
+    reachability_import = schemas.get("NetworkReachabilityImportResult", {})
+    required_reachability_import_fields = {
+        "insertedSnapshots", "replayedSnapshots", "snapshotConflictGroups",
+        "insertedEvidence", "replayedEvidence", "persistenceQuarantinedRows",
+        "contractQuarantinedRows", "totalQuarantinedRows", "originScopeDistribution",
+        "protocolDistribution", "reachabilityStatusDistribution", "reachabilityMethodDistribution",
+    }
+    if not required_reachability_import_fields.issubset(set(reachability_import.get("required", []))):
+        raise AssertionError("Network Reachability import result schema is incomplete")
+    reachability_import_properties = reachability_import.get("properties", {})
+    if reachability_import_properties.get("contractId", {}).get("const") != "NETWORK_REACHABILITY_CSV_V1":
+        raise AssertionError("Network Reachability import result must bind to NETWORK_REACHABILITY_CSV_V1")
+    if reachability_import_properties.get("semantics", {}).get("const") !=             "ASSET_ENDPOINT_ORIGIN_SCOPED_NETWORK_REACHABILITY_EVIDENCE":
+        raise AssertionError("Network Reachability import semantics are incorrect")
+
+    reachability_page = schemas.get("NetworkReachabilityEvidencePage", {})
+    if reachability_page.get("properties", {}).get("semantics", {}).get("const") !=             "CURRENT_PER_SOURCE_SCOPED_NETWORK_REACHABILITY_EVIDENCE":
+        raise AssertionError("Network Reachability read semantics must remain scoped current-per-source")
+    reachability_item = schemas.get("NetworkReachabilityEvidenceItem", {}).get("properties", {})
+    if set(reachability_item.get("assetIdentityBasis", {}).get("enum", [])) != {"SOURCE_NAME_ONLY", "SOURCE_STABLE_ID"}:
+        raise AssertionError("Network Reachability API must preserve canonical asset identity basis")
+    if set(reachability_item.get("originScope", {}).get("enum", [])) != {"INTERNET", "EXTERNAL_PARTNER", "INTERNAL_ENTERPRISE", "LOCAL_SEGMENT", "OTHER", "UNKNOWN"}:
+        raise AssertionError("Network Reachability origin vocabulary is incomplete")
+    if set(reachability_item.get("transportProtocol", {}).get("enum", [])) != {"TCP", "UDP", "ICMP", "OTHER", "UNKNOWN"}:
+        raise AssertionError("Network Reachability protocol vocabulary is incomplete")
+    if set(reachability_item.get("reachabilityStatus", {}).get("enum", [])) != {"REACHABLE", "NOT_REACHABLE", "UNKNOWN"}:
+        raise AssertionError("Network Reachability status vocabulary is incomplete")
+    if set(reachability_item.get("reachabilityMethod", {}).get("enum", [])) != {"ACTIVE_PROBE", "CONTROL_PLANE", "FIREWALL_POLICY", "CLOUD_CONFIGURATION", "PASSIVE_OBSERVATION", "OTHER", "UNKNOWN"}:
+        raise AssertionError("Network Reachability method vocabulary is incomplete")
+    target_port = reachability_item.get("targetPort", {})
+    if target_port.get("minimum") != 1 or target_port.get("maximum") != 65535:
+        raise AssertionError("Network Reachability targetPort must preserve 1..65535 bounds")
+    if target_port.get("type") != ["integer", "null"]:
+        raise AssertionError("Network Reachability targetPort must preserve portless evidence as null")
+    if reachability_item.get("evidenceSourceSha256", {}).get("pattern") != "^[a-f0-9]{64}$":
+        raise AssertionError("Network Reachability API must expose exact source-artifact SHA-256 provenance")
+    for timestamp in ("evidenceObservedAt", "evidenceIngestedAt", "snapshotIngestedAt"):
+        if reachability_item.get(timestamp, {}).get("format") != "date-time":
+            raise AssertionError(f"Network Reachability API must expose {timestamp} as date-time")
+    forbidden_reachability_fields = {
+        "internetExposed", "internet_exposed", "riskScore", "priority", "priorityTier",
+        "slaDays", "businessCriticality", "criticalityWeight", "cvssBaseScore",
+        "epssProbability", "knownExploited", "applicabilityStatus", "attackPathScore"
+    }
+    if forbidden_reachability_fields.intersection(reachability_item):
+        raise AssertionError("Independent Network Reachability evidence must not contain decision fields")
+
+    business_impact_import = schemas.get("BusinessImpactImportResult", {})
+    required_business_impact_import_fields = {
+        "insertedSnapshots", "replayedSnapshots", "snapshotConflictGroups",
+        "insertedEvidence", "replayedEvidence", "persistenceQuarantinedRows",
+        "contractQuarantinedRows", "totalQuarantinedRows", "impactDimensionDistribution",
+        "impactLevelDistribution", "impactMethodDistribution",
+    }
+    if not required_business_impact_import_fields.issubset(set(business_impact_import.get("required", []))):
+        raise AssertionError("Business Impact import result schema is incomplete")
+    business_impact_import_properties = business_impact_import.get("properties", {})
+    if business_impact_import_properties.get("contractId", {}).get("const") != "BUSINESS_IMPACT_CSV_V1":
+        raise AssertionError("Business Impact import result must bind to BUSINESS_IMPACT_CSV_V1")
+    if business_impact_import_properties.get("semantics", {}).get("const") !=             "ASSET_SERVICE_SCOPED_BUSINESS_MISSION_IMPACT_EVIDENCE":
+        raise AssertionError("Business Impact import semantics are incorrect")
+
+    business_impact_page = schemas.get("BusinessImpactEvidencePage", {})
+    if business_impact_page.get("properties", {}).get("semantics", {}).get("const") !=             "CURRENT_PER_SOURCE_ASSET_SERVICE_BUSINESS_MISSION_IMPACT_EVIDENCE":
+        raise AssertionError("Business Impact read semantics must remain current-per-source/service/dimension")
+    business_impact_item = schemas.get("BusinessImpactEvidenceItem", {}).get("properties", {})
+    if set(business_impact_item.get("assetIdentityBasis", {}).get("enum", [])) != {"SOURCE_NAME_ONLY", "SOURCE_STABLE_ID"}:
+        raise AssertionError("Business Impact API must preserve canonical asset identity basis")
+    if set(business_impact_item.get("impactDimension", {}).get("enum", [])) != {
+        "AVAILABILITY", "INTEGRITY", "CONFIDENTIALITY", "SAFETY", "FINANCIAL",
+        "REGULATORY", "OPERATIONAL", "REPUTATIONAL", "MISSION", "OTHER", "UNKNOWN"
+    }:
+        raise AssertionError("Business Impact dimension vocabulary is incomplete")
+    if set(business_impact_item.get("impactLevel", {}).get("enum", [])) != {
+        "SEVERE", "HIGH", "MODERATE", "LOW", "NEGLIGIBLE", "UNKNOWN"
+    }:
+        raise AssertionError("Business Impact qualitative level vocabulary is incomplete")
+    if set(business_impact_item.get("impactMethod", {}).get("enum", [])) != {
+        "BUSINESS_IMPACT_ANALYSIS", "SERVICE_OWNER_ATTESTATION", "POLICY_CLASSIFICATION",
+        "INCIDENT_ANALYSIS", "OTHER", "UNKNOWN"
+    }:
+        raise AssertionError("Business Impact evidence-method vocabulary is incomplete")
+    if business_impact_item.get("impactSourceSha256", {}).get("pattern") != "^[a-f0-9]{64}$":
+        raise AssertionError("Business Impact API must expose exact source-artifact SHA-256 provenance")
+    for timestamp in ("impactObservedAt", "evidenceIngestedAt", "snapshotIngestedAt"):
+        if business_impact_item.get(timestamp, {}).get("format") != "date-time":
+            raise AssertionError(f"Business Impact API must expose {timestamp} as date-time")
+    forbidden_business_impact_fields = {
+        "impactWeight", "numericImpact", "aggregateImpactScore", "monetaryLoss", "lossAmount",
+        "riskScore", "priority", "priorityTier", "slaDays", "businessCriticalityWeight",
+        "internetExposed", "attackPathScore", "cvssBaseScore", "epssProbability",
+        "knownExploited", "applicabilityStatus"
+    }
+    if forbidden_business_impact_fields.intersection(business_impact_item):
+        raise AssertionError("Independent Business Impact evidence must not contain decision fields")
 
     applicability = schemas.get("ApplicabilityImportResult", {})
     required_applicability_fields = {

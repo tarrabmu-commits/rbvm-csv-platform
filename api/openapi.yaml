@@ -1,15 +1,16 @@
 openapi: 3.1.1
 info:
   title: RBVM CSV Import API
-  version: 0.16.0
+  version: 0.18.0
   description: >-
     Synchronous upload, validation, preview, and canonical-domain materialization
     API for WAZUH_CSV_V1 positive observations and opt-in WAZUH_CSV_V2 explicit
     finding lifecycle evidence, separate finding-scoped applicability assessment,
     independent CVSS v3.1 Base technical-severity evidence, snapshot-bound CISA KEV
     threat evidence, independent FIRST EPSS exploitation-probability evidence,
-    independent asset-scoped organizational context evidence, explicit case
-    decisions, an append-only workflow audit trail, and optional
+    independent asset-scoped organizational context evidence, independent scoped
+    network reachability evidence, independent qualitative Business/Mission Impact
+    evidence, explicit case decisions, an append-only workflow audit trail, and optional
     PostgreSQL canonical persistence.
 servers:
   - url: http://127.0.0.1:8080/api/v1
@@ -517,6 +518,163 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/Problem'
+  /network-reachability-evidence:
+    get:
+      operationId: listNetworkReachabilityEvidence
+      summary: Read current scoped network reachability evidence per source and endpoint
+      description: >-
+        Returns latest observations independently per evidence source, origin scope/label,
+        transport protocol, and endpoint for already-canonical tenant assets. NOT_REACHABLE
+        remains scoped negative evidence; missing rows are not converted to NOT_REACHABLE.
+        INTERNET + REACHABLE remains technical endpoint evidence and is not an asset-wide
+        exposure verdict, Risk Score, priority, or SLA.
+      parameters:
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 500, default: 100}
+        - name: asset
+          in: query
+          schema: {type: string, maxLength: 160}
+        - name: sourceProfile
+          in: query
+          schema:
+            type: string
+            maxLength: 128
+            pattern: '^[A-Za-z0-9._:-]+$'
+        - name: evidenceSource
+          in: query
+          schema: {type: string, maxLength: 256}
+        - name: originScope
+          in: query
+          schema:
+            enum: [INTERNET, EXTERNAL_PARTNER, INTERNAL_ENTERPRISE, LOCAL_SEGMENT, OTHER, UNKNOWN]
+        - name: reachabilityStatus
+          in: query
+          schema:
+            enum: [REACHABLE, NOT_REACHABLE, UNKNOWN]
+      responses:
+        '200':
+          description: Current tenant-scoped per-source/origin/endpoint reachability evidence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NetworkReachabilityEvidencePage'
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /network-reachability-imports:
+    post:
+      operationId: importNetworkReachabilityCsv
+      summary: Validate and persist NETWORK_REACHABILITY_CSV_V1 evidence
+      description: >-
+        Parses origin- and endpoint-scoped connectivity evidence and appends safe rows through
+        the transactional PostgreSQL V14 importer. Rows must resolve to existing canonical
+        assets; reachability import never creates scanner inventory. Source-snapshot or
+        persisted scoped-endpoint conflicts are quarantined rather than overwritten.
+      requestBody:
+        required: true
+        content:
+          text/csv:
+            schema: {type: string, format: binary}
+          application/csv:
+            schema: {type: string, format: binary}
+          application/octet-stream:
+            schema: {type: string, format: binary}
+      responses:
+        '200':
+          description: Network reachability evidence file processed transactionally
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NetworkReachabilityImportResult'
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/InsufficientRole'}
+        '413': {$ref: '#/components/responses/Problem'}
+        '415': {$ref: '#/components/responses/Problem'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /business-impact-evidence:
+    get:
+      operationId: listBusinessImpactEvidence
+      summary: Read current qualitative Business and Mission Impact evidence per source, service, and dimension
+      description: >-
+        Returns latest source-reported qualitative impact observations independently per
+        impact source, normalized Business Service, and impact dimension for already-canonical
+        tenant assets. Missing rows remain absence. Impact levels remain source classifications;
+        the API does not choose a source winner, derive a numeric weight, aggregate impact score,
+        Risk Score, priority, or SLA, or map Asset Context Business Criticality automatically.
+      parameters:
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 500, default: 100}
+        - name: asset
+          in: query
+          schema: {type: string, maxLength: 160}
+        - name: sourceProfile
+          in: query
+          schema:
+            type: string
+            maxLength: 128
+            pattern: '^[A-Za-z0-9._:-]+$'
+        - name: businessService
+          in: query
+          schema: {type: string, maxLength: 256}
+        - name: impactSource
+          in: query
+          schema: {type: string, maxLength: 256}
+        - name: impactDimension
+          in: query
+          schema:
+            enum: [AVAILABILITY, INTEGRITY, CONFIDENTIALITY, SAFETY, FINANCIAL, REGULATORY, OPERATIONAL, REPUTATIONAL, MISSION, OTHER, UNKNOWN]
+        - name: impactLevel
+          in: query
+          schema:
+            enum: [SEVERE, HIGH, MODERATE, LOW, NEGLIGIBLE, UNKNOWN]
+      responses:
+        '200':
+          description: Current tenant-scoped per-source/service/dimension qualitative impact evidence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessImpactEvidencePage'
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /business-impact-imports:
+    post:
+      operationId: importBusinessImpactCsv
+      summary: Validate and persist BUSINESS_IMPACT_CSV_V1 evidence
+      description: >-
+        Parses source-reported qualitative Business/Mission Impact evidence and appends safe
+        rows through the transactional PostgreSQL V15 importer. Rows must resolve to existing
+        canonical assets. Source-snapshot or persisted asset/service/dimension conflicts are
+        quarantined rather than overwritten. No numeric impact weighting is introduced.
+      requestBody:
+        required: true
+        content:
+          text/csv:
+            schema: {type: string, format: binary}
+          application/csv:
+            schema: {type: string, format: binary}
+          application/octet-stream:
+            schema: {type: string, format: binary}
+      responses:
+        '200':
+          description: Business/Mission Impact evidence file processed transactionally
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessImpactImportResult'
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/InsufficientRole'}
+        '413': {$ref: '#/components/responses/Problem'}
+        '415': {$ref: '#/components/responses/Problem'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '503': {$ref: '#/components/responses/Problem'}
   /cases:
     get:
       operationId: listCases
@@ -843,6 +1001,8 @@ components:
         - cisaKev
         - epss
         - assetContext
+        - networkReachability
+        - businessImpact
         - storedImports
         - recoveryWarningCount
         - maximumUploadBytes
@@ -874,6 +1034,10 @@ components:
           $ref: '#/components/schemas/EpssCapability'
         assetContext:
           $ref: '#/components/schemas/AssetContextCapability'
+        networkReachability:
+          $ref: '#/components/schemas/NetworkReachabilityCapability'
+        businessImpact:
+          $ref: '#/components/schemas/BusinessImpactCapability'
         storedImports:
           type: integer
           minimum: 0
@@ -938,6 +1102,20 @@ components:
           type: boolean
         evidenceReadEnabled:
           type: boolean
+    NetworkReachabilityCapability:
+      type: object
+      additionalProperties: false
+      required: [importEnabled, evidenceReadEnabled]
+      properties:
+        importEnabled: {type: boolean}
+        evidenceReadEnabled: {type: boolean}
+    BusinessImpactCapability:
+      type: object
+      additionalProperties: false
+      required: [importEnabled, evidenceReadEnabled]
+      properties:
+        importEnabled: {type: boolean}
+        evidenceReadEnabled: {type: boolean}
     CanonicalProjectionHealth:
       type: object
       required: [backend, status]
@@ -2397,6 +2575,253 @@ components:
           type: string
         message:
           type: string
+    NetworkReachabilityEvidencePage:
+      type: object
+      additionalProperties: false
+      required: [semantics, limit, assetPrefix, sourceProfileKey, evidenceSource, originScope, reachabilityStatus, count, items]
+      properties:
+        semantics: {const: CURRENT_PER_SOURCE_SCOPED_NETWORK_REACHABILITY_EVIDENCE}
+        limit: {type: integer, minimum: 1, maximum: 500}
+        assetPrefix: {type: [string, 'null'], maxLength: 160}
+        sourceProfileKey:
+          type: [string, 'null']
+          maxLength: 128
+          pattern: '^[A-Za-z0-9._:-]+$'
+        evidenceSource: {type: [string, 'null'], maxLength: 256}
+        originScope: {type: [string, 'null']}
+        reachabilityStatus: {type: [string, 'null']}
+        count: {type: integer, minimum: 0, maximum: 500}
+        items:
+          type: array
+          maxItems: 500
+          items: {$ref: '#/components/schemas/NetworkReachabilityEvidenceItem'}
+    NetworkReachabilityEvidenceItem:
+      type: object
+      additionalProperties: false
+      required: [sourceProfileKey, assetIdentityBasis, assetName, assetSourceId, originScope, originLabel, transportProtocol, targetPort, targetService, reachabilityStatus, reachabilityMethod, evidenceSource, evidenceSourceSha256, evidenceObservedAt, evidenceIngestedAt, snapshotIngestedAt]
+      properties:
+        sourceProfileKey:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: '^[A-Za-z0-9._:-]+$'
+        assetIdentityBasis: {enum: [SOURCE_NAME_ONLY, SOURCE_STABLE_ID]}
+        assetName: {type: string, minLength: 1, maxLength: 160}
+        assetSourceId: {type: [string, 'null'], maxLength: 160}
+        originScope: {enum: [INTERNET, EXTERNAL_PARTNER, INTERNAL_ENTERPRISE, LOCAL_SEGMENT, OTHER, UNKNOWN]}
+        originLabel: {type: string, minLength: 1}
+        transportProtocol: {enum: [TCP, UDP, ICMP, OTHER, UNKNOWN]}
+        targetPort: {type: [integer, 'null'], minimum: 1, maximum: 65535}
+        targetService: {type: string, minLength: 1}
+        reachabilityStatus: {enum: [REACHABLE, NOT_REACHABLE, UNKNOWN]}
+        reachabilityMethod: {enum: [ACTIVE_PROBE, CONTROL_PLANE, FIREWALL_POLICY, CLOUD_CONFIGURATION, PASSIVE_OBSERVATION, OTHER, UNKNOWN]}
+        evidenceSource: {type: string, minLength: 1, maxLength: 256}
+        evidenceSourceSha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+        evidenceObservedAt: {type: string, format: date-time}
+        evidenceIngestedAt: {type: string, format: date-time}
+        snapshotIngestedAt: {type: string, format: date-time}
+    NetworkReachabilityImportResult:
+      type: object
+      additionalProperties: false
+      required: [contractId, semantics, logicalRows, acceptedRows, insertedSnapshots, replayedSnapshots, snapshotConflictGroups, insertedEvidence, replayedEvidence, contractDeduplicatedRows, persistenceQuarantinedRows, contractQuarantinedRows, totalDeduplicatedRows, totalQuarantinedRows, originScopeDistribution, protocolDistribution, reachabilityStatusDistribution, reachabilityMethodDistribution, contractIssues, persistenceIssues]
+      properties:
+        contractId: {const: NETWORK_REACHABILITY_CSV_V1}
+        semantics: {const: ASSET_ENDPOINT_ORIGIN_SCOPED_NETWORK_REACHABILITY_EVIDENCE}
+        logicalRows: {type: integer, format: int64, minimum: 0}
+        acceptedRows: {type: integer, format: int64, minimum: 0}
+        insertedSnapshots: {type: integer, format: int64, minimum: 0}
+        replayedSnapshots: {type: integer, format: int64, minimum: 0}
+        snapshotConflictGroups: {type: integer, format: int64, minimum: 0}
+        insertedEvidence: {type: integer, format: int64, minimum: 0}
+        replayedEvidence: {type: integer, format: int64, minimum: 0}
+        contractDeduplicatedRows: {type: integer, format: int64, minimum: 0}
+        persistenceQuarantinedRows: {type: integer, format: int64, minimum: 0}
+        contractQuarantinedRows: {type: integer, format: int64, minimum: 0}
+        totalDeduplicatedRows: {type: integer, format: int64, minimum: 0}
+        totalQuarantinedRows: {type: integer, format: int64, minimum: 0}
+        originScopeDistribution: {$ref: '#/components/schemas/NetworkReachabilityOriginScopeDistribution'}
+        protocolDistribution: {$ref: '#/components/schemas/NetworkReachabilityProtocolDistribution'}
+        reachabilityStatusDistribution: {$ref: '#/components/schemas/NetworkReachabilityStatusDistribution'}
+        reachabilityMethodDistribution: {$ref: '#/components/schemas/NetworkReachabilityMethodDistribution'}
+        contractIssues:
+          type: array
+          maxItems: 100
+          items: {$ref: '#/components/schemas/NetworkReachabilityIssue'}
+        persistenceIssues:
+          type: array
+          maxItems: 100
+          items: {$ref: '#/components/schemas/NetworkReachabilityIssue'}
+    NetworkReachabilityOriginScopeDistribution:
+      type: object
+      additionalProperties: false
+      required: [INTERNET, EXTERNAL_PARTNER, INTERNAL_ENTERPRISE, LOCAL_SEGMENT, OTHER, UNKNOWN]
+      properties:
+        INTERNET: {type: integer, format: int64, minimum: 0}
+        EXTERNAL_PARTNER: {type: integer, format: int64, minimum: 0}
+        INTERNAL_ENTERPRISE: {type: integer, format: int64, minimum: 0}
+        LOCAL_SEGMENT: {type: integer, format: int64, minimum: 0}
+        OTHER: {type: integer, format: int64, minimum: 0}
+        UNKNOWN: {type: integer, format: int64, minimum: 0}
+    NetworkReachabilityProtocolDistribution:
+      type: object
+      additionalProperties: false
+      required: [TCP, UDP, ICMP, OTHER, UNKNOWN]
+      properties:
+        TCP: {type: integer, format: int64, minimum: 0}
+        UDP: {type: integer, format: int64, minimum: 0}
+        ICMP: {type: integer, format: int64, minimum: 0}
+        OTHER: {type: integer, format: int64, minimum: 0}
+        UNKNOWN: {type: integer, format: int64, minimum: 0}
+    NetworkReachabilityStatusDistribution:
+      type: object
+      additionalProperties: false
+      required: [REACHABLE, NOT_REACHABLE, UNKNOWN]
+      properties:
+        REACHABLE: {type: integer, format: int64, minimum: 0}
+        NOT_REACHABLE: {type: integer, format: int64, minimum: 0}
+        UNKNOWN: {type: integer, format: int64, minimum: 0}
+    NetworkReachabilityMethodDistribution:
+      type: object
+      additionalProperties: false
+      required: [ACTIVE_PROBE, CONTROL_PLANE, FIREWALL_POLICY, CLOUD_CONFIGURATION, PASSIVE_OBSERVATION, OTHER, UNKNOWN]
+      properties:
+        ACTIVE_PROBE: {type: integer, format: int64, minimum: 0}
+        CONTROL_PLANE: {type: integer, format: int64, minimum: 0}
+        FIREWALL_POLICY: {type: integer, format: int64, minimum: 0}
+        CLOUD_CONFIGURATION: {type: integer, format: int64, minimum: 0}
+        PASSIVE_OBSERVATION: {type: integer, format: int64, minimum: 0}
+        OTHER: {type: integer, format: int64, minimum: 0}
+        UNKNOWN: {type: integer, format: int64, minimum: 0}
+    NetworkReachabilityIssue:
+      type: object
+      additionalProperties: false
+      required: [rowNumber, level, code, message]
+      properties:
+        rowNumber: {type: integer, format: int64, minimum: 1}
+        level: {enum: [WARNING, ERROR]}
+        code: {type: string}
+        message: {type: string}
+    BusinessImpactEvidencePage:
+      type: object
+      additionalProperties: false
+      required: [semantics, limit, assetPrefix, sourceProfileKey, businessService, impactSource, impactDimension, impactLevel, count, items]
+      properties:
+        semantics: {const: CURRENT_PER_SOURCE_ASSET_SERVICE_BUSINESS_MISSION_IMPACT_EVIDENCE}
+        limit: {type: integer, minimum: 1, maximum: 500}
+        assetPrefix: {type: [string, 'null'], maxLength: 160}
+        sourceProfileKey:
+          type: [string, 'null']
+          maxLength: 128
+          pattern: '^[A-Za-z0-9._:-]+$'
+        businessService: {type: [string, 'null'], maxLength: 256}
+        impactSource: {type: [string, 'null'], maxLength: 256}
+        impactDimension: {type: [string, 'null']}
+        impactLevel: {type: [string, 'null']}
+        count: {type: integer, minimum: 0, maximum: 500}
+        items:
+          type: array
+          maxItems: 500
+          items: {$ref: '#/components/schemas/BusinessImpactEvidenceItem'}
+    BusinessImpactEvidenceItem:
+      type: object
+      additionalProperties: false
+      required: [sourceProfileKey, assetIdentityBasis, assetName, assetSourceId, businessService, impactDimension, impactLevel, impactMethod, impactStatement, impactSource, impactSourceSha256, impactObservedAt, evidenceIngestedAt, snapshotIngestedAt]
+      properties:
+        sourceProfileKey:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: '^[A-Za-z0-9._:-]+$'
+        assetIdentityBasis: {enum: [SOURCE_NAME_ONLY, SOURCE_STABLE_ID]}
+        assetName: {type: string, minLength: 1, maxLength: 160}
+        assetSourceId: {type: [string, 'null'], maxLength: 160}
+        businessService: {type: string, minLength: 1, maxLength: 256}
+        impactDimension: {enum: [AVAILABILITY, INTEGRITY, CONFIDENTIALITY, SAFETY, FINANCIAL, REGULATORY, OPERATIONAL, REPUTATIONAL, MISSION, OTHER, UNKNOWN]}
+        impactLevel: {enum: [SEVERE, HIGH, MODERATE, LOW, NEGLIGIBLE, UNKNOWN]}
+        impactMethod: {enum: [BUSINESS_IMPACT_ANALYSIS, SERVICE_OWNER_ATTESTATION, POLICY_CLASSIFICATION, INCIDENT_ANALYSIS, OTHER, UNKNOWN]}
+        impactStatement: {type: string, minLength: 1}
+        impactSource: {type: string, minLength: 1, maxLength: 256}
+        impactSourceSha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+        impactObservedAt: {type: string, format: date-time}
+        evidenceIngestedAt: {type: string, format: date-time}
+        snapshotIngestedAt: {type: string, format: date-time}
+    BusinessImpactImportResult:
+      type: object
+      additionalProperties: false
+      required: [contractId, semantics, logicalRows, acceptedRows, insertedSnapshots, replayedSnapshots, snapshotConflictGroups, insertedEvidence, replayedEvidence, contractDeduplicatedRows, persistenceQuarantinedRows, contractQuarantinedRows, totalDeduplicatedRows, totalQuarantinedRows, impactDimensionDistribution, impactLevelDistribution, impactMethodDistribution, contractIssues, persistenceIssues]
+      properties:
+        contractId: {const: BUSINESS_IMPACT_CSV_V1}
+        semantics: {const: ASSET_SERVICE_SCOPED_BUSINESS_MISSION_IMPACT_EVIDENCE}
+        logicalRows: {type: integer, format: int64, minimum: 0}
+        acceptedRows: {type: integer, format: int64, minimum: 0}
+        insertedSnapshots: {type: integer, format: int64, minimum: 0}
+        replayedSnapshots: {type: integer, format: int64, minimum: 0}
+        snapshotConflictGroups: {type: integer, format: int64, minimum: 0}
+        insertedEvidence: {type: integer, format: int64, minimum: 0}
+        replayedEvidence: {type: integer, format: int64, minimum: 0}
+        contractDeduplicatedRows: {type: integer, format: int64, minimum: 0}
+        persistenceQuarantinedRows: {type: integer, format: int64, minimum: 0}
+        contractQuarantinedRows: {type: integer, format: int64, minimum: 0}
+        totalDeduplicatedRows: {type: integer, format: int64, minimum: 0}
+        totalQuarantinedRows: {type: integer, format: int64, minimum: 0}
+        impactDimensionDistribution: {$ref: '#/components/schemas/BusinessImpactDimensionDistribution'}
+        impactLevelDistribution: {$ref: '#/components/schemas/BusinessImpactLevelDistribution'}
+        impactMethodDistribution: {$ref: '#/components/schemas/BusinessImpactMethodDistribution'}
+        contractIssues:
+          type: array
+          maxItems: 100
+          items: {$ref: '#/components/schemas/BusinessImpactIssue'}
+        persistenceIssues:
+          type: array
+          maxItems: 100
+          items: {$ref: '#/components/schemas/BusinessImpactIssue'}
+    BusinessImpactDimensionDistribution:
+      type: object
+      additionalProperties: false
+      required: [AVAILABILITY, INTEGRITY, CONFIDENTIALITY, SAFETY, FINANCIAL, REGULATORY, OPERATIONAL, REPUTATIONAL, MISSION, OTHER, UNKNOWN]
+      properties:
+        AVAILABILITY: {type: integer, format: int64, minimum: 0}
+        INTEGRITY: {type: integer, format: int64, minimum: 0}
+        CONFIDENTIALITY: {type: integer, format: int64, minimum: 0}
+        SAFETY: {type: integer, format: int64, minimum: 0}
+        FINANCIAL: {type: integer, format: int64, minimum: 0}
+        REGULATORY: {type: integer, format: int64, minimum: 0}
+        OPERATIONAL: {type: integer, format: int64, minimum: 0}
+        REPUTATIONAL: {type: integer, format: int64, minimum: 0}
+        MISSION: {type: integer, format: int64, minimum: 0}
+        OTHER: {type: integer, format: int64, minimum: 0}
+        UNKNOWN: {type: integer, format: int64, minimum: 0}
+    BusinessImpactLevelDistribution:
+      type: object
+      additionalProperties: false
+      required: [SEVERE, HIGH, MODERATE, LOW, NEGLIGIBLE, UNKNOWN]
+      properties:
+        SEVERE: {type: integer, format: int64, minimum: 0}
+        HIGH: {type: integer, format: int64, minimum: 0}
+        MODERATE: {type: integer, format: int64, minimum: 0}
+        LOW: {type: integer, format: int64, minimum: 0}
+        NEGLIGIBLE: {type: integer, format: int64, minimum: 0}
+        UNKNOWN: {type: integer, format: int64, minimum: 0}
+    BusinessImpactMethodDistribution:
+      type: object
+      additionalProperties: false
+      required: [BUSINESS_IMPACT_ANALYSIS, SERVICE_OWNER_ATTESTATION, POLICY_CLASSIFICATION, INCIDENT_ANALYSIS, OTHER, UNKNOWN]
+      properties:
+        BUSINESS_IMPACT_ANALYSIS: {type: integer, format: int64, minimum: 0}
+        SERVICE_OWNER_ATTESTATION: {type: integer, format: int64, minimum: 0}
+        POLICY_CLASSIFICATION: {type: integer, format: int64, minimum: 0}
+        INCIDENT_ANALYSIS: {type: integer, format: int64, minimum: 0}
+        OTHER: {type: integer, format: int64, minimum: 0}
+        UNKNOWN: {type: integer, format: int64, minimum: 0}
+    BusinessImpactIssue:
+      type: object
+      additionalProperties: false
+      required: [rowNumber, level, code, message]
+      properties:
+        rowNumber: {type: integer, format: int64, minimum: 1}
+        level: {enum: [WARNING, ERROR]}
+        code: {type: string}
+        message: {type: string}
     CaseAuditEvent:
       type: object
       required:

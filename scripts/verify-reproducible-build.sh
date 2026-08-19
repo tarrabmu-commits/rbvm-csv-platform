@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION=0.16.0
+VERSION=0.18.0
 JAR="$ROOT_DIR/dist/rbvm-csv-platform-$VERSION.jar"
 CHECKSUM="$JAR.sha256"
 SBOM="$ROOT_DIR/dist/rbvm-csv-platform-$VERSION.spdx.json"
@@ -24,7 +24,7 @@ cmp --silent "$temporary/first.spdx.json" "$SBOM"
 (cd "$(dirname "$JAR")" && sha256sum --check "$(basename "$CHECKSUM")")
 python3 -m json.tool "$SBOM" >/dev/null
 manifest="$(unzip -p "$JAR" META-INF/MANIFEST.MF)"
-grep -q '^Implementation-Version: 0.16.0' <<<"$manifest"
+grep -q '^Implementation-Version: 0.18.0' <<<"$manifest"
 grep -q '^Created-By: RBVM reproducible build' <<<"$manifest"
 
 if jar --list --file "$JAR" | grep -Eq '(^|/)(operator\.token|api-keys\.conf|runtime-data|postgresql-[0-9].*\.jar)'; then
