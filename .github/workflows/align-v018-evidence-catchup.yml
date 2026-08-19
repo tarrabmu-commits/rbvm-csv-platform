@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - agent/evidence-api-contract-v018-catchup
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: write
