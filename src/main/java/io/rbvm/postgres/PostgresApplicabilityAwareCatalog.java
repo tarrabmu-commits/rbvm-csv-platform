@@ -18,6 +18,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -80,12 +81,12 @@ public final class PostgresApplicabilityAwareCatalog implements DomainCatalog {
         Map<String, Object> output = new LinkedHashMap<>(base.orElseThrow());
         Object rawExposures = output.get("exposures");
         if (!(rawExposures instanceof List<?> exposures)) {
-            return Optional.of(Map.copyOf(output));
+            return Optional.of(immutableNullableMap(output));
         }
         try (Connection connection = connections.open()) {
             UUID tenantId = tenantId(connection);
             if (tenantId == null) {
-                return Optional.of(Map.copyOf(output));
+                return Optional.of(immutableNullableMap(output));
             }
             List<Map<String, Object>> enriched = new ArrayList<>(exposures.size());
             for (Object raw : exposures) {
@@ -97,10 +98,10 @@ public final class PostgresApplicabilityAwareCatalog implements DomainCatalog {
                 if (publicId != null) {
                     enrichExposure(connection, tenantId, publicId.toString(), exposure);
                 }
-                enriched.add(Map.copyOf(exposure));
+                enriched.add(immutableNullableMap(exposure));
             }
             output.put("exposures", List.copyOf(enriched));
-            return Optional.of(Map.copyOf(output));
+            return Optional.of(immutableNullableMap(output));
         } catch (SQLException exception) {
             throw new IllegalStateException("PostgreSQL applicability read failed", exception);
         }
@@ -189,5 +190,9 @@ public final class PostgresApplicabilityAwareCatalog implements DomainCatalog {
             }
         }
         return output;
+    }
+
+    private static Map<String, Object> immutableNullableMap(Map<String, Object> source) {
+        return Collections.unmodifiableMap(new LinkedHashMap<>(source));
     }
 }
