@@ -48,6 +48,7 @@ public final class PostgresFoundationSelfTest {
         PostgresEpssImporterSelfTest.main(args);
         PostgresAssetContextImporterSelfTest.main(args);
         PostgresNetworkReachabilityImporterSelfTest.main(args);
+        PostgresNetworkReachabilityEvidenceReaderSelfTest.main(args);
         PostgresCvssV31EvidenceReaderSelfTest.main(args);
         PostgresCisaKevEvidenceReaderSelfTest.main(args);
         PostgresEpssEvidenceReaderSelfTest.main(args);

@@ -35,6 +35,8 @@ public final class CanonicalProjectionFactory {
                     Optional.empty(),
                     Optional.empty(),
                     Optional.empty(),
+                    Optional.empty(),
+                    Optional.empty(),
                     Optional.empty()
             );
         }
@@ -60,6 +62,8 @@ public final class CanonicalProjectionFactory {
         Optional<EpssEvidenceReader> epssEvidenceReader = Optional.empty();
         Optional<AssetContextImporter> assetContextImporter = Optional.empty();
         Optional<AssetContextEvidenceReader> assetContextEvidenceReader = Optional.empty();
+        Optional<NetworkReachabilityImporter> networkReachabilityImporter = Optional.empty();
+        Optional<NetworkReachabilityEvidenceReader> networkReachabilityEvidenceReader = Optional.empty();
         if (installedVersion >= 9) {
             PostgresApplicabilityImporter importer = new PostgresApplicabilityImporter(
                     connections,
@@ -93,6 +97,14 @@ public final class CanonicalProjectionFactory {
                     new PostgresAssetContextEvidenceReader(connections)
             );
         }
+        if (installedVersion >= 14) {
+            PostgresNetworkReachabilityImporter importer =
+                    new PostgresNetworkReachabilityImporter(connections, false);
+            networkReachabilityImporter = Optional.of(importer::importFile);
+            networkReachabilityEvidenceReader = Optional.of(
+                    new PostgresNetworkReachabilityEvidenceReader(connections)
+            );
+        }
         return new RuntimeComponents(
                 projection,
                 readCatalog,
@@ -105,7 +117,9 @@ public final class CanonicalProjectionFactory {
                 epssImporter,
                 epssEvidenceReader,
                 assetContextImporter,
-                assetContextEvidenceReader
+                assetContextEvidenceReader,
+                networkReachabilityImporter,
+                networkReachabilityEvidenceReader
         );
     }
 
@@ -121,59 +135,32 @@ public final class CanonicalProjectionFactory {
             Optional<EpssImporter> epssImporter,
             Optional<EpssEvidenceReader> epssEvidenceReader,
             Optional<AssetContextImporter> assetContextImporter,
-            Optional<AssetContextEvidenceReader> assetContextEvidenceReader
+            Optional<AssetContextEvidenceReader> assetContextEvidenceReader,
+            Optional<NetworkReachabilityImporter> networkReachabilityImporter,
+            Optional<NetworkReachabilityEvidenceReader> networkReachabilityEvidenceReader
     ) {
         public RuntimeComponents {
             Objects.requireNonNull(canonicalProjection, "canonicalProjection");
             Objects.requireNonNull(readCatalog, "readCatalog");
-            applicabilityImporter = Objects.requireNonNull(
-                    applicabilityImporter,
-                    "applicabilityImporter"
-            );
-            applicabilityFindingExporter = Objects.requireNonNull(
-                    applicabilityFindingExporter,
-                    "applicabilityFindingExporter"
-            );
+            applicabilityImporter = Objects.requireNonNull(applicabilityImporter, "applicabilityImporter");
+            applicabilityFindingExporter = Objects.requireNonNull(applicabilityFindingExporter, "applicabilityFindingExporter");
             cvssV31Importer = Objects.requireNonNull(cvssV31Importer, "cvssV31Importer");
-            cvssV31EvidenceReader = Objects.requireNonNull(
-                    cvssV31EvidenceReader,
-                    "cvssV31EvidenceReader"
-            );
+            cvssV31EvidenceReader = Objects.requireNonNull(cvssV31EvidenceReader, "cvssV31EvidenceReader");
             cisaKevImporter = Objects.requireNonNull(cisaKevImporter, "cisaKevImporter");
-            cisaKevEvidenceReader = Objects.requireNonNull(
-                    cisaKevEvidenceReader,
-                    "cisaKevEvidenceReader"
-            );
+            cisaKevEvidenceReader = Objects.requireNonNull(cisaKevEvidenceReader, "cisaKevEvidenceReader");
             epssImporter = Objects.requireNonNull(epssImporter, "epssImporter");
             epssEvidenceReader = Objects.requireNonNull(epssEvidenceReader, "epssEvidenceReader");
-            assetContextImporter = Objects.requireNonNull(
-                    assetContextImporter,
-                    "assetContextImporter"
-            );
-            assetContextEvidenceReader = Objects.requireNonNull(
-                    assetContextEvidenceReader,
-                    "assetContextEvidenceReader"
-            );
+            assetContextImporter = Objects.requireNonNull(assetContextImporter, "assetContextImporter");
+            assetContextEvidenceReader = Objects.requireNonNull(assetContextEvidenceReader, "assetContextEvidenceReader");
+            networkReachabilityImporter = Objects.requireNonNull(networkReachabilityImporter, "networkReachabilityImporter");
+            networkReachabilityEvidenceReader = Objects.requireNonNull(networkReachabilityEvidenceReader, "networkReachabilityEvidenceReader");
         }
 
-        public RuntimeComponents(
-                CanonicalProjection canonicalProjection,
-                DomainCatalog readCatalog
-        ) {
-            this(
-                    canonicalProjection,
-                    readCatalog,
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty()
-            );
+        public RuntimeComponents(CanonicalProjection canonicalProjection, DomainCatalog readCatalog) {
+            this(canonicalProjection, readCatalog,
+                    Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+                    Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+                    Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
         }
 
         public RuntimeComponents(
@@ -182,20 +169,10 @@ public final class CanonicalProjectionFactory {
                 Optional<ApplicabilityImporter> applicabilityImporter,
                 Optional<ApplicabilityFindingExporter> applicabilityFindingExporter
         ) {
-            this(
-                    canonicalProjection,
-                    readCatalog,
-                    applicabilityImporter,
-                    applicabilityFindingExporter,
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty()
-            );
+            this(canonicalProjection, readCatalog, applicabilityImporter, applicabilityFindingExporter,
+                    Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+                    Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+                    Optional.empty(), Optional.empty());
         }
 
         public RuntimeComponents(
@@ -206,20 +183,10 @@ public final class CanonicalProjectionFactory {
                 Optional<CvssV31Importer> cvssV31Importer,
                 Optional<CvssV31EvidenceReader> cvssV31EvidenceReader
         ) {
-            this(
-                    canonicalProjection,
-                    readCatalog,
-                    applicabilityImporter,
-                    applicabilityFindingExporter,
-                    cvssV31Importer,
-                    cvssV31EvidenceReader,
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty()
-            );
+            this(canonicalProjection, readCatalog, applicabilityImporter, applicabilityFindingExporter,
+                    cvssV31Importer, cvssV31EvidenceReader,
+                    Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+                    Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
         }
 
         public RuntimeComponents(
@@ -232,20 +199,10 @@ public final class CanonicalProjectionFactory {
                 Optional<CisaKevImporter> cisaKevImporter,
                 Optional<CisaKevEvidenceReader> cisaKevEvidenceReader
         ) {
-            this(
-                    canonicalProjection,
-                    readCatalog,
-                    applicabilityImporter,
-                    applicabilityFindingExporter,
-                    cvssV31Importer,
-                    cvssV31EvidenceReader,
-                    cisaKevImporter,
-                    cisaKevEvidenceReader,
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty()
-            );
+            this(canonicalProjection, readCatalog, applicabilityImporter, applicabilityFindingExporter,
+                    cvssV31Importer, cvssV31EvidenceReader, cisaKevImporter, cisaKevEvidenceReader,
+                    Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+                    Optional.empty(), Optional.empty());
         }
 
         /** Backward-compatible constructor through the EPSS V12 runtime capability layer. */
@@ -261,20 +218,31 @@ public final class CanonicalProjectionFactory {
                 Optional<EpssImporter> epssImporter,
                 Optional<EpssEvidenceReader> epssEvidenceReader
         ) {
-            this(
-                    canonicalProjection,
-                    readCatalog,
-                    applicabilityImporter,
-                    applicabilityFindingExporter,
-                    cvssV31Importer,
-                    cvssV31EvidenceReader,
-                    cisaKevImporter,
-                    cisaKevEvidenceReader,
-                    epssImporter,
-                    epssEvidenceReader,
-                    Optional.empty(),
-                    Optional.empty()
-            );
+            this(canonicalProjection, readCatalog, applicabilityImporter, applicabilityFindingExporter,
+                    cvssV31Importer, cvssV31EvidenceReader, cisaKevImporter, cisaKevEvidenceReader,
+                    epssImporter, epssEvidenceReader,
+                    Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
+        }
+
+        /** Backward-compatible constructor through the Asset Context V13 runtime capability layer. */
+        public RuntimeComponents(
+                CanonicalProjection canonicalProjection,
+                DomainCatalog readCatalog,
+                Optional<ApplicabilityImporter> applicabilityImporter,
+                Optional<ApplicabilityFindingExporter> applicabilityFindingExporter,
+                Optional<CvssV31Importer> cvssV31Importer,
+                Optional<CvssV31EvidenceReader> cvssV31EvidenceReader,
+                Optional<CisaKevImporter> cisaKevImporter,
+                Optional<CisaKevEvidenceReader> cisaKevEvidenceReader,
+                Optional<EpssImporter> epssImporter,
+                Optional<EpssEvidenceReader> epssEvidenceReader,
+                Optional<AssetContextImporter> assetContextImporter,
+                Optional<AssetContextEvidenceReader> assetContextEvidenceReader
+        ) {
+            this(canonicalProjection, readCatalog, applicabilityImporter, applicabilityFindingExporter,
+                    cvssV31Importer, cvssV31EvidenceReader, cisaKevImporter, cisaKevEvidenceReader,
+                    epssImporter, epssEvidenceReader, assetContextImporter, assetContextEvidenceReader,
+                    Optional.empty(), Optional.empty());
         }
     }
 }

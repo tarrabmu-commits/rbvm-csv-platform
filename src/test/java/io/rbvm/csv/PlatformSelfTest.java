@@ -29,6 +29,7 @@ public final class PlatformSelfTest {
         CsvCisaKevHttpSelfTest.main(args);
         CsvEpssHttpSelfTest.main(args);
         CsvAssetContextHttpSelfTest.main(args);
+        CsvNetworkReachabilityHttpSelfTest.main(args);
         CanonicalProjectionSelfTest.main(args);
         PostgresFoundationSelfTest.main(args);
         System.out.println("PlatformSelfTest: PASS");
