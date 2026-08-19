@@ -303,6 +303,7 @@ data/
 - [`db/migration/V8__operational_analytics.sql`](db/migration/V8__operational_analytics.sql)
 - [`db/migration/V9__applicability_persistence.sql`](db/migration/V9__applicability_persistence.sql)
 - [`db/migration/V10__cvss_v31_base_persistence.sql`](db/migration/V10__cvss_v31_base_persistence.sql)
+- [`db/migration/V11__cisa_kev_persistence.sql`](db/migration/V11__cisa_kev_persistence.sql)
 
 لتفعيل الإسقاط، ضع pgJDBC على الـclasspath من دون تضمينه داخل حزمة التطبيق:
 
