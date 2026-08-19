@@ -35,7 +35,9 @@ GRANT SELECT, INSERT ON
     rbvm.cisa_kev_catalog_snapshot,
     rbvm.cisa_kev_evidence,
     rbvm.epss_score_snapshot,
-    rbvm.epss_evidence
+    rbvm.epss_evidence,
+    rbvm.asset_context_snapshot,
+    rbvm.asset_context_evidence
 TO rbvm_runtime;
 
 GRANT SELECT ON
@@ -61,7 +63,9 @@ GRANT SELECT ON
     rbvm.current_cisa_kev_evidence,
     rbvm.finding_cisa_kev_evidence,
     rbvm.current_epss_evidence,
-    rbvm.finding_epss_evidence
+    rbvm.finding_epss_evidence,
+    rbvm.current_asset_context_evidence,
+    rbvm.finding_asset_context_evidence
 TO rbvm_runtime;
 
 GRANT USAGE, SELECT ON SEQUENCE rbvm.case_audit_event_database_sequence TO rbvm_runtime;
@@ -73,3 +77,5 @@ REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.cisa_kev_catalog_snapshot FROM rbvm_runt
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.cisa_kev_evidence FROM rbvm_runtime;
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.epss_score_snapshot FROM rbvm_runtime;
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.epss_evidence FROM rbvm_runtime;
+REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.asset_context_snapshot FROM rbvm_runtime;
+REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.asset_context_evidence FROM rbvm_runtime;
