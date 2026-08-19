@@ -20,7 +20,8 @@ public final class PostgresFoundationSelfTest {
             "/db/migration/V10__cvss_v31_base_persistence.sql",
             "/db/migration/V11__cisa_kev_persistence.sql",
             "/db/migration/V12__epss_persistence.sql",
-            "/db/migration/V13__asset_context_persistence.sql"
+            "/db/migration/V13__asset_context_persistence.sql",
+            "/db/migration/V14__network_reachability_persistence.sql"
     );
 
     private PostgresFoundationSelfTest() {
@@ -38,6 +39,7 @@ public final class PostgresFoundationSelfTest {
         cisaKevPersistencePreservesSnapshotBoundEvidenceSemantics();
         epssPersistencePreservesSnapshotBoundEvidenceSemantics();
         assetContextPersistencePreservesEvidenceSemantics();
+        networkReachabilityPersistencePreservesEvidenceSemantics();
         PostgresMigratorSelfTest.main(args);
         PostgresProjectionJdbcSelfTest.main(args);
         PostgresApplicabilityImporterSelfTest.main(args);
@@ -45,6 +47,7 @@ public final class PostgresFoundationSelfTest {
         PostgresCisaKevImporterSelfTest.main(args);
         PostgresEpssImporterSelfTest.main(args);
         PostgresAssetContextImporterSelfTest.main(args);
+        PostgresNetworkReachabilityImporterSelfTest.main(args);
         PostgresCvssV31EvidenceReaderSelfTest.main(args);
         PostgresCisaKevEvidenceReaderSelfTest.main(args);
         PostgresEpssEvidenceReaderSelfTest.main(args);
@@ -245,6 +248,31 @@ public final class PostgresFoundationSelfTest {
         assert !script.contains("risk_score");
         assert !script.contains("priority_tier");
         assert !script.contains("SLA_Days");
+        assert !script.contains("epss_probability");
+        assert !script.contains("known_exploited");
+    }
+
+    private static void networkReachabilityPersistencePreservesEvidenceSemantics() throws Exception {
+        String script = resource("/db/migration/V14__network_reachability_persistence.sql");
+        assert script.contains("CREATE TABLE rbvm.network_reachability_snapshot");
+        assert script.contains("CREATE TABLE rbvm.network_reachability_evidence");
+        assert script.contains("UNIQUE (tenant_id, evidence_source, observed_at)");
+        assert script.contains("COALESCE(target_port, 0)");
+        assert script.contains("target_port BETWEEN 1 AND 65535");
+        assert script.contains("transport_protocol = 'ICMP' AND target_port IS NULL");
+        assert script.contains("REFERENCES rbvm.asset(tenant_id, id)");
+        assert script.contains("REFERENCES rbvm.network_reachability_snapshot(tenant_id, id)");
+        assert script.contains("reachability_status IN ('REACHABLE', 'NOT_REACHABLE', 'UNKNOWN')");
+        assert script.contains("s.evidence_source");
+        assert script.contains("s.observed_at DESC");
+        assert script.contains("(r.id IS NOT NULL) AS network_reachability_observed");
+        assert script.contains("Missing evidence remains NULL/false");
+        assert !script.contains("COALESCE(r.reachability_status, 'NOT_REACHABLE')");
+        assert !script.contains("internet_exposed");
+        assert !script.contains("risk_score");
+        assert !script.contains("priority_tier");
+        assert !script.contains("SLA_Days");
+        assert !script.contains("business_criticality");
         assert !script.contains("epss_probability");
         assert !script.contains("known_exploited");
     }

@@ -78,12 +78,14 @@ def main() -> None:
             (11, "V11__cisa_kev_persistence.sql"),
             (12, "V12__epss_persistence.sql"),
             (13, "V13__asset_context_persistence.sql"),
+            (14, "V14__network_reachability_persistence.sql"),
         )
     }
     v1, v2, v3, v4, v5, v6, v7 = (migrations[index] for index in range(1, 8))
     v11 = migrations[11]
     v12 = migrations[12]
     v13 = migrations[13]
+    v14 = migrations[14]
 
     required_tables = {
         "tenant",
@@ -221,6 +223,33 @@ def main() -> None:
         if forbidden in v13:
             raise AssertionError(f"V13 must not derive {forbidden}")
 
+    for invariant in (
+        "CREATE TABLE RBVM.NETWORK_REACHABILITY_SNAPSHOT",
+        "CREATE TABLE RBVM.NETWORK_REACHABILITY_EVIDENCE",
+        "UNIQUE (TENANT_ID, EVIDENCE_SOURCE, OBSERVED_AT)",
+        "COALESCE(TARGET_PORT, 0)",
+        "TARGET_PORT BETWEEN 1 AND 65535",
+        "TRANSPORT_PROTOCOL = 'ICMP' AND TARGET_PORT IS NULL",
+        "REFERENCES RBVM.ASSET(TENANT_ID, ID)",
+        "REFERENCES RBVM.NETWORK_REACHABILITY_SNAPSHOT(TENANT_ID, ID)",
+        "REACHABILITY_STATUS IN ('REACHABLE', 'NOT_REACHABLE', 'UNKNOWN')",
+        "CREATE VIEW RBVM.CURRENT_NETWORK_REACHABILITY_EVIDENCE",
+        "CREATE VIEW RBVM.FINDING_NETWORK_REACHABILITY_EVIDENCE",
+        "S.EVIDENCE_SOURCE",
+        "S.OBSERVED_AT DESC",
+        "(R.ID IS NOT NULL) AS NETWORK_REACHABILITY_OBSERVED",
+    ):
+        if invariant not in v14:
+            raise AssertionError(f"V14 is missing network reachability persistence invariant {invariant}")
+    if "COALESCE(R.REACHABILITY_STATUS, 'NOT_REACHABLE')" in v14:
+        raise AssertionError("V14 must preserve missing reachability as absence, not NOT_REACHABLE")
+    for forbidden in (
+        "INTERNET_EXPOSED", "RISK_SCORE", "PRIORITY_TIER", "SLA_DAYS",
+        "BUSINESS_CRITICALITY", "EPSS_PROBABILITY", "KNOWN_EXPLOITED"
+    ):
+        if forbidden in v14:
+            raise AssertionError(f"V14 must not derive {forbidden}")
+
     runtime_role = " ".join(
         (root / "db/security/runtime-role.sql").read_text(encoding="utf-8").split()
     ).upper()
@@ -237,6 +266,10 @@ def main() -> None:
         "RBVM.ASSET_CONTEXT_EVIDENCE",
         "RBVM.CURRENT_ASSET_CONTEXT_EVIDENCE",
         "RBVM.FINDING_ASSET_CONTEXT_EVIDENCE",
+        "RBVM.NETWORK_REACHABILITY_SNAPSHOT",
+        "RBVM.NETWORK_REACHABILITY_EVIDENCE",
+        "RBVM.CURRENT_NETWORK_REACHABILITY_EVIDENCE",
+        "RBVM.FINDING_NETWORK_REACHABILITY_EVIDENCE",
     ):
         if relation not in runtime_role:
             raise AssertionError(f"runtime role is missing intelligence/context relation {relation}")
@@ -247,6 +280,8 @@ def main() -> None:
         "RBVM.EPSS_EVIDENCE",
         "RBVM.ASSET_CONTEXT_SNAPSHOT",
         "RBVM.ASSET_CONTEXT_EVIDENCE",
+        "RBVM.NETWORK_REACHABILITY_SNAPSHOT",
+        "RBVM.NETWORK_REACHABILITY_EVIDENCE",
     ):
         marker = f"REVOKE UPDATE, DELETE, TRUNCATE ON {relation} FROM RBVM_RUNTIME"
         if marker not in runtime_role:

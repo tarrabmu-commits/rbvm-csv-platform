@@ -37,7 +37,9 @@ GRANT SELECT, INSERT ON
     rbvm.epss_score_snapshot,
     rbvm.epss_evidence,
     rbvm.asset_context_snapshot,
-    rbvm.asset_context_evidence
+    rbvm.asset_context_evidence,
+    rbvm.network_reachability_snapshot,
+    rbvm.network_reachability_evidence
 TO rbvm_runtime;
 
 GRANT SELECT ON
@@ -65,7 +67,9 @@ GRANT SELECT ON
     rbvm.current_epss_evidence,
     rbvm.finding_epss_evidence,
     rbvm.current_asset_context_evidence,
-    rbvm.finding_asset_context_evidence
+    rbvm.finding_asset_context_evidence,
+    rbvm.current_network_reachability_evidence,
+    rbvm.finding_network_reachability_evidence
 TO rbvm_runtime;
 
 GRANT USAGE, SELECT ON SEQUENCE rbvm.case_audit_event_database_sequence TO rbvm_runtime;
@@ -79,3 +83,5 @@ REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.epss_score_snapshot FROM rbvm_runtime;
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.epss_evidence FROM rbvm_runtime;
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.asset_context_snapshot FROM rbvm_runtime;
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.asset_context_evidence FROM rbvm_runtime;
+REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.network_reachability_snapshot FROM rbvm_runtime;
+REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.network_reachability_evidence FROM rbvm_runtime;
