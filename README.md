@@ -1,4 +1,4 @@
-# RBVM CSV Platform — Increment 16
+# RBVM CSV Platform — Increment 18
 
 منصة محلية قابلة للتشغيل لإدخال `WAZUH_CSV_V1` أوعقد `WAZUH_CSV_V2` الاختياري وتحويل الأدلة إلى
 نموذج RBVM موحّد: Assets وVulnerabilities وComponents وObservations وExposures
@@ -18,9 +18,11 @@
 - CISA KEV مستقلة عبر `CISA_KEV_CSV_V1` كدليل Threat Evidence مربوط بلقطة كاملة ومتحقق منها، مع `LISTED|NOT_LISTED` وprovenance صريح؛ غياب الدليل يبقى `UNKNOWN`.
 - FIRST EPSS مستقلة عبر `EPSS_CSV_V1` كدليل exploitation probability على مستوى CVE، مع probability وpercentile وmodel version وscore date وsource SHA-256؛ غياب score evidence لا يتحول إلى `0`.
 - Asset Context مستقلة عبر `ASSET_CONTEXT_CSV_V1` كدليل تنظيمي على مستوى الـAsset، مع Environment وBusiness Service وOwner وqualitative Business Criticality وsource SHA-256؛ ولا تتحول هذه القيم تلقائياً إلى risk أوpriority.
-- PostgreSQL V9 يحفظ Applicability history، V10 يحفظ CVSS history، V11 يحفظ CISA KEV snapshot-bound history، V12 يحفظ EPSS score snapshots وCVE score history، وV13 يحفظ immutable Asset Context snapshots/evidence.
-- API مخصصة لاستيراد Applicability وCVSS وKEV وEPSS وAsset Context وقراءة current evidence، مع صفحات تشغيل مستقلة على `/cvss` و`/kev` و`/epss` و`/asset-context`.
-- current CVSS/KEV/EPSS وAsset Context evidence تبقى per-source من دون اختيار winner مخفي أوthreshold-to-priority mapping؛ Business Criticality تبقى qualitative evidence فقط.
+- Network Reachability مستقلة عبر `NETWORK_REACHABILITY_CSV_V1` كدليل تقني scoped حسب origin + endpoint + source + time؛ غياب row لا يعني `NOT_REACHABLE`، و`NOT_REACHABLE` لا يعني global isolation.
+- Business/Mission Impact مستقلة عبر `BUSINESS_IMPACT_CSV_V1` كدليل نوعي source-reported على مستوى Asset + Business Service + impact dimension؛ `SEVERE|HIGH|MODERATE|LOW|NEGLIGIBLE|UNKNOWN` تبقى classifications بلا numeric weight.
+- PostgreSQL V9 يحفظ Applicability history، V10 يحفظ CVSS history، V11 يحفظ CISA KEV snapshot-bound history، V12 يحفظ EPSS score snapshots وCVE score history، وV13 يحفظ immutable Asset Context snapshots/evidence، وV14 يحفظ immutable scoped Network Reachability snapshots/evidence، وV15 يحفظ immutable qualitative Business/Mission Impact snapshots/evidence.
+- API مخصصة لاستيراد Applicability وCVSS وKEV وEPSS وAsset Context وNetwork Reachability وBusiness/Mission Impact وقراءة current evidence، مع صفحات تشغيل مستقلة على `/cvss` و`/kev` و`/epss` و`/asset-context` و`/reachability` و`/business-impact`.
+- current CVSS/KEV/EPSS وAsset Context وNetwork Reachability وBusiness/Mission Impact evidence تبقى per-source من دون اختيار winner مخفي أوthreshold-to-priority mapping؛ Business Criticality تبقى qualitative evidence فقط.
 - ملخص coverage وfreshness للاستخبارات القديمة مع حد stale معلن قدره 7 أيام وتوزيع الأولوية.
 - تحديث استخبارات مجدول وآمن مع cache مربوط ببصمة CVE ولقطات ذرية قابلة للعمل offline.
 - حل تقني وإعادة فتح من دليل V2 صريح فقط؛ لا يوجد أي إغلاق مبني على غياب الصف.
@@ -41,7 +43,7 @@
 - PostgreSQL projection متزامنة: Import لا يكتمل قبل Commit معاملة قاعدة البيانات.
 - إعادة إرسال آمنة للـImports وأحداث Workflow من الأدلة المحلية بعد الانقطاع.
 - PostgreSQL Read Catalog لملخص الكاتالوج والبحث وتفاصيل الحالات.
-- Migration runner بتدقيق SHA-256 وقفل PostgreSQL advisory وتسلسل V1–V13.
+- Migration runner بتدقيق SHA-256 وقفل PostgreSQL advisory وتسلسل V1–V15.
 - دور Runtime محدود، وحراس append-only يمنعون تعديل أوحذف أدلة التدقيق وApplicability/CVSS/KEV/EPSS/Asset Context history.
 - TLS `verify-full` وأدوات Backup/Restore واختبار قطع الاتصال.
 - Health يصرّح بمصدر القراءة وحالة PostgreSQL reconciliation وبقدرات Applicability وCVSS v3.1 وCISA KEV وEPSS وAsset Context.
@@ -52,7 +54,7 @@
 - JAR reproducible مع SHA-256 وSPDX 2.3 SBOM وGitHub artifact attestations.
 - كل GitHub Action مثبت على commit SHA كامل، مع CodeQL وجدول release موثّق.
 - GitHub Actions للتحقق والبناء، واختبار تعافي حي بعد إعادة تشغيل PostgreSQL.
-- OpenAPI 0.16.0 موحّد مع runtime Applicability/CVSS/CISA KEV/EPSS/Asset Context الحالي، إضافة إلى migrations واختبارات contract/domain/HTTP.
+- OpenAPI 0.18.0 موحّد مع runtime Applicability/CVSS/CISA KEV/EPSS/Asset Context/Network Reachability/Business Impact الحالي، إضافة إلى migrations واختبارات contract/domain/HTTP.
 
 ## التشغيل المحلي
 
@@ -94,11 +96,23 @@ http://127.0.0.1:8080/epss
 http://127.0.0.1:8080/asset-context
 ```
 
+واجهة Network Reachability المستقلة:
+
+```text
+http://127.0.0.1:8080/reachability
+```
+
+واجهة Business/Mission Impact المستقلة:
+
+```text
+http://127.0.0.1:8080/business-impact
+```
+
 لبناء JAR مستقل:
 
 ```bash
 ./scripts/build-distribution.sh
-java -jar dist/rbvm-csv-platform-0.16.0.jar
+java -jar dist/rbvm-csv-platform-0.18.0.jar
 ```
 
 ولتشغيل الاختبارات ثم تحليل ملف من CLI:
@@ -111,10 +125,10 @@ java -jar dist/rbvm-csv-platform-0.16.0.jar
 
 ```bash
 ./scripts/verify-reproducible-build.sh
-sha256sum --check dist/rbvm-csv-platform-0.16.0.jar.sha256
+sha256sum --check dist/rbvm-csv-platform-0.18.0.jar.sha256
 ```
 
-ينشر tag مطابق مثل `v0.16.0` Release يحتوي JAR وchecksum وSPDX SBOM، ويولد
+ينشر tag مطابق مثل `v0.18.0` Release يحتوي JAR وchecksum وSPDX SBOM، ويولد
 GitHub build-provenance وSBOM attestations. يتحقق workflow من تطابق tag مع
 Gradle وOpenAPI واسم الحزمة قبل النشر.
 
@@ -297,6 +311,47 @@ curl -H "Authorization: Bearer $RBVM_API_TOKEN" \
 
 EPSS probability وpercentile تبقيان evidence من FIRST وليستا Risk Score أوPriority. `EPSS_Score_Date` هو تاريخ score المنشورة، بينما `EPSS_Observed_At` وقت حصول المنصة على الدليل؛ والـCVE المفقودة لا تتحول إلى probability بقيمة صفر.
 
+
+### Business/Mission Impact evidence
+
+استيراد evidence نوعية source-reported:
+
+```bash
+curl -H "Authorization: Bearer $RBVM_API_KEY" \
+  -H 'Content-Type: text/csv' \
+  --data-binary @business-impact.csv \
+  http://127.0.0.1:8080/api/v1/business-impact-imports
+```
+
+قراءة current evidence مع filters تشغيلية فقط:
+
+```bash
+curl -H "Authorization: Bearer $RBVM_API_KEY" \
+  'http://127.0.0.1:8080/api/v1/business-impact-evidence?businessService=checkout&impactDimension=MISSION&impactLevel=SEVERE&limit=100'
+```
+
+القراءة لا تختار source winner، ولا تحوّل `Impact_Level` إلى وزن رقمي، ولا تجمع Business Impact مع Asset Context أوReachability أوCVSS/KEV/EPSS إلى Risk/Priority/SLA.
+
+### Network Reachability evidence
+
+استيراد evidence تقنية scoped:
+
+```bash
+curl -H "Authorization: Bearer $RBVM_API_KEY" \
+  -H 'Content-Type: text/csv' \
+  --data-binary @network-reachability.csv \
+  http://127.0.0.1:8080/api/v1/network-reachability-imports
+```
+
+قراءة current scoped evidence مع filters تشغيلية فقط:
+
+```bash
+curl -H "Authorization: Bearer $RBVM_API_KEY" \
+  'http://127.0.0.1:8080/api/v1/network-reachability-evidence?asset=web-&originScope=INTERNET&reachabilityStatus=REACHABLE&limit=100'
+```
+
+القراءة لا تشتق `internetExposed` على مستوى asset ولا تختار source winner ولا تحسب Risk/Priority/SLA.
+
 ## نتيجة CSV المرجعية
 
 | المؤشر | النتيجة |
@@ -348,6 +403,8 @@ data/
 - [`db/migration/V11__cisa_kev_persistence.sql`](db/migration/V11__cisa_kev_persistence.sql)
 - [`db/migration/V12__epss_persistence.sql`](db/migration/V12__epss_persistence.sql)
 - [`db/migration/V13__asset_context_persistence.sql`](db/migration/V13__asset_context_persistence.sql)
+- [`db/migration/V14__network_reachability_persistence.sql`](db/migration/V14__network_reachability_persistence.sql)
+- [`db/migration/V15__business_impact_persistence.sql`](db/migration/V15__business_impact_persistence.sql)
 
 لتفعيل الإسقاط، ضع pgJDBC على الـclasspath من دون تضمينه داخل حزمة التطبيق:
 
@@ -410,8 +467,15 @@ append-only؛ CVSS/KEV/EPSS current views تبقى per-source من دون source
 ## حد Asset Context الحالي
 
 Asset Context أصبحت evidence كاملة من العقد حتى V13 وAPI/UI، لكن **ليست RBVM score**.
-لا يوجد في 0.16.0 source arbitration بين أنظمة السياق، ولا internet exposure/reachability،
+لا يوجد في 0.18.0 source arbitration بين أنظمة السياق، ولا internet exposure/reachability،
 ولا numeric criticality multiplier، ولا CVSS+KEV+EPSS+asset formula، ولا remediation SLA مشتق.
 المرحلة التالية هي Exposure/Reachability evidence مستقلة مع provenance، ثم Business/Mission
 Impact، وبعدها فقط يمكن تثبيت methodology القرار بشكل صريح وقابل للتدقيق.
+## حد Evidence Foundation الحالي
+
+Network Reachability وBusiness/Mission Impact أصبحتا evidence مستقلتين كاملتين من العقد حتى PostgreSQL وAPI/UI،
+لكن **لا توجد بعد RBVM decision formula**. `NOT_REACHABLE` تبقى scoped negative evidence فقط، وغياب reachability
+أوimpact row يبقى absence. `Impact_Level` يبقى source-reported qualitative classification ولا يتحول إلى multiplier.
+لا يوجد في 0.18.0 source arbitration أوasset-wide `internetExposed` verdict أوaggregate impact score أوattack-path score
+أوCVSS+KEV+EPSS+Applicability+Asset Context+Reachability+Business Impact formula. المنهجية والTreatment/SLA طبقة لاحقة صريحة.
 
