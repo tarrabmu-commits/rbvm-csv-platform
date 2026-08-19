@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily RBVM NVD CVSS v3.1 refresh schedule
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=30m
+Persistent=true
+Unit=rbvm-cvss-v31-refresh.service
+
+[Install]
+WantedBy=timers.target

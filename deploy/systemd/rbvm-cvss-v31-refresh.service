@@ -1,0 +1,20 @@
+[Unit]
+Description=RBVM NVD CVSS v3.1 collection and canonical import
+After=network-online.target rbvm-csv-platform.service
+Wants=network-online.target rbvm-csv-platform.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/rbvm-csv-platform
+EnvironmentFile=%h/.config/rbvm-platform/cvss-v31-refresh.env
+ExecStart=/usr/bin/env bash %h/rbvm-csv-platform/scripts/scheduled-cvss-v31-refresh.sh
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
