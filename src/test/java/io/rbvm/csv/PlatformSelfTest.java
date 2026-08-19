@@ -1,5 +1,6 @@
 package io.rbvm.csv;
 
+import io.rbvm.decision.RbvmDecisionMethodologyPolicySelfTest;
 import io.rbvm.postgres.PostgresFoundationSelfTest;
 
 import io.rbvm.domain.DomainCatalogSelfTest;
@@ -21,6 +22,7 @@ public final class PlatformSelfTest {
         CisaKevEvidenceSelfTest.main(args);
         CisaKevCsvContractSelfTest.main(args);
         EpssCsvContractSelfTest.main(args);
+        RbvmDecisionMethodologyPolicySelfTest.main(args);
         DomainCatalogSelfTest.main(args);
         ApiSecuritySelfTest.main(args);
         CsvHttpSelfTest.main(args);
