@@ -95,7 +95,7 @@ public final class PostgresCvssV31EvidenceReaderSelfTest {
             Object[][] values = {{
                     "CVE-2026-25087",
                     "3.1",
-                    new BigDecimal("7.0"),
+                    new BigDecimal("8.1"),
                     "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H",
                     "https://nvd.nist.gov/vuln/detail/CVE-2026-25087",
                     Timestamp.from(Instant.parse("2026-08-19T08:00:00Z")),
