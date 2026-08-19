@@ -109,6 +109,43 @@ It intentionally does **not** choose a winning source when multiple sources exis
 
 `rbvm.finding_cvss_v31_base_evidence` joins canonical findings to all current per-source CVSS observations through the CVE. Therefore one finding may have zero, one, or multiple current CVSS source rows. This persistence layer does not turn disagreement between sources into an implicit priority or risk decision.
 
+## Transactional import
+
+`PostgresCvssV31Importer` is the persistence boundary for `CVSS_V31_CSV_V1`.
+It first runs the dedicated contract analyzer, then persists only parser-accepted evidence inside a serializable PostgreSQL transaction.
+
+Each accepted `CVE_ID` must already be attached to at least one canonical finding in the selected tenant. The importer resolves the CVE through tenant-scoped exposures rather than accepting a globally known CVE as sufficient local evidence. A syntactically valid row that cannot be resolved in the tenant is quarantined as:
+
+```text
+CVE_NOT_FOUND_IN_TENANT
+```
+
+For persisted evidence, the identity is:
+
+```text
+Tenant + CVE + CVSS Source + CVSS Observed At
+```
+
+The importer canonicalizes the Base vector before hashing and storage. Therefore a metric-order-only replay remains idempotent.
+
+Persistence behavior is deterministic:
+
+```text
+same tenant + CVE + source + observed_at + same evidence
+    -> REPLAYED
+
+same tenant + CVE + source + observed_at + different evidence
+    -> QUARANTINED
+       CONFLICTING_PERSISTED_CVSS_EVIDENCE_TIMESTAMP
+
+same tenant + CVE + observed_at + different source
+    -> independently INSERTED
+```
+
+Different sources are preserved side by side. The importer does not create a source-precedence rule and does not overwrite one source with another.
+
+The catalog revision changes only when new evidence is inserted. A pure replay does not create a false catalog change. Fatal database failures roll back the persistence transaction.
+
 ## Relationship to current platform intelligence
 
 The existing `VulnerabilityIntelligenceEvidence` and PostgreSQL V7 fields combine CVSS, EPSS, KEV, shared provenance, and a local priority heuristic. They remain compatibility/legacy behavior for now. This new evidence boundary does not call `priorityTier()` and does not use shared `Intel_Observed_At` or `Intel_Source_References` as the canonical CVSS model.
@@ -128,10 +165,13 @@ Wazuh observation / canonical finding
         CVSS_V31_CSV_V1
                 |
                 v
-        CVSS v3.1 Base evidence
+        Contract validation
                 |
                 v
-        PostgreSQL evidence history
+        Tenant/CVE resolution
+                |
+                v
+        PostgreSQL CVSS history
                 |
                 v
         Technical Severity
@@ -153,22 +193,27 @@ Implemented:
 - exact v3.1 Base vector validation;
 - dedicated `CVSS_V31_CSV_V1` contract;
 - streaming RFC 4180 / strict UTF-8 analyzer;
-- deterministic replay/conflict handling;
+- deterministic within-file replay/conflict handling;
 - validation ledger and preview;
 - PostgreSQL V10 immutable CVSS evidence history;
 - current-per-source CVSS view;
 - canonical finding-to-CVSS evidence view;
 - runtime append-only privileges;
-- migration/self-tests proving no priority, risk score, EPSS/KEV, or SLA is derived.
+- transactional `CVSS_V31_CSV_V1` importer;
+- tenant/CVE membership enforcement during import;
+- persisted replay idempotency;
+- persisted same-source/same-time conflict quarantine;
+- independent coexistence of multiple CVSS sources;
+- canonical vector persistence;
+- catalog revision only on new evidence;
+- tests proving no priority, risk score, EPSS/KEV, or SLA is derived.
 
 Not implemented yet:
 
-- transactional `CVSS_V31_CSV_V1` importer;
-- tenant/CVE membership enforcement during import;
-- API/UI workflow;
-- official-source NVD fetcher;
+- API/UI workflow for CVSS evidence;
+- official-source NVD fetcher feeding this canonical contract/importer;
 - explicit source-precedence policy, if one is later required;
 - EPSS or CISA KEV redesign;
 - RBVM priority, risk score, or SLA.
 
-The next increment should add a transactional importer that resolves each CSV `CVE_ID` to the selected tenant, persists validated evidence idempotently, rejects same-time source conflicts, and never falls back to the legacy priority model.
+The next increment should expose this importer through an authenticated operator workflow without coupling CVSS evidence back into the Wazuh CSV or the legacy priority model.
