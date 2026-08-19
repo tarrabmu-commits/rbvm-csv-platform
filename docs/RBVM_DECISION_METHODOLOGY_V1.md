@@ -10,10 +10,35 @@ This increment does **not** calculate risk, priority, remediation SLA, treatment
 - Semantics: `FINDING_SCOPED_EXPLICIT_EVIDENCE_SELECTION_POLICY`
 - Evaluation subject: canonical `Finding_ID`
 - Policy revision: positive integer
-- Policy provenance: exact lowercase SHA-256 of the serialized policy artifact
+- Policy provenance: lowercase SHA-256 of the canonical policy payload defined below
 - Missing evidence: `PRESERVE_UNKNOWN`
 - Ambiguous multi-source evidence: `PRESERVE_AMBIGUOUS`
 - Legacy `rbvm.vulnerability.priority_tier`: `EXCLUDE_LEGACY_PRIORITY_TIER`
+
+## Canonical policy payload and SHA-256
+
+`policySha256` is **not** hashed as part of itself. Its value is the SHA-256 of deterministic canonical binary policy bytes that exclude the `policySha256` field.
+
+Canonical payload format identifier:
+
+`RBVM_DECISION_METHODOLOGY_CANONICAL_BINARY_V1`
+
+The payload encodes, in order:
+
+1. canonical payload format identifier;
+2. contract ID and contract semantics;
+3. revision;
+4. subject scope;
+5. missing-evidence handling;
+6. ambiguity handling;
+7. legacy-priority handling;
+8. all seven evidence-selection policies in the fixed `EvidenceDimension` enum order.
+
+Strings are encoded as length-prefixed UTF-8. Each selection policy encodes source-selection mode, freshness mode, optional maximum age, and the source allowlist. `policySha256` itself is excluded, preventing circular provenance.
+
+`EXPLICIT_ALLOWLIST` is semantically a set, not a precedence list. Source identifiers are trimmed, kept case-sensitive, deduplicated, and then sorted lexicographically before canonical encoding. Therefore changing only the input ordering of the same allowlist does not change `policySha256`.
+
+Constructing a policy with a supplied SHA that does not match these canonical bytes is invalid. `RbvmDecisionMethodologyPolicy.create(...)` derives the SHA from the canonical payload automatically.
 
 ## Why the grain is Finding_ID
 
@@ -54,7 +79,7 @@ Each dimension chooses one of two source-selection modes:
 
 An allowlist is a filter, **not source precedence**. If more than one allowed source supplies usable evidence, both remain. V1 has no source winner and no ordering that silently selects one source.
 
-The platform preserves source identifiers exactly after surrounding whitespace removal. It does not lowercase or otherwise reinterpret an evidence source in the methodology policy.
+The platform preserves source identifiers exactly after surrounding whitespace removal. It does not lowercase or otherwise reinterpret an evidence source in the methodology policy. Canonical lexicographic sorting is used only to make set-equivalent allowlists hash identically; it does not create precedence.
 
 ## Freshness
 
@@ -104,7 +129,7 @@ This contract contains no:
 
 The next implementation stages should remain separate and auditable:
 
-1. **Decision policy persistence**: immutable versioned policy artifact with SHA-256 provenance.
+1. **Decision policy persistence**: immutable versioned policy artifact with canonical SHA-256 provenance.
 2. **Decision input snapshot**: one immutable snapshot per `Finding_ID + policy revision + evaluation time`, containing selected evidence references and explicit `PRESENT|MISSING|AMBIGUOUS|STALE` state per dimension.
 3. **Formula contract**: only after input snapshots are stable, define and test how selected evidence becomes an RBVM decision signal.
 4. **Decision persistence/API**: record methodology version, input snapshot, output, explanation, and any later Case roll-up/treatment policy.
