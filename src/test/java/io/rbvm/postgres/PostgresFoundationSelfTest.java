@@ -17,7 +17,8 @@ public final class PostgresFoundationSelfTest {
             "/db/migration/V7__vulnerability_intelligence.sql",
             "/db/migration/V8__operational_analytics.sql",
             "/db/migration/V9__applicability_persistence.sql",
-            "/db/migration/V10__cvss_v31_base_persistence.sql"
+            "/db/migration/V10__cvss_v31_base_persistence.sql",
+            "/db/migration/V11__cisa_kev_persistence.sql"
     );
 
     private PostgresFoundationSelfTest() {
@@ -32,6 +33,7 @@ public final class PostgresFoundationSelfTest {
         operationalAnalyticsPreservesEvidenceSemantics();
         applicabilityPersistencePreservesEvidenceSemantics();
         cvssV31PersistencePreservesEvidenceSemantics();
+        cisaKevPersistencePreservesSnapshotBoundEvidenceSemantics();
         PostgresMigratorSelfTest.main(args);
         PostgresProjectionJdbcSelfTest.main(args);
         PostgresApplicabilityImporterSelfTest.main(args);
@@ -174,6 +176,26 @@ public final class PostgresFoundationSelfTest {
         assert !script.contains("risk_score");
         assert !script.contains("epss_probability");
         assert !script.contains("known_exploited");
+        assert !script.contains("SLA_Days");
+    }
+
+    private static void cisaKevPersistencePreservesSnapshotBoundEvidenceSemantics() throws Exception {
+        String script = resource("/db/migration/V11__cisa_kev_persistence.sql");
+        assert script.contains("CREATE TABLE rbvm.cisa_kev_catalog_snapshot");
+        assert script.contains("CREATE TABLE rbvm.cisa_kev_evidence");
+        assert script.contains("UNIQUE (tenant_id, kev_source, observed_at)");
+        assert script.contains("UNIQUE (tenant_id, vulnerability_id, snapshot_id)");
+        assert script.contains("REFERENCES rbvm.cisa_kev_catalog_snapshot(tenant_id, id)");
+        assert script.contains("kev_status IN ('LISTED', 'NOT_LISTED')");
+        assert script.contains("kev_status = 'NOT_LISTED'");
+        assert script.contains("kev_date_added IS NULL");
+        assert script.contains("COALESCE(k.kev_status, 'UNKNOWN')");
+        assert script.contains("(k.id IS NOT NULL) AS kev_evidence_observed");
+        assert script.contains("DISTINCT ON (e.tenant_id, e.vulnerability_id, s.kev_source)");
+        assert script.contains("UNKNOWN is never persisted as a");
+        assert !script.contains("priority_tier");
+        assert !script.contains("risk_score");
+        assert !script.contains("epss_probability");
         assert !script.contains("SLA_Days");
     }
 
