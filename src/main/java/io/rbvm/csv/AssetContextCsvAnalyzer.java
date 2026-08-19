@@ -95,7 +95,7 @@ public final class AssetContextCsvAnalyzer {
                                 sourceRowNumber,
                                 ValidationIssue.Level.ERROR,
                                 "CONFLICTING_ASSET_CONTEXT_OBSERVATION",
-                                "The same source profile, asset, context source, and observation time must not carry conflicting context evidence"
+                                "The same source profile, canonical asset identity, context source, and observation time must not carry conflicting context evidence"
                         ));
                     }
                     continue;
@@ -111,8 +111,10 @@ public final class AssetContextCsvAnalyzer {
                     Map<String, Object> item = new LinkedHashMap<>();
                     item.put("rowNumber", sourceRowNumber);
                     item.put("sourceProfileKey", evidence.sourceProfileKey());
+                    item.put("assetIdentityBasis", evidence.assetIdentityBasis().name());
                     item.put("assetName", evidence.assetObservedName());
-                    item.put("normalizedAssetName", evidence.normalizedAssetName());
+                    item.put("assetSourceId", evidence.assetSourceId());
+                    item.put("normalizedAssetIdentityKey", evidence.normalizedAssetIdentityKey());
                     item.put("environment", evidence.environment().name());
                     item.put("businessService", evidence.businessService());
                     item.put("businessOwner", evidence.businessOwner());
@@ -162,6 +164,10 @@ public final class AssetContextCsvAnalyzer {
         }
         if (message.startsWith("Missing values:")) {
             return "MISSING_REQUIRED_VALUE";
+        }
+        if (message.startsWith("Asset_Identity_Basis")
+                || message.startsWith("Asset_Source_ID")) {
+            return "INVALID_ASSET_IDENTITY";
         }
         if (message.startsWith("Environment")) {
             return "INVALID_ENVIRONMENT";
