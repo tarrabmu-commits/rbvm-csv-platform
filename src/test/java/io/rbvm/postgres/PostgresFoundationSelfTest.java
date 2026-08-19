@@ -18,7 +18,8 @@ public final class PostgresFoundationSelfTest {
             "/db/migration/V8__operational_analytics.sql",
             "/db/migration/V9__applicability_persistence.sql",
             "/db/migration/V10__cvss_v31_base_persistence.sql",
-            "/db/migration/V11__cisa_kev_persistence.sql"
+            "/db/migration/V11__cisa_kev_persistence.sql",
+            "/db/migration/V12__epss_persistence.sql"
     );
 
     private PostgresFoundationSelfTest() {
@@ -34,11 +35,13 @@ public final class PostgresFoundationSelfTest {
         applicabilityPersistencePreservesEvidenceSemantics();
         cvssV31PersistencePreservesEvidenceSemantics();
         cisaKevPersistencePreservesSnapshotBoundEvidenceSemantics();
+        epssPersistencePreservesSnapshotBoundEvidenceSemantics();
         PostgresMigratorSelfTest.main(args);
         PostgresProjectionJdbcSelfTest.main(args);
         PostgresApplicabilityImporterSelfTest.main(args);
         PostgresCvssV31ImporterSelfTest.main(args);
         PostgresCisaKevImporterSelfTest.main(args);
+        PostgresEpssImporterSelfTest.main(args);
         PostgresCvssV31EvidenceReaderSelfTest.main(args);
         PostgresCisaKevEvidenceReaderSelfTest.main(args);
         PostgresApplicabilityFindingExporterSelfTest.main(args);
@@ -198,6 +201,25 @@ public final class PostgresFoundationSelfTest {
         assert !script.contains("priority_tier");
         assert !script.contains("risk_score");
         assert !script.contains("epss_probability");
+        assert !script.contains("SLA_Days");
+    }
+
+    private static void epssPersistencePreservesSnapshotBoundEvidenceSemantics() throws Exception {
+        String script = resource("/db/migration/V12__epss_persistence.sql");
+        assert script.contains("CREATE TABLE rbvm.epss_score_snapshot");
+        assert script.contains("CREATE TABLE rbvm.epss_evidence");
+        assert script.contains("UNIQUE (tenant_id, epss_source, observed_at)");
+        assert script.contains("UNIQUE (tenant_id, vulnerability_id, snapshot_id)");
+        assert script.contains("REFERENCES rbvm.epss_score_snapshot(tenant_id, id)");
+        assert script.contains("epss_probability >= 0 AND epss_probability <= 1");
+        assert script.contains("epss_percentile >= 0 AND epss_percentile <= 1");
+        assert script.contains("DISTINCT ON (e.tenant_id, e.vulnerability_id, s.epss_source)");
+        assert script.contains("s.score_date DESC, s.observed_at DESC");
+        assert script.contains("(e.id IS NOT NULL) AS epss_evidence_observed");
+        assert script.contains("Missing CVEs are represented by absence of evidence");
+        assert !script.contains("COALESCE(e.epss_probability");
+        assert !script.contains("priority_tier");
+        assert !script.contains("risk_score");
         assert !script.contains("SLA_Days");
     }
 
