@@ -31,7 +31,11 @@ GRANT SELECT, INSERT ON
     rbvm.case_audit_event,
     rbvm.domain_materialization,
     rbvm.applicability_assessment,
-    rbvm.cvss_v31_base_evidence
+    rbvm.cvss_v31_base_evidence,
+    rbvm.cisa_kev_catalog_snapshot,
+    rbvm.cisa_kev_evidence,
+    rbvm.epss_score_snapshot,
+    rbvm.epss_evidence
 TO rbvm_runtime;
 
 GRANT SELECT ON
@@ -53,7 +57,11 @@ GRANT SELECT ON
     rbvm.current_applicability_assessment,
     rbvm.finding_applicability,
     rbvm.current_cvss_v31_base_evidence,
-    rbvm.finding_cvss_v31_base_evidence
+    rbvm.finding_cvss_v31_base_evidence,
+    rbvm.current_cisa_kev_evidence,
+    rbvm.finding_cisa_kev_evidence,
+    rbvm.current_epss_evidence,
+    rbvm.finding_epss_evidence
 TO rbvm_runtime;
 
 GRANT USAGE, SELECT ON SEQUENCE rbvm.case_audit_event_database_sequence TO rbvm_runtime;
@@ -61,3 +69,7 @@ GRANT USAGE, SELECT ON SEQUENCE rbvm.case_audit_event_database_sequence TO rbvm_
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.case_audit_event FROM rbvm_runtime;
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.applicability_assessment FROM rbvm_runtime;
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.cvss_v31_base_evidence FROM rbvm_runtime;
+REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.cisa_kev_catalog_snapshot FROM rbvm_runtime;
+REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.cisa_kev_evidence FROM rbvm_runtime;
+REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.epss_score_snapshot FROM rbvm_runtime;
+REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.epss_evidence FROM rbvm_runtime;
