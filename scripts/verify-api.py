@@ -55,8 +55,8 @@ def main():
 
     if document.get("openapi") != "3.1.1":
         raise AssertionError("OpenAPI document must declare 3.1.1")
-    if document.get("info", {}).get("version") != "0.14.0":
-        raise AssertionError("OpenAPI info.version must match Increment 14")
+    if document.get("info", {}).get("version") != "0.15.0":
+        raise AssertionError("OpenAPI info.version must match Increment 15")
 
     bearer = document.get("components", {}).get("securitySchemes", {}).get("bearerAuth", {})
     if bearer.get("type") != "http" or bearer.get("scheme") != "bearer":
@@ -95,6 +95,8 @@ def main():
         "/cvss-v31-imports",
         "/cisa-kev-evidence",
         "/cisa-kev-imports",
+        "/epss-evidence",
+        "/epss-imports",
         "/cases",
         "/cases/{caseId}",
         "/cases/{caseId}/actions",
@@ -122,6 +124,12 @@ def main():
     kev_capability = schemas.get("CisaKevCapability", {})
     if set(kev_capability.get("required", [])) != {"importEnabled", "evidenceReadEnabled"}:
         raise AssertionError("CISA KEV capability schema is incomplete")
+
+    if "epss" not in health_required:
+        raise AssertionError("Health schema must expose EPSS runtime capability")
+    epss_capability = schemas.get("EpssCapability", {})
+    if set(epss_capability.get("required", [])) != {"importEnabled", "evidenceReadEnabled"}:
+        raise AssertionError("EPSS capability schema is incomplete")
 
     kev_import = schemas.get("CisaKevImportResult", {})
     required_kev_import_fields = {
@@ -153,6 +161,48 @@ def main():
         raise AssertionError("CISA KEV API must not persist or expose fabricated UNKNOWN rows")
     if kev_item.get("kevCatalogSha256", {}).get("pattern") != "^[a-f0-9]{64}$":
         raise AssertionError("CISA KEV API must expose snapshot SHA-256 provenance")
+
+    epss_import = schemas.get("EpssImportResult", {})
+    required_epss_import_fields = {
+        "insertedSnapshots",
+        "replayedSnapshots",
+        "snapshotConflictGroups",
+        "insertedEvidence",
+        "replayedEvidence",
+        "persistenceQuarantinedRows",
+        "contractQuarantinedRows",
+        "totalQuarantinedRows",
+        "uniqueCves",
+        "uniqueSnapshots",
+    }
+    if not required_epss_import_fields.issubset(set(epss_import.get("required", []))):
+        raise AssertionError("EPSS import result schema is incomplete")
+    if epss_import.get("properties", {}).get("contractId", {}).get("const") != "EPSS_CSV_V1":
+        raise AssertionError("EPSS import result must bind to EPSS_CSV_V1")
+    if epss_import.get("properties", {}).get("semantics", {}).get("const") != \
+            "CVE_SCOPED_FIRST_EPSS_PROBABILITY_EVIDENCE":
+        raise AssertionError("EPSS import semantics are incorrect")
+
+    epss_page = schemas.get("EpssEvidencePage", {})
+    if epss_page.get("properties", {}).get("semantics", {}).get("const") != \
+            "CURRENT_PER_SOURCE_EPSS_EXPLOITATION_PROBABILITY_EVIDENCE":
+        raise AssertionError("EPSS read semantics must remain current-per-source")
+    epss_item = schemas.get("EpssEvidenceItem", {}).get("properties", {})
+    for probability_field in ("epssProbability", "epssPercentile"):
+        probability = epss_item.get(probability_field, {})
+        if probability.get("minimum") != 0 or probability.get("maximum") != 1:
+            raise AssertionError(f"{probability_field} must remain bounded to [0,1]")
+    if epss_item.get("epssSourceSha256", {}).get("pattern") != "^[a-f0-9]{64}$":
+        raise AssertionError("EPSS API must expose exact source-byte SHA-256 provenance")
+    if epss_item.get("epssScoreDate", {}).get("format") != "date":
+        raise AssertionError("EPSS API must expose the FIRST score publication date")
+    if epss_item.get("epssObservedAt", {}).get("format") != "date-time":
+        raise AssertionError("EPSS API must preserve acquisition observation time separately")
+    forbidden_epss_fields = {
+        "priority", "priorityTier", "riskScore", "slaDays", "threshold", "knownExploited"
+    }
+    if forbidden_epss_fields.intersection(epss_item):
+        raise AssertionError("Independent EPSS evidence must not contain decision-policy fields")
 
     applicability = schemas.get("ApplicabilityImportResult", {})
     required_applicability_fields = {
