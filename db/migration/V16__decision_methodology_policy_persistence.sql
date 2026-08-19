@@ -30,8 +30,6 @@ CREATE TABLE rbvm.decision_methodology_policy (
     UNIQUE (tenant_id, id),
     CONSTRAINT decision_methodology_one_revision
         UNIQUE (tenant_id, contract_id, revision),
-    CONSTRAINT decision_methodology_one_content
-        UNIQUE (tenant_id, contract_id, policy_sha256),
     FOREIGN KEY (tenant_id) REFERENCES rbvm.tenant(id)
 );
 
@@ -89,7 +87,7 @@ CREATE TABLE rbvm.decision_methodology_source_allowlist (
 );
 
 COMMENT ON TABLE rbvm.decision_methodology_policy IS
-    'Immutable tenant-scoped RBVM methodology policy registry with canonical non-self-referential SHA-256 provenance. No policy is implicitly active.';
+    'Immutable tenant-scoped RBVM methodology policy registry with canonical non-self-referential SHA-256 provenance. Revision is part of the canonical payload and no policy is implicitly active.';
 COMMENT ON TABLE rbvm.decision_methodology_evidence_policy IS
     'Explicit per-dimension source-selection and freshness eligibility rules. Contains no weights, scores, priority, SLA, thresholds, multipliers, or source precedence.';
 COMMENT ON TABLE rbvm.decision_methodology_source_allowlist IS
