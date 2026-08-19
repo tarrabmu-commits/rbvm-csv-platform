@@ -61,14 +61,14 @@ collector_args=("$INPUT" "$csv" --cache-dir "$CACHE_DIR" --report "$collection_r
 if [[ "$OFFLINE" == true ]]; then
   collector_args+=(--offline)
 fi
-"$ROOT_DIR/scripts/collect-nvd-cvss-v31.py" "${collector_args[@]}"
+python3 "$ROOT_DIR/scripts/collect-nvd-cvss-v31.py" "${collector_args[@]}"
 (cd "$staging" && sha256sum evidence.csv > evidence.csv.sha256)
 
 # The collector is never trusted to write to PostgreSQL directly. The generated contract is handed
 # to the same authenticated HTTP importer used by operators, preserving validation and tenant/CVE
 # resolution before persistence.
 RBVM_CVSS_API_KEY="$RBVM_CVSS_API_KEY" \
-  "$ROOT_DIR/scripts/import-cvss-v31.py" "$csv" \
+  python3 "$ROOT_DIR/scripts/import-cvss-v31.py" "$csv" \
     --api-base "$API_BASE" \
     --report "$import_report"
 
