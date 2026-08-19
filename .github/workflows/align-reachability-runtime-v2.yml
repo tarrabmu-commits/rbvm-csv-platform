@@ -1,0 +1,30 @@
+name: align-reachability-runtime-v2-once
+
+on:
+  push:
+    branches: [agent/network-reachability-api-ui]
+
+permissions:
+  contents: write
+
+jobs:
+  align:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - name: Apply verified runtime rewrite and remove one-shot tooling
+        run: |
+          python3 scripts/align-reachability-runtime-v2.py
+          rm -f \
+            scripts/align-reachability-runtime.py \
+            scripts/align-reachability-runtime-v2.py \
+            .github/workflows/align-reachability-runtime-v2.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m 'Wire V14 network reachability runtime API and UI'
+          git push origin HEAD:agent/network-reachability-api-ui
