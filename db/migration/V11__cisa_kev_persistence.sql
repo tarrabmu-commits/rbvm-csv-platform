@@ -48,6 +48,7 @@ CREATE TABLE rbvm.cisa_kev_evidence (
             kev_status = 'LISTED'
             AND kev_date_added IS NOT NULL
             AND kev_due_date IS NOT NULL
+            AND known_ransomware_campaign_use IS NOT NULL
             AND known_ransomware_campaign_use IN ('KNOWN', 'UNKNOWN')
         )
         OR
