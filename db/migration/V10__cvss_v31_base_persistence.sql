@@ -1,4 +1,0 @@
-BEGIN;
-
--- placeholder
-COMMIT;
