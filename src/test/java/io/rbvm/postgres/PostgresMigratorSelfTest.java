@@ -30,140 +30,84 @@ public final class PostgresMigratorSelfTest {
     private static void appliesAndReplaysVersionedMigrations() throws Exception {
         FakeDatabase database = new FakeDatabase();
         PostgresMigrator migrator = new PostgresMigrator(database::connection);
-        assert migrator.migrate() == 15;
-        assert database.checksums.size() == 15;
-        assert database.commits == 15;
+        assert migrator.migrate() == 16;
+        assert database.checksums.size() == 16;
+        assert database.commits == 16;
         assert database.rollbacks == 0;
-        assert database.executedSql.stream()
-                .anyMatch(sql -> sql.contains("CREATE TABLE rbvm.observation"));
-        assert database.executedSql.stream()
-                .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.operational_finding"));
-        assert database.executedSql.stream()
-                .anyMatch(sql -> sql.contains("CREATE TABLE rbvm.applicability_assessment"));
-        assert database.executedSql.stream()
-                .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.finding_applicability"));
-        assert database.executedSql.stream()
-                .anyMatch(sql -> sql.contains("CREATE TABLE rbvm.cvss_v31_base_evidence"));
-        assert database.executedSql.stream()
-                .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.current_cvss_v31_base_evidence"));
-        assert database.executedSql.stream()
-                .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.finding_cvss_v31_base_evidence"));
-        assert database.executedSql.stream()
-                .anyMatch(sql -> sql.contains("CREATE TABLE rbvm.cisa_kev_catalog_snapshot"));
-        assert database.executedSql.stream()
-                .anyMatch(sql -> sql.contains("CREATE TABLE rbvm.cisa_kev_evidence"));
-        assert database.executedSql.stream()
-                .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.current_cisa_kev_evidence"));
-        assert database.executedSql.stream()
-                .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.finding_cisa_kev_evidence"));
-        assert database.executedSql.stream()
-                .anyMatch(sql -> sql.contains("CREATE TABLE rbvm.epss_score_snapshot"));
-        assert database.executedSql.stream()
-                .anyMatch(sql -> sql.contains("CREATE TABLE rbvm.epss_evidence"));
-        assert database.executedSql.stream()
-                .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.current_epss_evidence"));
-        assert database.executedSql.stream()
-                .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.finding_epss_evidence"));
-        assert database.executedSql.stream()
-                .anyMatch(sql -> sql.contains("CREATE TABLE rbvm.asset_context_snapshot"));
-        assert database.executedSql.stream()
-                .anyMatch(sql -> sql.contains("CREATE TABLE rbvm.asset_context_evidence"));
-        assert database.executedSql.stream()
-                .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.current_asset_context_evidence"));
-        assert database.executedSql.stream()
-                .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.finding_asset_context_evidence"));
-        assert database.executedSql.stream()
-                .anyMatch(sql -> sql.contains("CREATE TABLE rbvm.network_reachability_snapshot"));
-        assert database.executedSql.stream()
-                .anyMatch(sql -> sql.contains("CREATE TABLE rbvm.network_reachability_evidence"));
-        assert database.executedSql.stream()
-                .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.current_network_reachability_evidence"));
-        assert database.executedSql.stream()
-                .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.finding_network_reachability_evidence"));
-        assert database.executedSql.stream()
-                .anyMatch(sql -> sql.contains("CREATE TABLE rbvm.business_impact_snapshot"));
-        assert database.executedSql.stream()
-                .anyMatch(sql -> sql.contains("CREATE TABLE rbvm.business_impact_evidence"));
-        assert database.executedSql.stream()
-                .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.current_business_impact_evidence"));
-        assert database.executedSql.stream()
-                .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.finding_business_impact_evidence"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.observation"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE VIEW rbvm.operational_finding"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.applicability_assessment"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE VIEW rbvm.finding_applicability"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.cvss_v31_base_evidence"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE VIEW rbvm.current_cvss_v31_base_evidence"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE VIEW rbvm.finding_cvss_v31_base_evidence"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.cisa_kev_catalog_snapshot"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.cisa_kev_evidence"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE VIEW rbvm.current_cisa_kev_evidence"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE VIEW rbvm.finding_cisa_kev_evidence"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.epss_score_snapshot"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.epss_evidence"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE VIEW rbvm.current_epss_evidence"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE VIEW rbvm.finding_epss_evidence"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.asset_context_snapshot"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.asset_context_evidence"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE VIEW rbvm.current_asset_context_evidence"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE VIEW rbvm.finding_asset_context_evidence"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.network_reachability_snapshot"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.network_reachability_evidence"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE VIEW rbvm.current_network_reachability_evidence"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE VIEW rbvm.finding_network_reachability_evidence"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.business_impact_snapshot"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.business_impact_evidence"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE VIEW rbvm.current_business_impact_evidence"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE VIEW rbvm.finding_business_impact_evidence"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.decision_methodology_policy"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.decision_methodology_evidence_policy"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.decision_methodology_source_allowlist"));
 
-        long observationCreates = database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE TABLE rbvm.observation (")).count();
-        long operationalFindingCreates = database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE VIEW rbvm.operational_finding")).count();
-        long applicabilityCreates = database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE TABLE rbvm.applicability_assessment")).count();
-        long cvssCreates = database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE TABLE rbvm.cvss_v31_base_evidence")).count();
-        long kevSnapshotCreates = database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE TABLE rbvm.cisa_kev_catalog_snapshot")).count();
-        long kevEvidenceCreates = database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE TABLE rbvm.cisa_kev_evidence")).count();
-        long epssSnapshotCreates = database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE TABLE rbvm.epss_score_snapshot")).count();
-        long epssEvidenceCreates = database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE TABLE rbvm.epss_evidence")).count();
-        long assetContextSnapshotCreates = database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE TABLE rbvm.asset_context_snapshot")).count();
-        long assetContextEvidenceCreates = database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE TABLE rbvm.asset_context_evidence")).count();
-        long networkReachabilitySnapshotCreates = database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE TABLE rbvm.network_reachability_snapshot")).count();
-        long networkReachabilityEvidenceCreates = database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE TABLE rbvm.network_reachability_evidence")).count();
-        long businessImpactSnapshotCreates = database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE TABLE rbvm.business_impact_snapshot")).count();
-        long businessImpactEvidenceCreates = database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE TABLE rbvm.business_impact_evidence")).count();
+        long observationCreates = count(database, "CREATE TABLE rbvm.observation (");
+        long operationalFindingCreates = count(database, "CREATE VIEW rbvm.operational_finding");
+        long applicabilityCreates = count(database, "CREATE TABLE rbvm.applicability_assessment");
+        long cvssCreates = count(database, "CREATE TABLE rbvm.cvss_v31_base_evidence");
+        long kevSnapshotCreates = count(database, "CREATE TABLE rbvm.cisa_kev_catalog_snapshot");
+        long kevEvidenceCreates = count(database, "CREATE TABLE rbvm.cisa_kev_evidence");
+        long epssSnapshotCreates = count(database, "CREATE TABLE rbvm.epss_score_snapshot");
+        long epssEvidenceCreates = count(database, "CREATE TABLE rbvm.epss_evidence");
+        long assetContextSnapshotCreates = count(database, "CREATE TABLE rbvm.asset_context_snapshot");
+        long assetContextEvidenceCreates = count(database, "CREATE TABLE rbvm.asset_context_evidence");
+        long networkReachabilitySnapshotCreates = count(database, "CREATE TABLE rbvm.network_reachability_snapshot");
+        long networkReachabilityEvidenceCreates = count(database, "CREATE TABLE rbvm.network_reachability_evidence");
+        long businessImpactSnapshotCreates = count(database, "CREATE TABLE rbvm.business_impact_snapshot");
+        long businessImpactEvidenceCreates = count(database, "CREATE TABLE rbvm.business_impact_evidence");
+        long methodologyPolicyCreates = count(database, "CREATE TABLE rbvm.decision_methodology_policy");
+        long methodologyEvidencePolicyCreates = count(database, "CREATE TABLE rbvm.decision_methodology_evidence_policy");
+        long methodologyAllowlistCreates = count(database, "CREATE TABLE rbvm.decision_methodology_source_allowlist");
 
-        assert migrator.migrate() == 15;
-        assert database.commits == 15 : "replay must not reapply migrations";
-        assert database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE TABLE rbvm.observation (")).count()
-                == observationCreates;
-        assert database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE VIEW rbvm.operational_finding")).count()
-                == operationalFindingCreates;
-        assert database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE TABLE rbvm.applicability_assessment")).count()
-                == applicabilityCreates;
-        assert database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE TABLE rbvm.cvss_v31_base_evidence")).count()
-                == cvssCreates;
-        assert database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE TABLE rbvm.cisa_kev_catalog_snapshot")).count()
-                == kevSnapshotCreates;
-        assert database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE TABLE rbvm.cisa_kev_evidence")).count()
-                == kevEvidenceCreates;
-        assert database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE TABLE rbvm.epss_score_snapshot")).count()
-                == epssSnapshotCreates;
-        assert database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE TABLE rbvm.epss_evidence")).count()
-                == epssEvidenceCreates;
-        assert database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE TABLE rbvm.asset_context_snapshot")).count()
-                == assetContextSnapshotCreates;
-        assert database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE TABLE rbvm.asset_context_evidence")).count()
-                == assetContextEvidenceCreates;
-        assert database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE TABLE rbvm.network_reachability_snapshot")).count()
-                == networkReachabilitySnapshotCreates;
-        assert database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE TABLE rbvm.network_reachability_evidence")).count()
-                == networkReachabilityEvidenceCreates;
-        assert database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE TABLE rbvm.business_impact_snapshot")).count()
-                == businessImpactSnapshotCreates;
-        assert database.executedSql.stream()
-                .filter(sql -> sql.contains("CREATE TABLE rbvm.business_impact_evidence")).count()
-                == businessImpactEvidenceCreates;
+        assert migrator.migrate() == 16;
+        assert database.commits == 16 : "replay must not reapply migrations";
+        assert count(database, "CREATE TABLE rbvm.observation (") == observationCreates;
+        assert count(database, "CREATE VIEW rbvm.operational_finding") == operationalFindingCreates;
+        assert count(database, "CREATE TABLE rbvm.applicability_assessment") == applicabilityCreates;
+        assert count(database, "CREATE TABLE rbvm.cvss_v31_base_evidence") == cvssCreates;
+        assert count(database, "CREATE TABLE rbvm.cisa_kev_catalog_snapshot") == kevSnapshotCreates;
+        assert count(database, "CREATE TABLE rbvm.cisa_kev_evidence") == kevEvidenceCreates;
+        assert count(database, "CREATE TABLE rbvm.epss_score_snapshot") == epssSnapshotCreates;
+        assert count(database, "CREATE TABLE rbvm.epss_evidence") == epssEvidenceCreates;
+        assert count(database, "CREATE TABLE rbvm.asset_context_snapshot") == assetContextSnapshotCreates;
+        assert count(database, "CREATE TABLE rbvm.asset_context_evidence") == assetContextEvidenceCreates;
+        assert count(database, "CREATE TABLE rbvm.network_reachability_snapshot") == networkReachabilitySnapshotCreates;
+        assert count(database, "CREATE TABLE rbvm.network_reachability_evidence") == networkReachabilityEvidenceCreates;
+        assert count(database, "CREATE TABLE rbvm.business_impact_snapshot") == businessImpactSnapshotCreates;
+        assert count(database, "CREATE TABLE rbvm.business_impact_evidence") == businessImpactEvidenceCreates;
+        assert count(database, "CREATE TABLE rbvm.decision_methodology_policy") == methodologyPolicyCreates;
+        assert count(database, "CREATE TABLE rbvm.decision_methodology_evidence_policy") == methodologyEvidencePolicyCreates;
+        assert count(database, "CREATE TABLE rbvm.decision_methodology_source_allowlist") == methodologyAllowlistCreates;
         assert database.advisoryLocks == 2;
         assert database.advisoryUnlocks == 2;
+    }
+
+    private static long count(FakeDatabase database, String marker) {
+        return database.executedSql.stream().filter(sql -> sql.contains(marker)).count();
     }
 
     private static void rejectsChecksumDrift() throws Exception {
@@ -215,14 +159,8 @@ public final class PostgresMigratorSelfTest {
                 case "getMetaData" -> metadata();
                 case "prepareStatement" -> prepared((String) arguments[0]);
                 case "createStatement" -> statement();
-                case "commit" -> {
-                    commits++;
-                    yield null;
-                }
-                case "rollback" -> {
-                    rollbacks++;
-                    yield null;
-                }
+                case "commit" -> { commits++; yield null; }
+                case "rollback" -> { rollbacks++; yield null; }
                 case "setAutoCommit", "close" -> null;
                 case "getAutoCommit" -> true;
                 case "isClosed" -> false;
@@ -273,11 +211,8 @@ public final class PostgresMigratorSelfTest {
                 return switch (name) {
                     case "execute" -> {
                         String normalized = sql.toLowerCase(Locale.ROOT);
-                        if (normalized.contains("pg_advisory_lock")) {
-                            advisoryLocks++;
-                        } else if (normalized.contains("pg_advisory_unlock")) {
-                            advisoryUnlocks++;
-                        }
+                        if (normalized.contains("pg_advisory_lock")) advisoryLocks++;
+                        else if (normalized.contains("pg_advisory_unlock")) advisoryUnlocks++;
                         yield false;
                     }
                     case "executeQuery" -> {
@@ -318,33 +253,15 @@ public final class PostgresMigratorSelfTest {
     }
 
     private static Object defaultValue(Class<?> type) {
-        if (!type.isPrimitive()) {
-            return null;
-        }
-        if (type == boolean.class) {
-            return false;
-        }
-        if (type == byte.class) {
-            return (byte) 0;
-        }
-        if (type == short.class) {
-            return (short) 0;
-        }
-        if (type == int.class) {
-            return 0;
-        }
-        if (type == long.class) {
-            return 0L;
-        }
-        if (type == float.class) {
-            return 0F;
-        }
-        if (type == double.class) {
-            return 0D;
-        }
-        if (type == char.class) {
-            return '\0';
-        }
+        if (!type.isPrimitive()) return null;
+        if (type == boolean.class) return false;
+        if (type == byte.class) return (byte) 0;
+        if (type == short.class) return (short) 0;
+        if (type == int.class) return 0;
+        if (type == long.class) return 0L;
+        if (type == float.class) return 0F;
+        if (type == double.class) return 0D;
+        if (type == char.class) return '\0';
         return null;
     }
 }
