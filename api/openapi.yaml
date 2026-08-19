@@ -1981,7 +1981,7 @@ components:
         contractId:
           const: EPSS_CSV_V1
         semantics:
-          const: CVE_SCOPED_EPSS_EXPLOITATION_PROBABILITY_EVIDENCE
+          const: CVE_SCOPED_FIRST_EPSS_PROBABILITY_EVIDENCE
         logicalRows:
           type: integer
           format: int64
