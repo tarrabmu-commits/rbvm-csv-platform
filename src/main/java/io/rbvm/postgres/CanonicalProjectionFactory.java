@@ -27,6 +27,8 @@ public final class CanonicalProjectionFactory {
                     new NoopCanonicalProjection(),
                     new InMemoryDomainCatalog(),
                     Optional.empty(),
+                    Optional.empty(),
+                    Optional.empty(),
                     Optional.empty()
             );
         }
@@ -44,6 +46,8 @@ public final class CanonicalProjectionFactory {
         int installedVersion = new PostgresMigrator(connections).installedVersion();
         Optional<ApplicabilityImporter> applicabilityImporter = Optional.empty();
         Optional<ApplicabilityFindingExporter> applicabilityFindingExporter = Optional.empty();
+        Optional<CvssV31Importer> cvssV31Importer = Optional.empty();
+        Optional<CvssV31EvidenceReader> cvssV31EvidenceReader = Optional.empty();
         if (installedVersion >= 9) {
             PostgresApplicabilityImporter importer = new PostgresApplicabilityImporter(
                     connections,
@@ -55,11 +59,18 @@ public final class CanonicalProjectionFactory {
             );
             readCatalog = new PostgresApplicabilityAwareCatalog(postgresReadCatalog, connections);
         }
+        if (installedVersion >= 10) {
+            PostgresCvssV31Importer importer = new PostgresCvssV31Importer(connections, false);
+            cvssV31Importer = Optional.of(importer::importFile);
+            cvssV31EvidenceReader = Optional.of(new PostgresCvssV31EvidenceReader(connections));
+        }
         return new RuntimeComponents(
                 projection,
                 readCatalog,
                 applicabilityImporter,
-                applicabilityFindingExporter
+                applicabilityFindingExporter,
+                cvssV31Importer,
+                cvssV31EvidenceReader
         );
     }
 
@@ -67,7 +78,9 @@ public final class CanonicalProjectionFactory {
             CanonicalProjection canonicalProjection,
             DomainCatalog readCatalog,
             Optional<ApplicabilityImporter> applicabilityImporter,
-            Optional<ApplicabilityFindingExporter> applicabilityFindingExporter
+            Optional<ApplicabilityFindingExporter> applicabilityFindingExporter,
+            Optional<CvssV31Importer> cvssV31Importer,
+            Optional<CvssV31EvidenceReader> cvssV31EvidenceReader
     ) {
         public RuntimeComponents {
             Objects.requireNonNull(canonicalProjection, "canonicalProjection");
@@ -80,6 +93,11 @@ public final class CanonicalProjectionFactory {
                     applicabilityFindingExporter,
                     "applicabilityFindingExporter"
             );
+            cvssV31Importer = Objects.requireNonNull(cvssV31Importer, "cvssV31Importer");
+            cvssV31EvidenceReader = Objects.requireNonNull(
+                    cvssV31EvidenceReader,
+                    "cvssV31EvidenceReader"
+            );
         }
 
         public RuntimeComponents(
@@ -89,6 +107,24 @@ public final class CanonicalProjectionFactory {
             this(
                     canonicalProjection,
                     readCatalog,
+                    Optional.empty(),
+                    Optional.empty(),
+                    Optional.empty(),
+                    Optional.empty()
+            );
+        }
+
+        public RuntimeComponents(
+                CanonicalProjection canonicalProjection,
+                DomainCatalog readCatalog,
+                Optional<ApplicabilityImporter> applicabilityImporter,
+                Optional<ApplicabilityFindingExporter> applicabilityFindingExporter
+        ) {
+            this(
+                    canonicalProjection,
+                    readCatalog,
+                    applicabilityImporter,
+                    applicabilityFindingExporter,
                     Optional.empty(),
                     Optional.empty()
             );

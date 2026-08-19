@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RBVM · CVSS v3.1 Evidence</title>
+  <style>
+    :root { color-scheme: dark; --bg:#120322; --panel:#22063d; --text:#fbf8ff; --muted:#bbaaca; --accent:#ad7aff; --ok:#63e6be; --danger:#ff7b9c; --border:rgba(255,255,255,.13); }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; font-family:system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif; background:radial-gradient(circle at 85% 10%,rgba(173,122,255,.18),transparent 32rem),linear-gradient(145deg,#0e0219,var(--bg)); color:var(--text); }
+    main { width:min(1180px,calc(100% - 32px)); margin:0 auto; padding:46px 0 72px; }
+    header { display:flex; justify-content:space-between; gap:24px; align-items:flex-start; }
+    h1 { margin:0 0 8px; font-size:clamp(2rem,5vw,4rem); letter-spacing:-.04em; }
+    h2 { margin:0 0 16px; font-size:1.25rem; }
+    p { margin:0; color:var(--muted); line-height:1.8; }
+    a { color:var(--ok); }
+    .badge { border:1px solid var(--border); border-radius:999px; padding:9px 13px; color:var(--ok); white-space:nowrap; }
+    .panel { margin-top:18px; padding:24px; border:1px solid var(--border); border-radius:22px; background:linear-gradient(145deg,rgba(44,10,77,.86),rgba(30,5,53,.92)); box-shadow:0 18px 70px rgba(0,0,0,.25); }
+    .grid { display:grid; grid-template-columns:1.5fr auto; gap:14px; align-items:end; }
+    .triple { display:grid; grid-template-columns:1.4fr 1fr auto; gap:14px; align-items:end; }
+    label { display:grid; gap:8px; color:var(--muted); font-size:.9rem; }
+    input { width:100%; min-height:49px; border:1px solid var(--border); background:rgba(6,0,13,.45); color:var(--text); border-radius:12px; padding:13px 14px; font:inherit; }
+    input[type=file]::file-selector-button { background:#2c0a4d; color:var(--text); border:0; border-radius:8px; padding:8px 12px; margin-inline-end:10px; cursor:pointer; }
+    button { min-height:49px; border:0; border-radius:12px; padding:14px 20px; background:var(--accent); color:#160326; font-weight:800; cursor:pointer; }
+    button.secondary { background:var(--ok); }
+    button:disabled { opacity:.5; cursor:wait; }
+    .status { min-height:28px; margin-top:14px; color:var(--muted); }
+    .status.error { color:var(--danger); }
+    .cards { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:18px; }
+    .card { padding:17px; background:rgba(6,0,13,.35); border:1px solid var(--border); border-radius:15px; }
+    .card span { display:block; color:var(--muted); font-size:.82rem; margin-bottom:8px; }
+    .card strong { font-size:1.7rem; }
+    .note { border-inline-start:3px solid var(--accent); padding-inline-start:14px; margin-top:18px; }
+    .scroll { overflow-x:auto; margin-top:18px; }
+    table { width:100%; border-collapse:collapse; font-size:.88rem; direction:ltr; }
+    th,td { padding:11px 10px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }
+    th { color:var(--muted); font-weight:600; }
+    code { direction:ltr; unicode-bidi:embed; }
+    .issues { margin-top:16px; white-space:pre-wrap; direction:ltr; text-align:left; color:var(--muted); font-size:.82rem; }
+    .hidden { display:none !important; }
+    @media (max-width:800px) { header{display:block}.badge{display:inline-block;margin-top:16px}.grid,.triple{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)} }
+    @media (max-width:480px) { .cards{grid-template-columns:1fr} }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>CVSS v3.1 Evidence</h1>
+      <p>مسار مستقل لتخزين Technical Severity evidence على مستوى CVE، بدون Priority أو Risk Score أو SLA.</p>
+      <p><a href="/">العودة للمنصة الرئيسية</a></p>
+    </div>
+    <div class="badge">CVSS_V31_CSV_V1 · PostgreSQL V10+</div>
+  </header>
+
+  <section class="panel">
+    <h2>الدخول</h2>
+    <div class="grid">
+      <label>API access token
+        <input id="apiToken" type="password" autocomplete="off" spellcheck="false" placeholder="الصق مفتاح الوصول هنا">
+      </label>
+      <button id="saveToken" class="secondary">استخدام المفتاح</button>
+    </div>
+    <div id="healthMessage" class="status">جاري التحقق من CVSS runtime capability…</div>
+  </section>
+
+  <section class="panel">
+    <h2>1. استيراد CVSS_V31_CSV_V1</h2>
+    <div class="grid">
+      <label>ملف CVSS v3.1 CSV
+        <input id="cvssFile" type="file" accept=".csv,text/csv">
+      </label>
+      <button id="importCvss">استيراد الدليل</button>
+    </div>
+    <div id="importMessage" class="status"></div>
+    <div id="importResult" class="hidden">
+      <div id="importCards" class="cards"></div>
+      <div id="issues" class="issues"></div>
+    </div>
+    <p class="note">العقد المطلوب: <code>CVE_ID,CVSS_Version,CVSS_Base_Score,CVSS_Vector,CVSS_Source,CVSS_Observed_At</code>. النسخة يجب أن تكون 3.1، والـvector Base-only.</p>
+  </section>
+
+  <section class="panel">
+    <h2>2. Current CVSS v3.1 Evidence</h2>
+    <div class="triple">
+      <label>CVE أو prefix اختياري
+        <input id="cveFilter" placeholder="CVE-2026-">
+      </label>
+      <label>Limit (1–500)
+        <input id="limit" type="number" min="1" max="500" value="100">
+      </label>
+      <button id="refresh" class="secondary">تحديث</button>
+    </div>
+    <div id="evidenceMessage" class="status"></div>
+    <div id="evidenceCards" class="cards"></div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>CVE</th><th>Score</th><th>Vector</th><th>Source</th><th>Observed At</th><th>Ingested At</th></tr></thead>
+        <tbody id="evidenceRows"></tbody>
+      </table>
+    </div>
+    <p class="note">الـCurrent view هي latest evidence <strong>لكل Source</strong>. إذا أكثر من مصدر اختلفوا، المنصة تعرضهم معاً ولا تختار winner بشكل مخفي.</p>
+  </section>
+</main>
+<script>
+  const byId = id => document.getElementById(id);
+  let apiToken = sessionStorage.getItem('rbvmApiToken') || '';
+  let importEnabled = false;
+  let readEnabled = false;
+
+  function apiFetch(resource, options = {}) {
+    const headers = new Headers(options.headers || {});
+    if (apiToken) headers.set('Authorization', `Bearer ${apiToken}`);
+    return fetch(resource, {...options, headers});
+  }
+
+  function setStatus(id, text, error = false) {
+    const node = byId(id);
+    node.textContent = text;
+    node.classList.toggle('error', error);
+  }
+
+  function card(label, value) {
+    const node = document.createElement('div');
+    node.className = 'card';
+    const caption = document.createElement('span');
+    const number = document.createElement('strong');
+    caption.textContent = label;
+    number.textContent = Number(value ?? 0).toLocaleString('en-US');
+    node.append(caption, number);
+    return node;
+  }
+
+  async function errorFrom(response) {
+    try {
+      const problem = await response.json();
+      return problem.detail || problem.title || `HTTP ${response.status}`;
+    } catch (_) {
+      return `HTTP ${response.status}`;
+    }
+  }
+
+  async function loadHealth() {
+    try {
+      const response = await apiFetch('/api/v1/health', {cache:'no-store'});
+      if (!response.ok) throw new Error(await errorFrom(response));
+      const data = await response.json();
+      const capability = data.cvssV31 || {};
+      importEnabled = capability.importEnabled === true;
+      readEnabled = capability.evidenceReadEnabled === true;
+      byId('importCvss').disabled = !importEnabled;
+      byId('refresh').disabled = !readEnabled;
+      if (importEnabled && readEnabled) {
+        setStatus('healthMessage', 'CVSS v3.1 persistence جاهز: import + current evidence read متاحان.');
+      } else {
+        setStatus('healthMessage', 'CVSS v3.1 persistence يحتاج PostgreSQL schema V10 أو أحدث.', true);
+      }
+    } catch (error) {
+      importEnabled = false;
+      readEnabled = false;
+      byId('importCvss').disabled = true;
+      byId('refresh').disabled = true;
+      setStatus('healthMessage', error.message || 'تعذر قراءة runtime health.', true);
+    }
+  }
+
+  function renderImport(data) {
+    byId('importResult').classList.remove('hidden');
+    byId('importCards').replaceChildren(
+      card('Inserted', data.insertedEvidence),
+      card('Replayed', data.replayedEvidence),
+      card('Deduplicated', data.totalDeduplicatedRows),
+      card('Quarantined', data.totalQuarantinedRows)
+    );
+    const issues = [...(data.contractIssues || []), ...(data.persistenceIssues || [])];
+    byId('issues').textContent = issues.length === 0
+      ? 'No quarantine issues.'
+      : issues.map(issue => `row ${issue.rowNumber} · ${issue.code} · ${issue.message}`).join('\n');
+  }
+
+  async function loadEvidence() {
+    if (!readEnabled) return;
+    const parameters = new URLSearchParams();
+    const limit = byId('limit').value || '100';
+    parameters.set('limit', limit);
+    const cve = byId('cveFilter').value.trim();
+    if (cve) parameters.set('cve', cve);
+    setStatus('evidenceMessage', 'جاري تحميل current evidence…');
+    try {
+      const response = await apiFetch(`/api/v1/cvss-v31-evidence?${parameters}`, {cache:'no-store'});
+      if (!response.ok) throw new Error(await errorFrom(response));
+      const data = await response.json();
+      byId('evidenceCards').replaceChildren(
+        card('Rows', data.count),
+        card('Limit', data.limit)
+      );
+      const body = byId('evidenceRows');
+      body.replaceChildren();
+      for (const item of data.items || []) {
+        const tr = document.createElement('tr');
+        for (const value of [item.cveId, item.cvssBaseScore, item.cvssVector, item.cvssSource, item.cvssObservedAt, item.ingestedAt]) {
+          const td = document.createElement('td');
+          td.textContent = String(value ?? '');
+          tr.appendChild(td);
+        }
+        body.appendChild(tr);
+      }
+      setStatus('evidenceMessage', `${data.count} current per-source CVSS evidence row(s).`);
+    } catch (error) {
+      setStatus('evidenceMessage', error.message || 'تعذر قراءة CVSS evidence.', true);
+    }
+  }
+
+  byId('saveToken').addEventListener('click', async () => {
+    const supplied = byId('apiToken').value.trim();
+    if (!supplied) { setStatus('healthMessage', 'ألصق مفتاح الوصول أولاً.', true); return; }
+    apiToken = supplied;
+    sessionStorage.setItem('rbvmApiToken', supplied);
+    byId('apiToken').value = '';
+    await loadHealth();
+    await loadEvidence();
+  });
+
+  byId('importCvss').addEventListener('click', async () => {
+    const file = byId('cvssFile').files[0];
+    if (!importEnabled) return;
+    if (!file) { setStatus('importMessage', 'اختر ملف CVSS_V31_CSV_V1 أولاً.', true); return; }
+    const button = byId('importCvss');
+    button.disabled = true;
+    setStatus('importMessage', `جاري استيراد ${file.name}…`);
+    try {
+      const response = await apiFetch('/api/v1/cvss-v31-imports', {
+        method:'POST', headers:{'Content-Type':'text/csv; charset=utf-8'}, body:file
+      });
+      if (!response.ok) throw new Error(await errorFrom(response));
+      const data = await response.json();
+      renderImport(data);
+      setStatus('importMessage', `تم: ${data.insertedEvidence} جديد، ${data.replayedEvidence} replay، ${data.totalQuarantinedRows} quarantine.`);
+      await loadEvidence();
+      await loadHealth();
+    } catch (error) {
+      setStatus('importMessage', error.message || 'تعذر استيراد CVSS v3.1 evidence.', true);
+    } finally {
+      button.disabled = !importEnabled;
+    }
+  });
+
+  byId('refresh').addEventListener('click', loadEvidence);
+  if (apiToken) setStatus('healthMessage', 'مفتاح وصول مفعّل لهذه النافذة.');
+  loadHealth().then(loadEvidence);
+</script>
+</body>
+</html>

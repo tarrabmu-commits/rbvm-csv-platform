@@ -146,6 +146,47 @@ Different sources are preserved side by side. The importer does not create a sou
 
 The catalog revision changes only when new evidence is inserted. A pure replay does not create a false catalog change. Fatal database failures roll back the persistence transaction.
 
+## Authenticated API and operator UI
+
+The runtime exposes the dedicated CVSS evidence path only when PostgreSQL schema version 10 or newer is installed.
+
+```text
+POST /api/v1/cvss-v31-imports
+GET  /api/v1/cvss-v31-evidence
+GET  /cvss
+```
+
+`POST /api/v1/cvss-v31-imports` requires `OPERATOR` authorization and accepts the same CSV media types as the other evidence upload paths. It stages the body with the configured upload limit, then calls the transactional importer. The response separates parser-level and persistence-level replay/quarantine counts.
+
+`GET /api/v1/cvss-v31-evidence` requires `VIEWER` authorization and returns the current **per-source** CVSS evidence. Supported query parameters are:
+
+```text
+limit=1..500        default 100
+cve=CVE-...         optional exact identifier or prefix
+```
+
+The read path is tenant-scoped through the local tenant and reads from `rbvm.current_cvss_v31_base_evidence`. It does not join to or expose the legacy priority heuristic.
+
+The dedicated `/cvss` page provides an operator-oriented workflow for:
+
+1. entering the same bearer API key used by the main UI;
+2. uploading `CVSS_V31_CSV_V1` evidence;
+3. seeing inserted, replayed, deduplicated, and quarantined counts;
+4. filtering and reviewing current per-source CVSS evidence.
+
+The main health response now includes an explicit capability object:
+
+```json
+{
+  "cvssV31": {
+    "importEnabled": true,
+    "evidenceReadEnabled": true
+  }
+}
+```
+
+If PostgreSQL V10 is unavailable, these capabilities are false and the CVSS API endpoints return `503` rather than falling back to the legacy combined intelligence model.
+
 ## Relationship to current platform intelligence
 
 The existing `VulnerabilityIntelligenceEvidence` and PostgreSQL V7 fields combine CVSS, EPSS, KEV, shared provenance, and a local priority heuristic. They remain compatibility/legacy behavior for now. This new evidence boundary does not call `priorityTier()` and does not use shared `Intel_Observed_At` or `Intel_Source_References` as the canonical CVSS model.
@@ -172,6 +213,9 @@ Wazuh observation / canonical finding
                 |
                 v
         PostgreSQL CVSS history
+                |
+                v
+        Authenticated API / operator UI
                 |
                 v
         Technical Severity
@@ -206,14 +250,18 @@ Implemented:
 - independent coexistence of multiple CVSS sources;
 - canonical vector persistence;
 - catalog revision only on new evidence;
+- authenticated operator import API;
+- authenticated current-evidence read API;
+- explicit V10 runtime capability reporting;
+- dedicated operator UI at `/cvss`;
+- HTTP and JDBC self-tests for the workflow;
 - tests proving no priority, risk score, EPSS/KEV, or SLA is derived.
 
 Not implemented yet:
 
-- API/UI workflow for CVSS evidence;
-- official-source NVD fetcher feeding this canonical contract/importer;
+- official-source NVD collector feeding this canonical contract/importer;
 - explicit source-precedence policy, if one is later required;
 - EPSS or CISA KEV redesign;
 - RBVM priority, risk score, or SLA.
 
-The next increment should expose this importer through an authenticated operator workflow without coupling CVSS evidence back into the Wazuh CSV or the legacy priority model.
+The next CVSS increment should automate official-source collection into this same evidence contract without bypassing validation, provenance, freshness, or tenant/CVE resolution.
