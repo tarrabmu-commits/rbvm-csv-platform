@@ -19,7 +19,8 @@ public final class PostgresFoundationSelfTest {
             "/db/migration/V9__applicability_persistence.sql",
             "/db/migration/V10__cvss_v31_base_persistence.sql",
             "/db/migration/V11__cisa_kev_persistence.sql",
-            "/db/migration/V12__epss_persistence.sql"
+            "/db/migration/V12__epss_persistence.sql",
+            "/db/migration/V13__asset_context_persistence.sql"
     );
 
     private PostgresFoundationSelfTest() {
@@ -36,12 +37,14 @@ public final class PostgresFoundationSelfTest {
         cvssV31PersistencePreservesEvidenceSemantics();
         cisaKevPersistencePreservesSnapshotBoundEvidenceSemantics();
         epssPersistencePreservesSnapshotBoundEvidenceSemantics();
+        assetContextPersistencePreservesEvidenceSemantics();
         PostgresMigratorSelfTest.main(args);
         PostgresProjectionJdbcSelfTest.main(args);
         PostgresApplicabilityImporterSelfTest.main(args);
         PostgresCvssV31ImporterSelfTest.main(args);
         PostgresCisaKevImporterSelfTest.main(args);
         PostgresEpssImporterSelfTest.main(args);
+        PostgresAssetContextImporterSelfTest.main(args);
         PostgresCvssV31EvidenceReaderSelfTest.main(args);
         PostgresCisaKevEvidenceReaderSelfTest.main(args);
         PostgresEpssEvidenceReaderSelfTest.main(args);
@@ -222,6 +225,27 @@ public final class PostgresFoundationSelfTest {
         assert !script.contains("priority_tier");
         assert !script.contains("risk_score");
         assert !script.contains("SLA_Days");
+    }
+
+    private static void assetContextPersistencePreservesEvidenceSemantics() throws Exception {
+        String script = resource("/db/migration/V13__asset_context_persistence.sql");
+        assert script.contains("CREATE TABLE rbvm.asset_context_snapshot");
+        assert script.contains("CREATE TABLE rbvm.asset_context_evidence");
+        assert script.contains("UNIQUE (tenant_id, context_source, observed_at)");
+        assert script.contains("UNIQUE (tenant_id, asset_id, snapshot_id)");
+        assert script.contains("REFERENCES rbvm.asset(tenant_id, id)");
+        assert script.contains("REFERENCES rbvm.asset_context_snapshot(tenant_id, id)");
+        assert script.contains("asset_identity_basis IN ('SOURCE_NAME_ONLY', 'SOURCE_STABLE_ID')");
+        assert script.contains("business_criticality IN ('MISSION_CRITICAL', 'HIGH', 'MODERATE', 'LOW', 'UNKNOWN')");
+        assert script.contains("DISTINCT ON (e.tenant_id, e.asset_id, s.context_source)");
+        assert script.contains("s.observed_at DESC");
+        assert script.contains("(c.id IS NOT NULL) AS asset_context_observed");
+        assert script.contains("Multiple context sources intentionally remain multiple rows");
+        assert !script.contains("risk_score");
+        assert !script.contains("priority_tier");
+        assert !script.contains("SLA_Days");
+        assert !script.contains("epss_probability");
+        assert !script.contains("known_exploited");
     }
 
     private static String resource(String name) throws Exception {
