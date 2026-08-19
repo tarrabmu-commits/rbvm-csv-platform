@@ -16,7 +16,8 @@ public final class PostgresFoundationSelfTest {
             "/db/migration/V6__explicit_finding_lifecycle.sql",
             "/db/migration/V7__vulnerability_intelligence.sql",
             "/db/migration/V8__operational_analytics.sql",
-            "/db/migration/V9__applicability_persistence.sql"
+            "/db/migration/V9__applicability_persistence.sql",
+            "/db/migration/V10__cvss_v31_base_persistence.sql"
     );
 
     private PostgresFoundationSelfTest() {
@@ -30,6 +31,7 @@ public final class PostgresFoundationSelfTest {
         bundlesEveryMigrationInTheRuntime();
         operationalAnalyticsPreservesEvidenceSemantics();
         applicabilityPersistencePreservesEvidenceSemantics();
+        cvssV31PersistencePreservesEvidenceSemantics();
         PostgresMigratorSelfTest.main(args);
         PostgresProjectionJdbcSelfTest.main(args);
         PostgresApplicabilityImporterSelfTest.main(args);
@@ -154,6 +156,23 @@ public final class PostgresFoundationSelfTest {
         assert !script.contains("priority_tier");
         assert !script.contains("risk_score");
         assert !script.contains("SLA");
+    }
+
+    private static void cvssV31PersistencePreservesEvidenceSemantics() throws Exception {
+        String script = resource("/db/migration/V10__cvss_v31_base_persistence.sql");
+        assert script.contains("CREATE TABLE rbvm.cvss_v31_base_evidence");
+        assert script.contains("cvss_version = '3.1'");
+        assert script.contains("base_score BETWEEN 0.0 AND 10.0");
+        assert script.contains("vector LIKE 'CVSS:3.1/%'");
+        assert script.contains("UNIQUE (tenant_id, vulnerability_id, cvss_source, observed_at)");
+        assert script.contains("DISTINCT ON (tenant_id, vulnerability_id, cvss_source)");
+        assert script.contains("c.vulnerability_id = f.vulnerability_id");
+        assert script.contains("does not arbitrate between sources");
+        assert !script.contains("priority_tier");
+        assert !script.contains("risk_score");
+        assert !script.contains("epss_probability");
+        assert !script.contains("known_exploited");
+        assert !script.contains("SLA_Days");
     }
 
     private static String resource(String name) throws Exception {

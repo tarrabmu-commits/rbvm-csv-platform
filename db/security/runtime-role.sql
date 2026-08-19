@@ -30,7 +30,8 @@ GRANT SELECT, INSERT ON
     rbvm.validation_issue,
     rbvm.case_audit_event,
     rbvm.domain_materialization,
-    rbvm.applicability_assessment
+    rbvm.applicability_assessment,
+    rbvm.cvss_v31_base_evidence
 TO rbvm_runtime;
 
 GRANT SELECT ON
@@ -50,10 +51,13 @@ GRANT SELECT ON
     rbvm.analytics_lifecycle_daily,
     rbvm.analytics_lifecycle_weekly,
     rbvm.current_applicability_assessment,
-    rbvm.finding_applicability
+    rbvm.finding_applicability,
+    rbvm.current_cvss_v31_base_evidence,
+    rbvm.finding_cvss_v31_base_evidence
 TO rbvm_runtime;
 
 GRANT USAGE, SELECT ON SEQUENCE rbvm.case_audit_event_database_sequence TO rbvm_runtime;
 
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.case_audit_event FROM rbvm_runtime;
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.applicability_assessment FROM rbvm_runtime;
+REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.cvss_v31_base_evidence FROM rbvm_runtime;

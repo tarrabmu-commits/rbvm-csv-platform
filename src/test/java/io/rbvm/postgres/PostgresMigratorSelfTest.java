@@ -30,9 +30,9 @@ public final class PostgresMigratorSelfTest {
     private static void appliesAndReplaysVersionedMigrations() throws Exception {
         FakeDatabase database = new FakeDatabase();
         PostgresMigrator migrator = new PostgresMigrator(database::connection);
-        assert migrator.migrate() == 9;
-        assert database.checksums.size() == 9;
-        assert database.commits == 9;
+        assert migrator.migrate() == 10;
+        assert database.checksums.size() == 10;
+        assert database.commits == 10;
         assert database.rollbacks == 0;
         assert database.executedSql.stream()
                 .anyMatch(sql -> sql.contains("CREATE TABLE rbvm.observation"));
@@ -42,15 +42,23 @@ public final class PostgresMigratorSelfTest {
                 .anyMatch(sql -> sql.contains("CREATE TABLE rbvm.applicability_assessment"));
         assert database.executedSql.stream()
                 .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.finding_applicability"));
+        assert database.executedSql.stream()
+                .anyMatch(sql -> sql.contains("CREATE TABLE rbvm.cvss_v31_base_evidence"));
+        assert database.executedSql.stream()
+                .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.current_cvss_v31_base_evidence"));
+        assert database.executedSql.stream()
+                .anyMatch(sql -> sql.contains("CREATE VIEW rbvm.finding_cvss_v31_base_evidence"));
         long observationCreates = database.executedSql.stream()
                 .filter(sql -> sql.contains("CREATE TABLE rbvm.observation (")).count();
         long operationalFindingCreates = database.executedSql.stream()
                 .filter(sql -> sql.contains("CREATE VIEW rbvm.operational_finding")).count();
         long applicabilityCreates = database.executedSql.stream()
                 .filter(sql -> sql.contains("CREATE TABLE rbvm.applicability_assessment")).count();
+        long cvssCreates = database.executedSql.stream()
+                .filter(sql -> sql.contains("CREATE TABLE rbvm.cvss_v31_base_evidence")).count();
 
-        assert migrator.migrate() == 9;
-        assert database.commits == 9 : "replay must not reapply migrations";
+        assert migrator.migrate() == 10;
+        assert database.commits == 10 : "replay must not reapply migrations";
         assert database.executedSql.stream()
                 .filter(sql -> sql.contains("CREATE TABLE rbvm.observation (")).count()
                 == observationCreates;
@@ -60,6 +68,9 @@ public final class PostgresMigratorSelfTest {
         assert database.executedSql.stream()
                 .filter(sql -> sql.contains("CREATE TABLE rbvm.applicability_assessment")).count()
                 == applicabilityCreates;
+        assert database.executedSql.stream()
+                .filter(sql -> sql.contains("CREATE TABLE rbvm.cvss_v31_base_evidence")).count()
+                == cvssCreates;
         assert database.advisoryLocks == 2;
         assert database.advisoryUnlocks == 2;
     }

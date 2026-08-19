@@ -1,6 +1,6 @@
 # CVSS v3.1 Base Evidence Foundation
 
-This increment introduces a dedicated CVE-scoped evidence boundary for **CVSS v3.1 Base**. It is intentionally separate from Wazuh finding evidence, applicability, EPSS, CISA KEV, asset context, remediation policy, and the legacy combined intelligence/priority model.
+This stage provides a dedicated CVE-scoped evidence boundary for **CVSS v3.1 Base**. It is intentionally separate from Wazuh finding evidence, applicability, EPSS, CISA KEV, asset context, remediation policy, and the legacy combined intelligence/priority model.
 
 ## Question answered by this stage
 
@@ -65,7 +65,49 @@ For the same key:
 - semantically identical evidence is deduplicated, even when the eight Base metrics are written in a different valid order;
 - a different score or vector is quarantined as conflicting same-time source evidence.
 
-Different observation times are allowed so later persistence can preserve evidence history and freshness independently from EPSS or KEV freshness.
+Different observation times are allowed so persistence can preserve evidence history and freshness independently from EPSS or KEV freshness.
+
+## PostgreSQL persistence
+
+Schema migration `V10__cvss_v31_base_persistence.sql` persists immutable CVSS observations in:
+
+```text
+rbvm.cvss_v31_base_evidence
+```
+
+The persistent grain is:
+
+```text
+Tenant + CVE + CVSS Source + Observed At
+```
+
+Tenant scope is an access/isolation boundary. It does not make CVSS Base asset-specific; the evidence remains attached to the CVE and is joined to findings only through their `vulnerability_id`.
+
+The table stores:
+
+```text
+cvss_version
+base_score
+vector
+cvss_source
+observed_at
+ingested_at
+evidence_sha256
+```
+
+The runtime role receives `SELECT, INSERT` only and explicit `UPDATE`, `DELETE`, and `TRUNCATE` revocation, so CVSS history is append-only at runtime.
+
+### Current evidence semantics
+
+`rbvm.current_cvss_v31_base_evidence` selects the latest observation **per CVSS source** for each tenant and CVE:
+
+```text
+Tenant + CVE + CVSS Source -> latest observed evidence
+```
+
+It intentionally does **not** choose a winning source when multiple sources exist. Recency is not an authority policy.
+
+`rbvm.finding_cvss_v31_base_evidence` joins canonical findings to all current per-source CVSS observations through the CVE. Therefore one finding may have zero, one, or multiple current CVSS source rows. This persistence layer does not turn disagreement between sources into an implicit priority or risk decision.
 
 ## Relationship to current platform intelligence
 
@@ -89,6 +131,9 @@ Wazuh observation / canonical finding
         CVSS v3.1 Base evidence
                 |
                 v
+        PostgreSQL evidence history
+                |
+                v
         Technical Severity
                 |
                 v
@@ -100,9 +145,9 @@ Wazuh observation / canonical finding
 
 No `WAZUH_CSV_V1 -> WAZUH_CSV_V2` promotion is required to attach CVSS v3.1 Base evidence, because this contract is independent and CVE-scoped.
 
-## Current increment boundary
+## Current stage boundary
 
-Implemented now:
+Implemented:
 
 - independent `CvssV31BaseEvidence` domain model;
 - exact v3.1 Base vector validation;
@@ -110,15 +155,20 @@ Implemented now:
 - streaming RFC 4180 / strict UTF-8 analyzer;
 - deterministic replay/conflict handling;
 - validation ledger and preview;
-- self-tests proving that no priority, risk score, or SLA is derived.
+- PostgreSQL V10 immutable CVSS evidence history;
+- current-per-source CVSS view;
+- canonical finding-to-CVSS evidence view;
+- runtime append-only privileges;
+- migration/self-tests proving no priority, risk score, EPSS/KEV, or SLA is derived.
 
-Not implemented in this increment:
+Not implemented yet:
 
-- PostgreSQL CVSS evidence history/current views;
-- transactional CVSS importer;
+- transactional `CVSS_V31_CSV_V1` importer;
+- tenant/CVE membership enforcement during import;
 - API/UI workflow;
 - official-source NVD fetcher;
+- explicit source-precedence policy, if one is later required;
 - EPSS or CISA KEV redesign;
 - RBVM priority, risk score, or SLA.
 
-The next increment should persist this evidence independently with CVSS-specific provenance and freshness.
+The next increment should add a transactional importer that resolves each CSV `CVE_ID` to the selected tenant, persists validated evidence idempotently, rejects same-time source conflicts, and never falls back to the legacy priority model.

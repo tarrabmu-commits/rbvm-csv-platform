@@ -28,7 +28,8 @@ public final class PostgresMigrator {
             new Migration(6, "V6__explicit_finding_lifecycle.sql"),
             new Migration(7, "V7__vulnerability_intelligence.sql"),
             new Migration(8, "V8__operational_analytics.sql"),
-            new Migration(9, "V9__applicability_persistence.sql")
+            new Migration(9, "V9__applicability_persistence.sql"),
+            new Migration(10, "V10__cvss_v31_base_persistence.sql")
     );
 
     private final JdbcConnectionFactory connections;
