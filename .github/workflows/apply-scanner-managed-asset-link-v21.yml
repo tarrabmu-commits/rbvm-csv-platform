@@ -43,10 +43,30 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base64 -d < .rbvm-bootstrap/v21/part-00 > /tmp/rbvm-v21-publish.zip
+          cat \
+            .rbvm-bootstrap/v21/part-00 \
+            .rbvm-bootstrap/v21/part-03 \
+            .rbvm-bootstrap/v21/part-04 \
+            .rbvm-bootstrap/v21/part-05 \
+            .rbvm-bootstrap/v21/part-06 \
+            | base64 -d > /tmp/rbvm-v21-publish.zip
           rm -rf /tmp/rbvm-v21-publish
           mkdir -p /tmp/rbvm-v21-publish
           unzip -q /tmp/rbvm-v21-publish.zip -d /tmp/rbvm-v21-publish
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('/tmp/rbvm-v21-publish/apply_v21.py')
+          text = path.read_text(encoding='utf-8')
+          needle = '''replace_once(\n    "src/test/java/io/rbvm/postgres/DecisionRuntimeFactorySelfTest.java",\n'''
+          marker = '# There are two identical managed-asset assertions; update the second too.\n'
+          if text.count(needle) != 2 or text.count(marker) != 1:
+              raise SystemExit('unexpected V21 publication patch context')
+          start = text.index(needle)
+          end = text.index('\n# Repository verifier integration.', start)
+          replacement = '''target_path = "src/test/java/io/rbvm/postgres/DecisionRuntimeFactorySelfTest.java"\ntarget = ROOT / target_path\ntext = target.read_text(encoding="utf-8")\nold = "        assert runtime.managedAssetRegistry().isEmpty();\\n"\nnew = old + "        assert runtime.scannerManagedAssetLinkRegistry().isEmpty();\\n"\ncount = text.count(old)\nif count != 2:\n    raise SystemExit(\n        f"{target_path}: expected exactly two managed-asset assertion contexts, found {count}"\n    )\ntarget.write_text(text.replace(old, new), encoding="utf-8")\n'''
+          text = text[:start] + replacement + text[end:]
+          path.write_text(text, encoding='utf-8')
+          PY
           python3 /tmp/rbvm-v21-publish/apply_v21.py
           chmod +x scripts/verify-scanner-managed-asset-link.py
           git diff --check
