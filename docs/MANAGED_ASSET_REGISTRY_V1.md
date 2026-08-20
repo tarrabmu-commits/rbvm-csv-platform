@@ -101,16 +101,18 @@ The HTTP boundary preserves server-owned audit metadata: the authenticated princ
 
 See `docs/MANAGED_ASSET_API_V1.md` for the request contract, pagination, ETag/If-Match behavior, status mapping, and authorization requirements.
 
-## State after Increment 21
+## State after Increment 22
 
-Increment 20 added the browser asset-management UI. Increment 21 adds `SCANNER_MANAGED_ASSET_LINK_V1`, an explicit customer-confirmed, append-only link-decision stream between scanner `rbvm.asset` identities and durable `rbvm.managed_asset` identities. The link is never inferred from hostname, IP, OS, product, or vulnerability intelligence.
+Increment 20 added the browser asset-management UI. Increment 21 added `SCANNER_MANAGED_ASSET_LINK_V1`, an explicit customer-confirmed, append-only link-decision stream between scanner `rbvm.asset` identities and durable `rbvm.managed_asset` identities. The link is never inferred from hostname, IP, OS, product, or vulnerability intelligence.
+
+Increment 22 introduces `RBVM_DECISION_INPUT_SNAPSHOT_V2`. For PostgreSQL schema version 20 and later, the Decision Input builder can retain a linked managed-asset revision as `ASSET_CONTEXT` only through the exact immutable V21 link event that authorized the scanner-to-managed-asset join. V13 Asset Context remains an independent native source; V22 does not overwrite it or introduce a source-winner rule. See `docs/RBVM_DECISION_INPUT_SNAPSHOT_V2.md`.
 
 The managed-asset registry still does **not**:
 
 - expose scanner-link mutation controls through HTTP or the browser UI;
-- alter V13 imported Asset Context evidence;
-- choose precedence between V13 Asset Context and managed-asset context;
-- feed managed-asset context into Decision Input selection or resolution;
+- alter or overwrite V13 imported Asset Context evidence;
+- give managed-asset context automatic precedence over V13 Asset Context;
+- infer links from scanner or vulnerability data;
 - derive Risk, Priority, SLA, treatment, or Formula output.
 
-The next semantic step is Decision Input integration with an explicit, versioned rule for how linked managed-asset customer context coexists with V13 Asset Context evidence.
+Managed-asset lifecycle and scanner-link state remain separate contracts. V22 does not silently suppress a linked revision merely because its lifecycle is `RETIRED`; any later eligibility rule must be explicit and versioned.
