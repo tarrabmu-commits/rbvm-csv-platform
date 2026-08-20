@@ -1,0 +1,69 @@
+name: apply-managed-assets-v20
+
+on:
+  pull_request:
+    types: [opened]
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/managed-assets-ui-v20'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: agent/managed-assets-ui-v20
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Install verifier dependency
+        run: python -m pip install --require-hashes -r scripts/verification-requirements.txt
+      - name: Apply reviewed Increment 20 changeset
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d .rbvm-bootstrap/v20-payload.b64 > /tmp/rbvm-v20-payload.zip
+          rm -rf /tmp/rbvm-v20-payload
+          mkdir -p /tmp/rbvm-v20-payload
+          unzip -q /tmp/rbvm-v20-payload.zip -d /tmp/rbvm-v20-payload
+          python3 /tmp/rbvm-v20-payload/rbvm-v20-ui-bundle/apply_v20.py
+          git diff --check
+      - name: Verify release contract and repository
+        run: |
+          ./scripts/verify-release-version.sh v0.20.0
+          ./scripts/verify.sh
+          ./scripts/verify-reproducible-build.sh
+      - name: Commit verified Increment 20 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git restore -- .github/workflows/verify.yml .github/workflows/release.yml
+          git rm -- .rbvm-bootstrap/v20-payload.b64
+          git config user.name 'rbvm-ci-bootstrap'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -- \
+            README.md \
+            api/openapi.yaml \
+            build.gradle.kts \
+            docs/INCREMENT_20_VALIDATION.md \
+            docs/MANAGED_ASSETS_UI_V1.md \
+            scripts/build-distribution.sh \
+            scripts/verify-managed-assets-ui.py \
+            scripts/verify-reproducible-build.sh \
+            scripts/verify-web.py \
+            scripts/verify.sh \
+            src/main/java/io/rbvm/csv/CsvPlatformServer.java \
+            src/main/resources/web/assets.html \
+            src/main/resources/web/index.html \
+            src/test/java/io/rbvm/csv/CsvHttpSelfTest.java
+          git diff --cached --check
+          git commit -m 'Add V20 managed assets UI'
+          git push origin HEAD:agent/managed-assets-ui-v20
