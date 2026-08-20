@@ -30,6 +30,7 @@ public final class PlatformSelfTest {
         AssetContextCsvContractSelfTest.main(args);
         AssetClassificationGuideV1SelfTest.main(args);
         ManagedAssetSelfTest.main(args);
+        ManagedAssetApiSelfTest.main(args);
         CvssV31BaseScoreCalculatorSelfTest.main(args);
         CvssV31CsvContractSelfTest.main(args);
         CisaKevEvidenceSelfTest.main(args);
@@ -49,6 +50,7 @@ public final class PlatformSelfTest {
         CsvAssetContextHttpSelfTest.main(args);
         CsvNetworkReachabilityHttpSelfTest.main(args);
         CsvBusinessImpactHttpSelfTest.main(args);
+        CsvManagedAssetHttpSelfTest.main(args);
         CanonicalProjectionSelfTest.main(args);
         PostgresFoundationSelfTest.main(args);
         PostgresManagedAssetRegistrySelfTest.main(args);

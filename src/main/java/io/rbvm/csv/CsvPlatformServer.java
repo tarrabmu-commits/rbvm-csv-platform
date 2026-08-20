@@ -4,6 +4,7 @@ import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
+import io.rbvm.asset.ManagedAssetRegistry;
 import io.rbvm.domain.CaseActionCommand;
 import io.rbvm.domain.CaseActionType;
 import io.rbvm.domain.CaseNotFoundException;
@@ -108,6 +109,7 @@ public final class CsvPlatformServer implements AutoCloseable {
     private final Optional<NetworkReachabilityEvidenceReader> networkReachabilityEvidenceReader;
     private final Optional<BusinessImpactImporter> businessImpactImporter;
     private final Optional<BusinessImpactEvidenceReader> businessImpactEvidenceReader;
+    private final Optional<ManagedAssetHttpRouter> managedAssetRouter;
     private final Instant startedAt = Instant.now();
     private final AtomicLong requestsTotal = new AtomicLong();
     private final AtomicLong problemsTotal = new AtomicLong();
@@ -158,6 +160,7 @@ public final class CsvPlatformServer implements AutoCloseable {
         this.networkReachabilityEvidenceReader = Optional.empty();
         this.businessImpactImporter = Optional.empty();
         this.businessImpactEvidenceReader = Optional.empty();
+        this.managedAssetRouter = Optional.empty();
         this.webUi = loadResource("/web/index.html");
         this.cvssUi = loadResource("/web/cvss-v31.html");
         this.kevUi = loadResource("/web/cisa-kev.html");
@@ -465,6 +468,59 @@ public final class CsvPlatformServer implements AutoCloseable {
             ApiKeyAuthenticator authenticator,
             RequestRateLimiter rateLimiter
     ) throws IOException {
+        this(
+                host,
+                port,
+                dataDirectory,
+                maximumUploadBytes,
+                canonicalProjection,
+                readCatalog,
+                applicabilityImporter,
+                applicabilityFindingExporter,
+                cvssV31Importer,
+                cvssV31EvidenceReader,
+                cisaKevImporter,
+                cisaKevEvidenceReader,
+                epssImporter,
+                epssEvidenceReader,
+                assetContextImporter,
+                assetContextEvidenceReader,
+                networkReachabilityImporter,
+                networkReachabilityEvidenceReader,
+                businessImpactImporter,
+                businessImpactEvidenceReader,
+                Optional.empty(),
+                authenticator,
+                rateLimiter
+        );
+    }
+
+    /** Runtime constructor through the V18 customer-managed asset registry capability. */
+    public CsvPlatformServer(
+            String host,
+            int port,
+            Path dataDirectory,
+            long maximumUploadBytes,
+            CanonicalProjection canonicalProjection,
+            DomainCatalog readCatalog,
+            Optional<ApplicabilityImporter> applicabilityImporter,
+            Optional<ApplicabilityFindingExporter> applicabilityFindingExporter,
+            Optional<CvssV31Importer> cvssV31Importer,
+            Optional<CvssV31EvidenceReader> cvssV31EvidenceReader,
+            Optional<CisaKevImporter> cisaKevImporter,
+            Optional<CisaKevEvidenceReader> cisaKevEvidenceReader,
+            Optional<EpssImporter> epssImporter,
+            Optional<EpssEvidenceReader> epssEvidenceReader,
+            Optional<AssetContextImporter> assetContextImporter,
+            Optional<AssetContextEvidenceReader> assetContextEvidenceReader,
+            Optional<NetworkReachabilityImporter> networkReachabilityImporter,
+            Optional<NetworkReachabilityEvidenceReader> networkReachabilityEvidenceReader,
+            Optional<BusinessImpactImporter> businessImpactImporter,
+            Optional<BusinessImpactEvidenceReader> businessImpactEvidenceReader,
+            Optional<ManagedAssetRegistry> managedAssetRegistry,
+            ApiKeyAuthenticator authenticator,
+            RequestRateLimiter rateLimiter
+    ) throws IOException {
         if (port < 0 || port > 65_535) {
             throw new IllegalArgumentException("port must be between 0 and 65535");
         }
@@ -526,6 +582,10 @@ public final class CsvPlatformServer implements AutoCloseable {
                 businessImpactEvidenceReader,
                 "businessImpactEvidenceReader"
         );
+        this.managedAssetRouter = Objects.requireNonNull(
+                managedAssetRegistry,
+                "managedAssetRegistry"
+        ).map(ManagedAssetApi::new).map(ManagedAssetHttpRouter::new);
         this.webUi = loadResource("/web/index.html");
         this.cvssUi = loadResource("/web/cvss-v31.html");
         this.kevUi = loadResource("/web/cisa-kev.html");
@@ -634,6 +694,25 @@ public final class CsvPlatformServer implements AutoCloseable {
                 requireMethod(exchange, method, "GET");
                 authorize(exchange, ApiRole.VIEWER);
                 sendJson(exchange, 200, imports.catalogSummary());
+                return;
+            }
+            if (ManagedAssetHttpRouter.inNamespace(path)) {
+                if (!ManagedAssetHttpRouter.handles(path)) {
+                    throw new HttpProblem(
+                            404,
+                            "NOT_FOUND",
+                            "The requested managed asset route does not exist"
+                    );
+                }
+                ApiRole requiredRole = ManagedAssetHttpRouter.requiredRole(exchange, method);
+                AuthPrincipal principal = authorize(exchange, requiredRole);
+                ManagedAssetHttpRouter managedAssets = managedAssetRouter.orElseThrow(() ->
+                        new HttpProblem(
+                                503,
+                                "MANAGED_ASSET_PERSISTENCE_UNAVAILABLE",
+                                "Managed asset API requires PostgreSQL schema version 18 or newer"
+                        ));
+                managedAssets.routeAuthorized(exchange, method, principal);
                 return;
             }
             if ("/api/v1/cases".equals(path)) {
@@ -769,6 +848,9 @@ public final class CsvPlatformServer implements AutoCloseable {
             }
 
             throw new HttpProblem(404, "NOT_FOUND", "The requested route does not exist");
+        } catch (ManagedAssetApi.ApiProblem problem) {
+            problemsTotal.incrementAndGet();
+            sendProblem(exchange, problem.status(), problem.code(), problem.getMessage(), correlationId);
         } catch (HttpProblem problem) {
             problemsTotal.incrementAndGet();
             sendProblem(exchange, problem.status(), problem.code(), problem.getMessage(), correlationId);
@@ -840,6 +922,11 @@ public final class CsvPlatformServer implements AutoCloseable {
         health.put("businessImpact", Map.of(
                 "importEnabled", businessImpactImporter.isPresent(),
                 "evidenceReadEnabled", businessImpactEvidenceReader.isPresent()
+        ));
+        health.put("managedAssets", Map.of(
+                "readEnabled", managedAssetRouter.isPresent(),
+                "writeEnabled", managedAssetRouter.isPresent(),
+                "historyReadEnabled", managedAssetRouter.isPresent()
         ));
         return health;
     }
@@ -1725,6 +1812,8 @@ public final class CsvPlatformServer implements AutoCloseable {
                 + "rbvm_business_impact_import_enabled " + (businessImpactImporter.isPresent() ? 1 : 0) + "\n"
                 + "# TYPE rbvm_business_impact_evidence_read_enabled gauge\n"
                 + "rbvm_business_impact_evidence_read_enabled " + (businessImpactEvidenceReader.isPresent() ? 1 : 0) + "\n"
+                + "# TYPE rbvm_managed_asset_api_enabled gauge\n"
+                + "rbvm_managed_asset_api_enabled " + (managedAssetRouter.isPresent() ? 1 : 0) + "\n"
                 + "# TYPE rbvm_process_uptime_seconds gauge\n"
                 + "rbvm_process_uptime_seconds " + uptime + "\n"
                 + "# TYPE rbvm_imports_stored gauge\n"
@@ -1788,6 +1877,7 @@ public final class CsvPlatformServer implements AutoCloseable {
                 runtime.networkReachabilityEvidenceReader(),
                 runtime.businessImpactImporter(),
                 runtime.businessImpactEvidenceReader(),
+                runtime.managedAssetRegistry(),
                 authenticator,
                 rateLimiter
         );
@@ -1817,6 +1907,8 @@ public final class CsvPlatformServer implements AutoCloseable {
                 + (runtime.networkReachabilityImporter().isPresent() ? "ENABLED" : "DISABLED"));
         System.out.println("Business Impact persistence: "
                 + (runtime.businessImpactImporter().isPresent() ? "ENABLED" : "DISABLED"));
+        System.out.println("Managed Asset API: "
+                + (runtime.managedAssetRegistry().isPresent() ? "ENABLED" : "DISABLED"));
         System.out.println("API authentication: "
                 + (authenticator.enabled() ? "API_KEY" : "DISABLED"));
         new CountDownLatch(1).await();

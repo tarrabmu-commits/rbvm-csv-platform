@@ -53,10 +53,10 @@ def main():
     path = root / "api/openapi.yaml"
     document = yaml.load(path.read_text(encoding="utf-8"), Loader=StrictLoader)
 
-    if document.get("openapi") != "3.1.1":
-        raise AssertionError("OpenAPI document must declare 3.1.1")
-    if document.get("info", {}).get("version") != "0.18.0":
-        raise AssertionError("OpenAPI info.version must match Increment 18")
+    if document.get("openapi") != "3.1.2":
+        raise AssertionError("OpenAPI document must declare 3.1.2")
+    if document.get("info", {}).get("version") != "0.19.0":
+        raise AssertionError("OpenAPI info.version must match Increment 19")
 
     bearer = document.get("components", {}).get("securitySchemes", {}).get("bearerAuth", {})
     if bearer.get("type") != "http" or bearer.get("scheme") != "bearer":
@@ -103,6 +103,9 @@ def main():
         "/network-reachability-imports",
         "/business-impact-evidence",
         "/business-impact-imports",
+        "/managed-assets",
+        "/managed-assets/{managedAssetId}",
+        "/managed-assets/{managedAssetId}/revisions",
         "/cases",
         "/cases/{caseId}",
         "/cases/{caseId}/actions",
@@ -160,6 +163,70 @@ def main():
         "importEnabled", "evidenceReadEnabled"
     }:
         raise AssertionError("Business Impact capability schema is incomplete")
+
+    if "managedAssets" not in health_required:
+        raise AssertionError("Health schema must expose Managed Asset runtime capability")
+    managed_asset_capability = schemas.get("ManagedAssetCapability", {})
+    if set(managed_asset_capability.get("required", [])) != {
+        "readEnabled", "writeEnabled", "historyReadEnabled"
+    }:
+        raise AssertionError("Managed Asset capability schema is incomplete")
+
+    create_managed_asset = schemas.get("CreateManagedAssetRequest", {})
+    append_managed_asset = schemas.get("AppendManagedAssetRevisionRequest", {})
+    if create_managed_asset.get("additionalProperties") is not False:
+        raise AssertionError("Managed asset create must reject unknown JSON fields")
+    if append_managed_asset.get("additionalProperties") is not False:
+        raise AssertionError("Managed asset revisions must reject unknown JSON fields")
+    server_owned = {"changedBy", "recordedAt", "contextSource", "evidenceSha256", "revision", "id"}
+    if server_owned.intersection(create_managed_asset.get("properties", {})):
+        raise AssertionError("Managed asset create exposes server-owned audit fields")
+    if server_owned.intersection(append_managed_asset.get("properties", {})):
+        raise AssertionError("Managed asset revision exposes server-owned audit fields")
+    if "customerAssetKey" in append_managed_asset.get("properties", {}):
+        raise AssertionError("customerAssetKey must remain immutable after managed asset creation")
+    if "lifecycleStatus" in create_managed_asset.get("properties", {}):
+        raise AssertionError("Managed asset creation must force ACTIVE revision 1")
+    if "lifecycleStatus" not in append_managed_asset.get("required", []):
+        raise AssertionError("Managed asset revisions must state lifecycle explicitly")
+
+    for request_name, request_schema in (
+        ("create", create_managed_asset),
+        ("revision", append_managed_asset),
+    ):
+        rules = request_schema.get("allOf", [])
+        guided_rules = [
+            rule for rule in rules
+            if rule.get("if", {}).get("properties", {}).get("classificationMethod", {}).get("const")
+            == "GUIDED"
+        ]
+        direct_rules = [
+            rule for rule in rules
+            if rule.get("if", {}).get("properties", {}).get("classificationMethod", {}).get("const")
+            == "CUSTOMER_DIRECT"
+        ]
+        if len(guided_rules) != 1 or set(guided_rules[0].get("then", {}).get("required", [])) != {
+            "guideContractId", "guideRevision"
+        }:
+            raise AssertionError(f"Managed asset {request_name} must require guided provenance")
+        if len(direct_rules) != 1:
+            raise AssertionError(f"Managed asset {request_name} must constrain direct guide metadata")
+        direct_properties = direct_rules[0].get("then", {}).get("properties", {})
+        if direct_properties.get("guideContractId", {}).get("type") != "null" or \
+                direct_properties.get("guideRevision", {}).get("type") != "null":
+            raise AssertionError(
+                f"Managed asset {request_name} CUSTOMER_DIRECT must not claim guide provenance"
+            )
+
+    managed_paths = document["paths"]
+    if "delete" in managed_paths["/managed-assets/{managedAssetId}"]:
+        raise AssertionError("Managed assets must be retired by revision, never deleted")
+    revision_post = managed_paths["/managed-assets/{managedAssetId}/revisions"]["post"]
+    if_match = [p for p in revision_post.get("parameters", []) if p.get("name") == "If-Match"]
+    if len(if_match) != 1 or if_match[0].get("required") is not True:
+        raise AssertionError("Managed asset revision POST must require If-Match")
+    if not {"412", "428"}.issubset(set(revision_post.get("responses", {}))):
+        raise AssertionError("Managed asset revision POST must document 412 and 428")
 
     kev_import = schemas.get("CisaKevImportResult", {})
     required_kev_import_fields = {

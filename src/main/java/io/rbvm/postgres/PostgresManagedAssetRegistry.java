@@ -6,8 +6,11 @@ import io.rbvm.asset.ManagedAsset.LifecycleStatus;
 import io.rbvm.asset.ManagedAsset.Revision;
 import io.rbvm.asset.ManagedAsset.RevisionDraft;
 import io.rbvm.asset.ManagedAssetRegistry;
+import io.rbvm.asset.ManagedAssetRegistry.LifecycleFilter;
+import io.rbvm.asset.ManagedAssetRegistry.ManagedAssetPage;
 import io.rbvm.asset.ManagedAssetRegistry.MutationResult;
 import io.rbvm.asset.ManagedAssetRegistry.MutationStatus;
+import io.rbvm.asset.ManagedAssetRegistry.RevisionPage;
 import io.rbvm.csv.AssetContextCsvEvidence.BusinessCriticality;
 import io.rbvm.csv.AssetContextCsvEvidence.Environment;
 
@@ -38,6 +41,7 @@ public final class PostgresManagedAssetRegistry implements ManagedAssetRegistry 
     private final JdbcConnectionFactory connections;
     private final Clock clock;
     private final int schemaVersion;
+    private final PostgresManagedAssetReadStore reads;
 
     public PostgresManagedAssetRegistry(JdbcConnectionFactory connections, boolean migrate)
             throws IOException {
@@ -51,6 +55,7 @@ public final class PostgresManagedAssetRegistry implements ManagedAssetRegistry 
     ) throws IOException {
         this.connections = Objects.requireNonNull(connections, "connections");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.reads = new PostgresManagedAssetReadStore(this.connections);
         PostgresMigrator migrator = new PostgresMigrator(connections);
         schemaVersion = migrate ? migrator.migrate() : migrator.installedVersion();
         requireSchemaVersion(schemaVersion);
@@ -60,6 +65,7 @@ public final class PostgresManagedAssetRegistry implements ManagedAssetRegistry 
             throws IOException {
         this.connections = Objects.requireNonNull(connections, "connections");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.reads = new PostgresManagedAssetReadStore(this.connections);
         this.schemaVersion = schemaVersion;
         requireSchemaVersion(schemaVersion);
     }
@@ -226,6 +232,21 @@ public final class PostgresManagedAssetRegistry implements ManagedAssetRegistry 
         } catch (SQLException exception) {
             throw PostgresErrors.sanitized("Could not read PostgreSQL managed asset", exception);
         }
+    }
+
+    @Override
+    public ManagedAssetPage list(int limit, UUID afterId, LifecycleFilter lifecycleFilter)
+            throws IOException {
+        return reads.list(limit, afterId, lifecycleFilter);
+    }
+
+    @Override
+    public Optional<RevisionPage> history(
+            UUID managedAssetId,
+            int limit,
+            Integer beforeRevision
+    ) throws IOException {
+        return reads.history(managedAssetId, limit, beforeRevision);
     }
 
     public int schemaVersion() {

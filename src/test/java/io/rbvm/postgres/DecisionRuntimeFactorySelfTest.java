@@ -25,6 +25,7 @@ public final class DecisionRuntimeFactorySelfTest {
         CanonicalProjectionFactory.RuntimeComponents runtime =
                 CanonicalProjectionFactory.runtimeFromEnvironment(Map.of());
         assert runtime.decisionRuntime().isEmpty();
+        assert runtime.managedAssetRegistry().isEmpty();
     }
 
     private static void v15CompatibilityConstructorDefaultsDecisionRuntimeToEmpty() {
@@ -48,6 +49,7 @@ public final class DecisionRuntimeFactorySelfTest {
                         Optional.empty()
                 );
         assert runtime.decisionRuntime().isEmpty();
+        assert runtime.managedAssetRegistry().isEmpty();
     }
 
     private static void legacyDecisionRuntimeConstructorDefaultsResolverToEmpty() {
