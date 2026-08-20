@@ -1,7 +1,7 @@
-openapi: 3.1.1
+openapi: 3.1.2
 info:
   title: RBVM CSV Import API
-  version: 0.18.0
+  version: 0.19.0
   description: >-
     Synchronous upload, validation, preview, and canonical-domain materialization
     API for WAZUH_CSV_V1 positive observations and opt-in WAZUH_CSV_V2 explicit
@@ -927,6 +927,174 @@ paths:
           $ref: '#/components/responses/Problem'
         '429':
           $ref: '#/components/responses/RateLimited'
+  /managed-assets:
+    get:
+      operationId: listManagedAssets
+      summary: List current customer-managed assets
+      description: >-
+        Returns the latest immutable revision for each tenant-scoped managed asset.
+        No lifecycle filter is implicit; lifecycle defaults to ALL. This endpoint does
+        not correlate managed assets to scanner identities or derive risk or priority.
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+        - name: afterId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: lifecycle
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE, RETIRED, ALL]
+            default: ALL
+      responses:
+        '200':
+          description: Current managed-asset page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManagedAssetPage'
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Problem' }
+    post:
+      operationId: createManagedAsset
+      summary: Create a customer-managed asset
+      description: >-
+        Creates an ACTIVE revision 1. The server generates the RBVM managed-asset UUID
+        and derives audit identity from the authenticated principal. customerAssetKey,
+        when supplied, is immutable customer/CMDB identity.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateManagedAssetRequest'
+      responses:
+        '201':
+          description: Managed asset created
+          headers:
+            Location:
+              schema: { type: string }
+            ETag:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManagedAsset'
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/InsufficientRole' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '413': { $ref: '#/components/responses/Problem' }
+        '415': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Problem' }
+
+  /managed-assets/{managedAssetId}:
+    parameters:
+      - $ref: '#/components/parameters/ManagedAssetId'
+    get:
+      operationId: getManagedAsset
+      summary: Read the current managed-asset representation
+      responses:
+        '200':
+          description: Current managed asset
+          headers:
+            ETag:
+              description: Strong validator for the current immutable revision
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManagedAsset'
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Problem' }
+
+  /managed-assets/{managedAssetId}/revisions:
+    parameters:
+      - $ref: '#/components/parameters/ManagedAssetId'
+    get:
+      operationId: listManagedAssetRevisions
+      summary: Read immutable managed-asset revision history
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+        - name: beforeRevision
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Managed-asset revision page, newest first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManagedAssetRevisionPage'
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Problem' }
+    post:
+      operationId: appendManagedAssetRevision
+      summary: Append one customer-managed asset revision
+      description: >-
+        Requires the strong ETag from a prior current-state response in If-Match.
+        The body is a complete customer state, not a partial patch. Retirement and
+        reactivation are represented by RETIRED or ACTIVE lifecycle revisions.
+      parameters:
+        - name: If-Match
+          in: header
+          required: true
+          description: Strong managed-asset ETag returned by a prior current-state response
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppendManagedAssetRevisionRequest'
+      responses:
+        '200':
+          description: Revision appended or exact request replayed
+          headers:
+            ETag:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManagedAsset'
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/InsufficientRole' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '412': { $ref: '#/components/responses/Problem' }
+        '413': { $ref: '#/components/responses/Problem' }
+        '415': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+        '428': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Problem' }
 components:
   securitySchemes:
     bearerAuth:
@@ -937,6 +1105,13 @@ components:
         API key supplied as an opaque bearer token; only its SHA-256 digest is stored.
         Registry entries may include an optional ISO-8601 expiration timestamp.
   parameters:
+    ManagedAssetId:
+      name: managedAssetId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     ImportId:
       name: importId
       in: path
@@ -1003,6 +1178,7 @@ components:
         - assetContext
         - networkReachability
         - businessImpact
+        - managedAssets
         - storedImports
         - recoveryWarningCount
         - maximumUploadBytes
@@ -1038,6 +1214,8 @@ components:
           $ref: '#/components/schemas/NetworkReachabilityCapability'
         businessImpact:
           $ref: '#/components/schemas/BusinessImpactCapability'
+        managedAssets:
+          $ref: '#/components/schemas/ManagedAssetCapability'
         storedImports:
           type: integer
           minimum: 0
@@ -1116,6 +1294,188 @@ components:
       properties:
         importEnabled: {type: boolean}
         evidenceReadEnabled: {type: boolean}
+    ManagedAssetCapability:
+      type: object
+      additionalProperties: false
+      required: [readEnabled, writeEnabled, historyReadEnabled]
+      properties:
+        readEnabled: { type: boolean }
+        writeEnabled: { type: boolean }
+        historyReadEnabled: { type: boolean }
+
+    ManagedAssetEnvironment:
+      type: string
+      enum: [PRODUCTION, PRE_PRODUCTION, DEVELOPMENT, TEST, SANDBOX, DISASTER_RECOVERY, UNKNOWN]
+    ManagedAssetBusinessCriticality:
+      type: string
+      enum: [MISSION_CRITICAL, HIGH, MODERATE, LOW, UNKNOWN]
+    ManagedAssetClassificationMethod:
+      type: string
+      enum: [CUSTOMER_DIRECT, GUIDED]
+    ManagedAssetLifecycleStatus:
+      type: string
+      enum: [ACTIVE, RETIRED]
+
+    CreateManagedAssetRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - displayName
+        - environment
+        - businessService
+        - businessOwner
+        - businessCriticality
+        - classificationMethod
+      allOf:
+        - if:
+            properties:
+              classificationMethod: { const: GUIDED }
+            required: [classificationMethod]
+          then:
+            required: [guideContractId, guideRevision]
+            properties:
+              guideContractId: { type: string, minLength: 1 }
+              guideRevision: { type: integer, minimum: 1 }
+        - if:
+            properties:
+              classificationMethod: { const: CUSTOMER_DIRECT }
+            required: [classificationMethod]
+          then:
+            properties:
+              guideContractId: { type: 'null' }
+              guideRevision: { type: 'null' }
+      properties:
+        customerAssetKey:
+          type: [string, 'null']
+        displayName: { type: string, minLength: 1 }
+        environment: { $ref: '#/components/schemas/ManagedAssetEnvironment' }
+        businessService: { type: string, minLength: 1 }
+        businessOwner: { type: string, minLength: 1 }
+        businessCriticality: { $ref: '#/components/schemas/ManagedAssetBusinessCriticality' }
+        classificationMethod: { $ref: '#/components/schemas/ManagedAssetClassificationMethod' }
+        guideContractId:
+          type: [string, 'null']
+        guideRevision:
+          type: [integer, 'null']
+          minimum: 1
+        changeNote:
+          type: [string, 'null']
+
+    AppendManagedAssetRevisionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - lifecycleStatus
+        - displayName
+        - environment
+        - businessService
+        - businessOwner
+        - businessCriticality
+        - classificationMethod
+      allOf:
+        - if:
+            properties:
+              classificationMethod: { const: GUIDED }
+            required: [classificationMethod]
+          then:
+            required: [guideContractId, guideRevision]
+            properties:
+              guideContractId: { type: string, minLength: 1 }
+              guideRevision: { type: integer, minimum: 1 }
+        - if:
+            properties:
+              classificationMethod: { const: CUSTOMER_DIRECT }
+            required: [classificationMethod]
+          then:
+            properties:
+              guideContractId: { type: 'null' }
+              guideRevision: { type: 'null' }
+      properties:
+        lifecycleStatus: { $ref: '#/components/schemas/ManagedAssetLifecycleStatus' }
+        displayName: { type: string, minLength: 1 }
+        environment: { $ref: '#/components/schemas/ManagedAssetEnvironment' }
+        businessService: { type: string, minLength: 1 }
+        businessOwner: { type: string, minLength: 1 }
+        businessCriticality: { $ref: '#/components/schemas/ManagedAssetBusinessCriticality' }
+        classificationMethod: { $ref: '#/components/schemas/ManagedAssetClassificationMethod' }
+        guideContractId:
+          type: [string, 'null']
+        guideRevision:
+          type: [integer, 'null']
+          minimum: 1
+        changeNote:
+          type: [string, 'null']
+
+    ManagedAssetRevision:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - managedAssetId
+        - revision
+        - lifecycleStatus
+        - displayName
+        - environment
+        - businessService
+        - businessOwner
+        - businessCriticality
+        - classificationMethod
+        - guideContractId
+        - guideRevision
+        - contextSource
+        - evidenceSha256
+        - changedBy
+        - changeNote
+        - recordedAt
+      properties:
+        id: { type: string, format: uuid }
+        managedAssetId: { type: string, format: uuid }
+        revision: { type: integer, minimum: 1 }
+        lifecycleStatus: { $ref: '#/components/schemas/ManagedAssetLifecycleStatus' }
+        displayName: { type: string }
+        environment: { $ref: '#/components/schemas/ManagedAssetEnvironment' }
+        businessService: { type: string }
+        businessOwner: { type: string }
+        businessCriticality: { $ref: '#/components/schemas/ManagedAssetBusinessCriticality' }
+        classificationMethod: { $ref: '#/components/schemas/ManagedAssetClassificationMethod' }
+        guideContractId: { type: [string, 'null'] }
+        guideRevision: { type: [integer, 'null'], minimum: 1 }
+        contextSource: { const: CUSTOMER_ASSET_REGISTRY }
+        evidenceSha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+        changedBy: { type: string }
+        changeNote: { type: string }
+        recordedAt: { type: string, format: date-time }
+
+    ManagedAsset:
+      type: object
+      additionalProperties: false
+      required: [id, customerAssetKey, createdAt, currentRevision]
+      properties:
+        id: { type: string, format: uuid }
+        customerAssetKey: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+        currentRevision: { $ref: '#/components/schemas/ManagedAssetRevision' }
+
+    ManagedAssetPage:
+      type: object
+      additionalProperties: false
+      required: [assets, nextAfterId]
+      properties:
+        assets:
+          type: array
+          items: { $ref: '#/components/schemas/ManagedAsset' }
+        nextAfterId: { type: [string, 'null'], format: uuid }
+
+    ManagedAssetRevisionPage:
+      type: object
+      additionalProperties: false
+      required: [managedAssetId, revisions, nextBeforeRevision]
+      properties:
+        managedAssetId: { type: string, format: uuid }
+        revisions:
+          type: array
+          items: { $ref: '#/components/schemas/ManagedAssetRevision' }
+        nextBeforeRevision: { type: [integer, 'null'], minimum: 1 }
     CanonicalProjectionHealth:
       type: object
       required: [backend, status]

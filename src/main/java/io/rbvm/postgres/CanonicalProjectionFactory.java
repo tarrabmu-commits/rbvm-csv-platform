@@ -1,5 +1,6 @@
 package io.rbvm.postgres;
 
+import io.rbvm.asset.ManagedAssetRegistry;
 import io.rbvm.csv.CanonicalProjection;
 import io.rbvm.csv.NoopCanonicalProjection;
 import io.rbvm.decision.DecisionInputEvidenceResolver;
@@ -70,6 +71,7 @@ public final class CanonicalProjectionFactory {
         Optional<BusinessImpactImporter> businessImpactImporter = Optional.empty();
         Optional<BusinessImpactEvidenceReader> businessImpactEvidenceReader = Optional.empty();
         Optional<DecisionRuntime> decisionRuntime = Optional.empty();
+        Optional<ManagedAssetRegistry> managedAssetRegistry = Optional.empty();
         if (installedVersion >= 9) {
             PostgresApplicabilityImporter importer = new PostgresApplicabilityImporter(
                     connections,
@@ -141,6 +143,11 @@ public final class CanonicalProjectionFactory {
                     Optional.of(evidenceResolver)
             ));
         }
+        if (installedVersion >= 18) {
+            managedAssetRegistry = Optional.of(
+                    new PostgresManagedAssetRegistry(connections, false)
+            );
+        }
         return new RuntimeComponents(
                 projection,
                 readCatalog,
@@ -158,7 +165,8 @@ public final class CanonicalProjectionFactory {
                 networkReachabilityEvidenceReader,
                 businessImpactImporter,
                 businessImpactEvidenceReader,
-                decisionRuntime
+                decisionRuntime,
+                managedAssetRegistry
         );
     }
 
@@ -179,7 +187,8 @@ public final class CanonicalProjectionFactory {
             Optional<NetworkReachabilityEvidenceReader> networkReachabilityEvidenceReader,
             Optional<BusinessImpactImporter> businessImpactImporter,
             Optional<BusinessImpactEvidenceReader> businessImpactEvidenceReader,
-            Optional<DecisionRuntime> decisionRuntime
+            Optional<DecisionRuntime> decisionRuntime,
+            Optional<ManagedAssetRegistry> managedAssetRegistry
     ) {
         public RuntimeComponents {
             Objects.requireNonNull(canonicalProjection, "canonicalProjection");
@@ -199,6 +208,49 @@ public final class CanonicalProjectionFactory {
             businessImpactImporter = Objects.requireNonNull(businessImpactImporter, "businessImpactImporter");
             businessImpactEvidenceReader = Objects.requireNonNull(businessImpactEvidenceReader, "businessImpactEvidenceReader");
             decisionRuntime = Objects.requireNonNull(decisionRuntime, "decisionRuntime");
+            managedAssetRegistry = Objects.requireNonNull(managedAssetRegistry, "managedAssetRegistry");
+        }
+
+        /** Backward-compatible constructor through the complete V17 Decision runtime layer. */
+        public RuntimeComponents(
+                CanonicalProjection canonicalProjection,
+                DomainCatalog readCatalog,
+                Optional<ApplicabilityImporter> applicabilityImporter,
+                Optional<ApplicabilityFindingExporter> applicabilityFindingExporter,
+                Optional<CvssV31Importer> cvssV31Importer,
+                Optional<CvssV31EvidenceReader> cvssV31EvidenceReader,
+                Optional<CisaKevImporter> cisaKevImporter,
+                Optional<CisaKevEvidenceReader> cisaKevEvidenceReader,
+                Optional<EpssImporter> epssImporter,
+                Optional<EpssEvidenceReader> epssEvidenceReader,
+                Optional<AssetContextImporter> assetContextImporter,
+                Optional<AssetContextEvidenceReader> assetContextEvidenceReader,
+                Optional<NetworkReachabilityImporter> networkReachabilityImporter,
+                Optional<NetworkReachabilityEvidenceReader> networkReachabilityEvidenceReader,
+                Optional<BusinessImpactImporter> businessImpactImporter,
+                Optional<BusinessImpactEvidenceReader> businessImpactEvidenceReader,
+                Optional<DecisionRuntime> decisionRuntime
+        ) {
+            this(
+                    canonicalProjection,
+                    readCatalog,
+                    applicabilityImporter,
+                    applicabilityFindingExporter,
+                    cvssV31Importer,
+                    cvssV31EvidenceReader,
+                    cisaKevImporter,
+                    cisaKevEvidenceReader,
+                    epssImporter,
+                    epssEvidenceReader,
+                    assetContextImporter,
+                    assetContextEvidenceReader,
+                    networkReachabilityImporter,
+                    networkReachabilityEvidenceReader,
+                    businessImpactImporter,
+                    businessImpactEvidenceReader,
+                    decisionRuntime,
+                    Optional.empty()
+            );
         }
 
         /** Backward-compatible constructor through the Business Impact V15 runtime layer. */

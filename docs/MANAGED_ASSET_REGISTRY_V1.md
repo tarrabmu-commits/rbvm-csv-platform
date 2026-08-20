@@ -55,11 +55,13 @@ Editing an asset requires `expectedRevision`. The PostgreSQL store runs the muta
 - current revision equals `expectedRevision + 1` and content matches the requested state → retry replay;
 - otherwise → `REVISION_CONFLICT` and no write.
 
-This provides optimistic concurrency for the later UI/API so two users cannot silently overwrite each other's changes.
+Increment 19 exposes these same semantics over HTTP using a strong `ETag` on the current representation and a required `If-Match` precondition for revision append. The HTTP layer does not weaken or replace the registry's optimistic-concurrency invariant.
 
 ## Retirement, not deletion
 
 Customer assets are not hard-deleted. Retirement is represented by a new revision whose lifecycle is `RETIRED`. Reactivation can later append another `ACTIVE` revision. Historical findings and classifications therefore retain a stable audit subject.
+
+The Managed Asset API deliberately has no `DELETE` endpoint; lifecycle transitions remain append-only revisions.
 
 ## `UNKNOWN` remains explicit
 
@@ -91,15 +93,23 @@ This distinguishes customer judgment from standards-guided customer judgment wit
 
 These are operational convenience views only. The immutable source of history remains `rbvm.managed_asset_revision`.
 
-## Deliberate V18 boundary
+## Increment 19 HTTP surface
 
-V18 does **not** yet:
+`MANAGED_ASSET_API_V1` exposes authenticated create, current-state read, deterministic list, immutable revision-history read, and revision append over `/api/v1/managed-assets`.
 
-- expose HTTP create/edit/list endpoints;
-- modify the Asset Context browser form;
+The HTTP boundary preserves server-owned audit metadata: the authenticated principal supplies `changedBy`; the server controls timestamps, revision identity/number, fixed context source, and evidence SHA-256. Client request objects reject unknown fields rather than accepting audit metadata through generic object binding.
+
+See `docs/MANAGED_ASSET_API_V1.md` for the request contract, pagination, ETag/If-Match behavior, status mapping, and authorization requirements.
+
+## Deliberate boundary after Increment 19
+
+The managed-asset registry and its HTTP API still do **not**:
+
+- add a browser asset-management UI;
 - link `managed_asset` to scanner `rbvm.asset` identities;
+- infer that link from hostname, IP, OS, product, or vulnerability intelligence;
 - alter V13 imported Asset Context evidence;
 - change Decision Input selection or resolution;
-- derive Risk, Priority, SLA, or treatment.
+- derive Risk, Priority, SLA, treatment, or Formula output.
 
-The next increments should add an explicit managed-asset API and then explicit scanner-identity linking. Only after that should the customer-managed context be wired into Decision Input.
+The next semantic step is an explicit customer-controlled managed-asset ↔ scanner-asset identity link. Only after that association exists should customer-managed context be wired into Decision Input.
