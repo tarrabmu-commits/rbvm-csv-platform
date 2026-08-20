@@ -46,18 +46,42 @@ def verify_page(path: Path, *, requires_session_token: bool) -> int:
     return len(identifiers)
 
 
+def verify_asset_classification_guide(path: Path) -> None:
+    text = path.read_text(encoding="utf-8")
+    required = (
+        "ASSET_CLASSIFICATION_GUIDE_V1",
+        "/asset-context?guide=1",
+        "RBVM_POLICY",
+        "STANDARD_DERIVED",
+        "MISSION_CRITICAL",
+        "FIPS 199",
+        "NIST IR 8286D Update 1 (2025)",
+        "UNKNOWN",
+        "لا تستنتج criticality من CVSS أو KEV أو EPSS",
+        "الدليل لا يعطي نقاط ولا يجمع الإجابات ولا يصنع تصنيفاً آلياً",
+        "activateGuide",
+    )
+    missing = [token for token in required if token not in text]
+    if missing:
+        raise AssertionError(
+            f"{path.name} is missing Asset Classification Guide V1 guardrails: {missing}"
+        )
+
+
 def main():
     root = Path(__file__).resolve().parent.parent
+    asset_context = root / "src/main/resources/web/asset-context.html"
     pages = [
         (root / "src/main/resources/web/index.html", True),
         (root / "src/main/resources/web/cvss-v31.html", True),
         (root / "src/main/resources/web/cisa-kev.html", True),
         (root / "src/main/resources/web/epss.html", True),
-        (root / "src/main/resources/web/asset-context.html", True),
+        (asset_context, True),
         (root / "src/main/resources/web/network-reachability.html", True),
         (root / "src/main/resources/web/business-impact.html", True),
     ]
     total_ids = sum(verify_page(path, requires_session_token=token) for path, token in pages)
+    verify_asset_classification_guide(asset_context)
     print(f"Web structural checks: PASS ({len(pages)} pages, {total_ids} unique page ids)")
 
 
