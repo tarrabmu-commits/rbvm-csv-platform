@@ -1,0 +1,97 @@
+name: apply-scanner-managed-asset-link-v21
+
+on:
+  pull_request:
+    types: [synchronize]
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/scanner-managed-asset-link-v21'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: agent/scanner-managed-asset-link-v21
+      - id: bootstrap
+        name: Check publication payload
+        shell: bash
+        run: |
+          if [[ -f .rbvm-bootstrap/v21/part-00 ]]; then
+            echo 'needed=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'needed=false' >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.bootstrap.outputs.needed == 'true'
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - if: steps.bootstrap.outputs.needed == 'true'
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - if: steps.bootstrap.outputs.needed == 'true'
+        name: Install verifier dependency
+        run: python -m pip install --require-hashes -r scripts/verification-requirements.txt
+      - if: steps.bootstrap.outputs.needed == 'true'
+        name: Apply reviewed Increment 21 changeset
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .rbvm-bootstrap/v21/part-* | base64 -d > /tmp/rbvm-v21-publish.zip
+          rm -rf /tmp/rbvm-v21-publish
+          mkdir -p /tmp/rbvm-v21-publish
+          unzip -q /tmp/rbvm-v21-publish.zip -d /tmp/rbvm-v21-publish
+          python3 /tmp/rbvm-v21-publish/apply_v21.py
+          chmod +x scripts/verify-scanner-managed-asset-link.py
+          git diff --check
+      - if: steps.bootstrap.outputs.needed == 'true'
+        name: Verify release contract and repository
+        run: |
+          ./scripts/verify-release-version.sh v0.21.0
+          ./scripts/verify.sh
+          ./scripts/verify-reproducible-build.sh
+      - if: steps.bootstrap.outputs.needed == 'true'
+        name: Commit verified Increment 21 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm -r -- .rbvm-bootstrap
+          git rm -- .github/workflows/apply-scanner-managed-asset-link-v21.yml
+          git config user.name 'rbvm-ci-bootstrap'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -- \
+            .github/workflows/release.yml \
+            .github/workflows/verify.yml \
+            README.md \
+            api/openapi.yaml \
+            build.gradle.kts \
+            db/migration/V19__scanner_managed_asset_link.sql \
+            db/security/runtime-role.sql \
+            docs/INCREMENT_21_VALIDATION.md \
+            docs/MANAGED_ASSET_REGISTRY_V1.md \
+            docs/SCANNER_MANAGED_ASSET_LINK_V1.md \
+            scripts/build-distribution.sh \
+            scripts/verify-api.py \
+            scripts/verify-reproducible-build.sh \
+            scripts/verify-scanner-managed-asset-link.py \
+            scripts/verify.sh \
+            src/main/java/io/rbvm/asset/ScannerManagedAssetLink.java \
+            src/main/java/io/rbvm/asset/ScannerManagedAssetLinkRegistry.java \
+            src/main/java/io/rbvm/postgres/CanonicalProjectionFactory.java \
+            src/main/java/io/rbvm/postgres/PostgresMigrator.java \
+            src/main/java/io/rbvm/postgres/PostgresScannerManagedAssetLinkRegistry.java \
+            src/test/java/io/rbvm/asset/ScannerManagedAssetLinkSelfTest.java \
+            src/test/java/io/rbvm/csv/PlatformSelfTest.java \
+            src/test/java/io/rbvm/postgres/DecisionRuntimeFactorySelfTest.java \
+            src/test/java/io/rbvm/postgres/PostgresMigratorSelfTest.java \
+            src/test/java/io/rbvm/postgres/PostgresScannerManagedAssetLinkRegistrySelfTest.java
+          git diff --cached --check
+          git status --short
+          git commit -m 'Add V21 explicit scanner managed asset link'
+          git push origin HEAD:agent/scanner-managed-asset-link-v21
