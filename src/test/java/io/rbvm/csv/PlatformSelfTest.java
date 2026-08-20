@@ -3,6 +3,7 @@ package io.rbvm.csv;
 import io.rbvm.decision.DecisionInputEvidenceSelectionSelfTest;
 import io.rbvm.decision.RbvmDecisionInputSnapshotSelfTest;
 import io.rbvm.decision.RbvmDecisionMethodologyPolicySelfTest;
+import io.rbvm.decision.RbvmResolvedDecisionInputSelfTest;
 import io.rbvm.postgres.DecisionInputSnapshotMaterializerSelfTest;
 import io.rbvm.postgres.DecisionRuntimeFactorySelfTest;
 import io.rbvm.postgres.PostgresDecisionInputSnapshotBuilderSelfTest;
@@ -32,6 +33,7 @@ public final class PlatformSelfTest {
         RbvmDecisionMethodologyPolicySelfTest.main(args);
         RbvmDecisionInputSnapshotSelfTest.main(args);
         DecisionInputEvidenceSelectionSelfTest.main(args);
+        RbvmResolvedDecisionInputSelfTest.main(args);
         DomainCatalogSelfTest.main(args);
         ApiSecuritySelfTest.main(args);
         CsvHttpSelfTest.main(args);
