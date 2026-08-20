@@ -60,6 +60,10 @@ public final class CsvHttpSelfTest {
                 assert page.statusCode() == 200;
                 assert page.body().contains("RBVM CSV");
 
+                HttpResponse<String> assetsPage = get(client, base.resolve("/assets"));
+                assert assetsPage.statusCode() == 200;
+                assert assetsPage.body().contains("Managed Assets");
+
                 HttpResponse<String> health = get(client, base.resolve("/api/v1/health"));
                 assert health.statusCode() == 200;
                 assert health.body().contains("\"catalogBackend\": \"LOCAL_MEMORY_REBUILD\"");

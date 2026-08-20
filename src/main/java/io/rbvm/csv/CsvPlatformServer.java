@@ -92,6 +92,7 @@ public final class CsvPlatformServer implements AutoCloseable {
     private final byte[] assetContextUi;
     private final byte[] networkReachabilityUi;
     private final byte[] businessImpactUi;
+    private final byte[] managedAssetsUi;
     private final ApiKeyAuthenticator authenticator;
     private final RequestRateLimiter rateLimiter;
     private final long maximumUploadBytes;
@@ -168,6 +169,7 @@ public final class CsvPlatformServer implements AutoCloseable {
         this.assetContextUi = loadResource("/web/asset-context.html");
         this.networkReachabilityUi = loadResource("/web/network-reachability.html");
         this.businessImpactUi = loadResource("/web/business-impact.html");
+        this.managedAssetsUi = loadResource("/web/assets.html");
         this.server = HttpServer.create(new InetSocketAddress(host, port), 32);
         int workers = Math.max(4, Math.min(16, Runtime.getRuntime().availableProcessors()));
         this.executor = Executors.newFixedThreadPool(workers);
@@ -593,6 +595,7 @@ public final class CsvPlatformServer implements AutoCloseable {
         this.assetContextUi = loadResource("/web/asset-context.html");
         this.networkReachabilityUi = loadResource("/web/network-reachability.html");
         this.businessImpactUi = loadResource("/web/business-impact.html");
+        this.managedAssetsUi = loadResource("/web/assets.html");
         this.server = HttpServer.create(new InetSocketAddress(host, port), 32);
         int workers = Math.max(4, Math.min(16, Runtime.getRuntime().availableProcessors()));
         this.executor = Executors.newFixedThreadPool(workers);
@@ -661,6 +664,11 @@ public final class CsvPlatformServer implements AutoCloseable {
             if ("/business-impact".equals(path) || "/business-impact/".equals(path)) {
                 requireMethod(exchange, method, "GET");
                 sendBytes(exchange, 200, "text/html; charset=utf-8", businessImpactUi);
+                return;
+            }
+            if ("/assets".equals(path) || "/assets/".equals(path)) {
+                requireMethod(exchange, method, "GET");
+                sendBytes(exchange, 200, "text/html; charset=utf-8", managedAssetsUi);
                 return;
             }
             if ("/api/v1/health".equals(path)) {

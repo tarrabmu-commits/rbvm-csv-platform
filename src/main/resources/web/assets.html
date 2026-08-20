@@ -1,0 +1,763 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RBVM · Managed Assets</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg:#0d1522;
+      --panel:#162336;
+      --panel-2:#20334c;
+      --text:#f7fbff;
+      --muted:#b8c5d6;
+      --accent:#91d7c6;
+      --accent-2:#d7f3eb;
+      --warn:#ffd166;
+      --danger:#ff829a;
+      --border:rgba(255,255,255,.14);
+    }
+    * { box-sizing:border-box; }
+    body {
+      margin:0;
+      min-height:100vh;
+      font-family:system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif;
+      background:radial-gradient(circle at 85% 10%,rgba(145,215,198,.16),transparent 32rem),linear-gradient(145deg,#070c14,var(--bg));
+      color:var(--text);
+    }
+    main { width:min(1320px,calc(100% - 32px)); margin:0 auto; padding:46px 0 72px; }
+    header { display:flex; justify-content:space-between; gap:24px; align-items:flex-start; }
+    h1 { margin:0 0 8px; font-size:clamp(2rem,5vw,4rem); letter-spacing:-.04em; }
+    h2 { margin:0 0 16px; font-size:1.25rem; }
+    h3 { margin:0; font-size:1.05rem; }
+    p { margin:0; color:var(--muted); line-height:1.8; }
+    a { color:var(--accent); }
+    code { direction:ltr; unicode-bidi:embed; overflow-wrap:anywhere; }
+    .badge { border:1px solid var(--border); border-radius:999px; padding:9px 13px; color:var(--accent); white-space:nowrap; }
+    .panel { margin-top:18px; padding:24px; border:1px solid var(--border); border-radius:22px; background:linear-gradient(145deg,rgba(25,39,58,.92),rgba(14,24,38,.97)); box-shadow:0 18px 70px rgba(0,0,0,.25); }
+    .auth-grid { display:grid; grid-template-columns:1.5fr auto; gap:14px; align-items:end; }
+    .toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:end; justify-content:space-between; }
+    .filters { display:grid; grid-template-columns:1fr .6fr .55fr auto; gap:12px; align-items:end; flex:1; }
+    label { display:grid; gap:8px; color:var(--muted); font-size:.9rem; }
+    input,select,textarea { width:100%; min-height:49px; border:1px solid var(--border); background:rgba(4,7,17,.55); color:var(--text); border-radius:12px; padding:12px 13px; font:inherit; }
+    textarea { min-height:90px; resize:vertical; }
+    button,.button-link { min-height:49px; border:0; border-radius:12px; padding:13px 18px; background:var(--accent); color:#071713; font-weight:800; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; gap:8px; }
+    button.secondary,.button-link.secondary { background:var(--accent-2); }
+    button.ghost { color:var(--text); background:transparent; border:1px solid var(--border); }
+    button.danger { color:#2b0610; background:var(--danger); }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible { outline:3px solid var(--warn); outline-offset:3px; }
+    .status { min-height:28px; margin-top:14px; color:var(--muted); }
+    .status.error { color:var(--danger); }
+    .status.success { color:var(--accent); }
+    .cards { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:18px; }
+    .card { padding:17px; background:rgba(4,7,17,.38); border:1px solid var(--border); border-radius:15px; }
+    .card span { display:block; color:var(--muted); font-size:.82rem; margin-bottom:8px; }
+    .card strong { font-size:1.45rem; overflow-wrap:anywhere; }
+    .note { border-inline-start:3px solid var(--accent); padding-inline-start:14px; margin-top:16px; }
+    .warning { border-inline-start-color:var(--warn); }
+    .scroll { overflow-x:auto; margin-top:18px; }
+    table { width:100%; border-collapse:collapse; font-size:.84rem; min-width:1180px; }
+    th,td { padding:11px 10px; border-bottom:1px solid var(--border); text-align:right; vertical-align:top; }
+    th { color:var(--muted); font-weight:600; }
+    tbody tr:focus-within { background:rgba(145,215,198,.07); }
+    .ltr { direction:ltr; text-align:left; }
+    .pill { display:inline-block; padding:4px 9px; border-radius:999px; border:1px solid var(--border); font-size:.76rem; white-space:nowrap; }
+    .pill.active { color:var(--accent); }
+    .pill.retired { color:var(--warn); }
+    .row-actions { display:flex; gap:8px; flex-wrap:wrap; }
+    .row-actions button { min-height:36px; padding:7px 11px; font-size:.8rem; }
+    .pager { display:flex; gap:10px; align-items:center; justify-content:flex-end; margin-top:16px; flex-wrap:wrap; }
+    .hidden { display:none !important; }
+
+    dialog { width:min(820px,calc(100% - 28px)); max-height:calc(100vh - 32px); overflow:auto; border:1px solid var(--border); border-radius:20px; padding:0; background:#111d2c; color:var(--text); box-shadow:0 28px 100px rgba(0,0,0,.55); }
+    dialog::backdrop { background:rgba(0,0,0,.68); backdrop-filter:blur(3px); }
+    .dialog-shell { padding:24px; }
+    .dialog-head { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; margin-bottom:18px; }
+    .dialog-head button { min-height:40px; min-width:40px; padding:8px 12px; }
+    .form-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:13px; }
+    .wide { grid-column:1 / -1; }
+    .dialog-actions { display:flex; justify-content:flex-start; gap:10px; flex-wrap:wrap; margin-top:18px; }
+    .detail-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-top:14px; }
+    .detail { padding:12px; border:1px solid var(--border); border-radius:12px; background:rgba(4,7,17,.36); }
+    .detail span { display:block; color:var(--muted); font-size:.78rem; margin-bottom:5px; }
+    .detail strong { font-size:.9rem; overflow-wrap:anywhere; }
+    .history-list { display:grid; gap:10px; margin-top:14px; }
+    .history-item { border:1px solid var(--border); border-radius:14px; padding:14px; background:rgba(4,7,17,.3); }
+    .history-item header { display:flex; gap:10px; justify-content:space-between; }
+    .history-meta { margin-top:8px; color:var(--muted); font-size:.82rem; line-height:1.7; }
+
+    @media (max-width:950px) {
+      header{display:block}.badge{display:inline-block;margin-top:16px}.auth-grid,.filters,.form-grid,.detail-grid{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)}.wide{grid-column:auto}.toolbar{display:block}.toolbar>.filters{margin-bottom:12px}
+    }
+    @media (max-width:520px) { .cards{grid-template-columns:1fr}.dialog-shell{padding:18px}.dialog-head{align-items:center} }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Managed Assets</h1>
+      <p>Customer-owned asset inventory وسجل تعديلات append-only. هذه الصفحة لا تربط الأصول تلقائياً مع Wazuh ولا تحسب Risk أو Priority أو SLA.</p>
+      <p><a href="/">المنصة الرئيسية</a> · <a href="/asset-context?guide=1">Asset Classification Guide</a> · <a href="/asset-context">Asset Context Evidence</a></p>
+    </div>
+    <div class="badge">MANAGED_ASSET_API_V1 · PostgreSQL V18+</div>
+  </header>
+
+  <section class="panel" aria-labelledby="authTitle">
+    <h2 id="authTitle">الدخول</h2>
+    <div class="auth-grid">
+      <label>API access token
+        <input id="apiToken" type="password" autocomplete="off" spellcheck="false" placeholder="الصق مفتاح الوصول هنا">
+      </label>
+      <button id="saveToken" class="secondary" type="button">استخدام المفتاح</button>
+    </div>
+    <div id="healthMessage" class="status" role="status" aria-live="polite">جاري التحقق من Managed Asset runtime capability…</div>
+    <p class="note">المفتاح يبقى في <code>sessionStorage</code> لهذه النافذة فقط. لا يُحفظ في <code>localStorage</code>.</p>
+  </section>
+
+  <section class="panel" aria-labelledby="assetsTitle">
+    <div class="toolbar">
+      <div>
+        <h2 id="assetsTitle">Current Managed Assets</h2>
+        <p>القائمة تعرض latest immutable revision لكل managed asset داخل الـtenant الحالي.</p>
+      </div>
+      <button id="openCreate" type="button">إنشاء Managed Asset</button>
+    </div>
+
+    <div class="filters" style="margin-top:18px">
+      <label>Lifecycle
+        <select id="lifecycleFilter">
+          <option value="ALL">ALL</option>
+          <option value="ACTIVE">ACTIVE</option>
+          <option value="RETIRED">RETIRED</option>
+        </select>
+      </label>
+      <label>Limit
+        <input id="limit" type="number" min="1" max="500" value="100">
+      </label>
+      <label>After ID
+        <input id="afterId" class="ltr" placeholder="UUID cursor" spellcheck="false">
+      </label>
+      <button id="refresh" class="secondary" type="button">تحديث</button>
+    </div>
+
+    <div id="listMessage" class="status" role="status" aria-live="polite"></div>
+    <div id="summaryCards" class="cards"></div>
+
+    <div class="scroll">
+      <table>
+        <caption class="hidden">Managed asset current-state list</caption>
+        <thead><tr>
+          <th>Display Name</th><th>Customer Key</th><th>Lifecycle</th><th>Environment</th><th>Business Service</th><th>Business Owner</th><th>Criticality</th><th>Revision</th><th>Recorded At</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="assetRows"></tbody>
+      </table>
+    </div>
+    <div class="pager">
+      <button id="clearCursor" class="ghost" type="button">أول صفحة</button>
+      <button id="nextPage" class="ghost" type="button">الصفحة التالية</button>
+    </div>
+    <p class="note warning">Pagination هنا cursor-based حسب managed-asset UUID. أرقام الـcards تخص الصفحة الحالية فقط وليست totals لكل الـtenant.</p>
+  </section>
+</main>
+
+<dialog id="createDialog" aria-labelledby="createTitle">
+  <div class="dialog-shell">
+    <div class="dialog-head">
+      <div><h2 id="createTitle">إنشاء Managed Asset</h2><p>الإنشاء يولّد UUID من السيرفر ويبدأ دائماً بـACTIVE revision 1.</p></div>
+      <button class="ghost" type="button" data-close-dialog="createDialog" aria-label="إغلاق">×</button>
+    </div>
+    <form id="createForm">
+      <div class="form-grid">
+        <label>Customer Asset Key (اختياري)
+          <input name="customerAssetKey" maxlength="256" autocomplete="off">
+        </label>
+        <label>Display Name
+          <input name="displayName" required maxlength="256">
+        </label>
+        <label>Environment
+          <select name="environment" required>
+            <option>PRODUCTION</option><option>PRE_PRODUCTION</option><option>DEVELOPMENT</option><option>TEST</option><option>SANDBOX</option><option>DISASTER_RECOVERY</option><option>UNKNOWN</option>
+          </select>
+        </label>
+        <label>Business Criticality
+          <select name="businessCriticality" required>
+            <option>MISSION_CRITICAL</option><option>HIGH</option><option>MODERATE</option><option>LOW</option><option>UNKNOWN</option>
+          </select>
+        </label>
+        <label>Business Service
+          <input name="businessService" required maxlength="256">
+        </label>
+        <label>Business Owner
+          <input name="businessOwner" required maxlength="256">
+        </label>
+        <label>Classification Method
+          <select name="classificationMethod" class="classificationMethod" required>
+            <option value="CUSTOMER_DIRECT">CUSTOMER_DIRECT</option>
+            <option value="GUIDED">GUIDED</option>
+          </select>
+        </label>
+        <div class="guideFields hidden">
+          <div class="form-grid">
+            <label>Guide Contract ID
+              <input name="guideContractId" value="ASSET_CLASSIFICATION_GUIDE_V1" maxlength="128">
+            </label>
+            <label>Guide Revision
+              <input name="guideRevision" type="number" min="1" value="1">
+            </label>
+          </div>
+        </div>
+        <label class="wide">Change Note (اختياري)
+          <textarea name="changeNote" maxlength="2000"></textarea>
+        </label>
+      </div>
+      <div id="createMessage" class="status" role="status" aria-live="polite"></div>
+      <div class="dialog-actions">
+        <button type="submit">إنشاء</button>
+        <button class="ghost" type="button" data-close-dialog="createDialog">إلغاء</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<dialog id="detailDialog" aria-labelledby="detailTitle">
+  <div class="dialog-shell">
+    <div class="dialog-head">
+      <div><h2 id="detailTitle">Managed Asset Details</h2><p id="detailSubtitle"></p></div>
+      <button class="ghost" type="button" data-close-dialog="detailDialog" aria-label="إغلاق">×</button>
+    </div>
+    <div id="detailMessage" class="status" role="status" aria-live="polite"></div>
+    <div id="detailGrid" class="detail-grid"></div>
+    <div class="dialog-actions">
+      <button id="openRevise" type="button">إضافة Revision</button>
+      <button id="reloadDetail" class="secondary" type="button">تحديث</button>
+      <button class="ghost" type="button" data-close-dialog="detailDialog">إغلاق</button>
+    </div>
+    <section style="margin-top:24px" aria-labelledby="historyTitle">
+      <h3 id="historyTitle">Revision History</h3>
+      <div id="historyMessage" class="status" role="status" aria-live="polite"></div>
+      <div id="historyList" class="history-list"></div>
+      <div class="pager"><button id="olderHistory" class="ghost" type="button">Revisions أقدم</button></div>
+    </section>
+  </div>
+</dialog>
+
+<dialog id="reviseDialog" aria-labelledby="reviseTitle">
+  <div class="dialog-shell">
+    <div class="dialog-head">
+      <div><h2 id="reviseTitle">إضافة Managed Asset Revision</h2><p>يرسل النموذج complete customer state مع <code>If-Match</code> من آخر GET. لا يوجد hidden field merge.</p></div>
+      <button class="ghost" type="button" data-close-dialog="reviseDialog" aria-label="إغلاق">×</button>
+    </div>
+    <form id="reviseForm">
+      <div class="form-grid">
+        <label>Lifecycle Status
+          <select name="lifecycleStatus" required><option>ACTIVE</option><option>RETIRED</option></select>
+        </label>
+        <label>Display Name
+          <input name="displayName" required maxlength="256">
+        </label>
+        <label>Environment
+          <select name="environment" required>
+            <option>PRODUCTION</option><option>PRE_PRODUCTION</option><option>DEVELOPMENT</option><option>TEST</option><option>SANDBOX</option><option>DISASTER_RECOVERY</option><option>UNKNOWN</option>
+          </select>
+        </label>
+        <label>Business Criticality
+          <select name="businessCriticality" required>
+            <option>MISSION_CRITICAL</option><option>HIGH</option><option>MODERATE</option><option>LOW</option><option>UNKNOWN</option>
+          </select>
+        </label>
+        <label>Business Service
+          <input name="businessService" required maxlength="256">
+        </label>
+        <label>Business Owner
+          <input name="businessOwner" required maxlength="256">
+        </label>
+        <label>Classification Method
+          <select name="classificationMethod" class="classificationMethod" required>
+            <option value="CUSTOMER_DIRECT">CUSTOMER_DIRECT</option>
+            <option value="GUIDED">GUIDED</option>
+          </select>
+        </label>
+        <div class="guideFields hidden">
+          <div class="form-grid">
+            <label>Guide Contract ID
+              <input name="guideContractId" maxlength="128">
+            </label>
+            <label>Guide Revision
+              <input name="guideRevision" type="number" min="1">
+            </label>
+          </div>
+        </div>
+        <label class="wide">Change Note (اختياري)
+          <textarea name="changeNote" maxlength="2000"></textarea>
+        </label>
+      </div>
+      <div id="reviseMessage" class="status" role="status" aria-live="polite"></div>
+      <p class="note warning">إذا تغيّر الأصل منذ آخر GET سيرفض السيرفر الطلب بـ412. الصفحة لا تعمل auto-merge؛ حدّث الأصل وراجع القيم قبل إعادة الإرسال.</p>
+      <div class="dialog-actions">
+        <button type="submit">حفظ Revision</button>
+        <button class="ghost" type="button" data-close-dialog="reviseDialog">إلغاء</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<script>
+  const byId = id => document.getElementById(id);
+  let apiToken = sessionStorage.getItem('rbvmApiToken') || '';
+  let readEnabled = false;
+  let writeEnabled = false;
+  let historyReadEnabled = false;
+  let nextAfterId = null;
+  let selectedAssetId = null;
+  let selectedAsset = null;
+  let selectedEtag = null;
+  let nextBeforeRevision = null;
+
+  function apiFetch(resource, options = {}) {
+    const headers = new Headers(options.headers || {});
+    if (apiToken) headers.set('Authorization', `Bearer ${apiToken}`);
+    return fetch(resource, {...options, headers, cache: options.cache || 'no-store'});
+  }
+
+  function setStatus(id, text, error = false, success = false) {
+    const node = byId(id);
+    node.textContent = text;
+    node.classList.toggle('error', error);
+    node.classList.toggle('success', success && !error);
+  }
+
+  async function errorFrom(response) {
+    try {
+      const problem = await response.json();
+      return problem.detail || problem.title || `HTTP ${response.status}`;
+    } catch (_) {
+      return `HTTP ${response.status}`;
+    }
+  }
+
+  function card(label, value) {
+    const node = document.createElement('div');
+    node.className = 'card';
+    const caption = document.createElement('span');
+    caption.textContent = label;
+    const strong = document.createElement('strong');
+    strong.textContent = String(value ?? '—');
+    node.append(caption, strong);
+    return node;
+  }
+
+  function detail(label, value, ltr = false) {
+    const node = document.createElement('div');
+    node.className = 'detail';
+    const caption = document.createElement('span');
+    caption.textContent = label;
+    const strong = document.createElement('strong');
+    strong.textContent = String(value ?? '—');
+    if (ltr) strong.classList.add('ltr');
+    node.append(caption, strong);
+    return node;
+  }
+
+  function formatInstant(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('en-GB');
+  }
+
+  function lifecyclePill(value) {
+    const span = document.createElement('span');
+    span.className = `pill ${value === 'ACTIVE' ? 'active' : 'retired'}`;
+    span.textContent = value || '—';
+    return span;
+  }
+
+  async function loadHealth() {
+    try {
+      const response = await apiFetch('/api/v1/health');
+      if (!response.ok) throw new Error(await errorFrom(response));
+      const data = await response.json();
+      const capability = data.managedAssets || {};
+      readEnabled = capability.readEnabled === true;
+      writeEnabled = capability.writeEnabled === true;
+      historyReadEnabled = capability.historyReadEnabled === true;
+      byId('refresh').disabled = !readEnabled;
+      byId('openCreate').disabled = !writeEnabled;
+      if (readEnabled && writeEnabled && historyReadEnabled) {
+        setStatus('healthMessage', 'Managed Asset runtime جاهز: read + write + history متاحة.', false, true);
+      } else {
+        setStatus('healthMessage', 'Managed Asset runtime يحتاج PostgreSQL schema V18 أو أحدث.', true);
+      }
+    } catch (error) {
+      readEnabled = false;
+      writeEnabled = false;
+      historyReadEnabled = false;
+      byId('refresh').disabled = true;
+      byId('openCreate').disabled = true;
+      setStatus('healthMessage', error.message || 'تعذر قراءة runtime health.', true);
+    }
+  }
+
+  async function loadAssets() {
+    if (!readEnabled) return;
+    const parameters = new URLSearchParams();
+    parameters.set('lifecycle', byId('lifecycleFilter').value);
+    parameters.set('limit', byId('limit').value || '100');
+    const after = byId('afterId').value.trim();
+    if (after) parameters.set('afterId', after);
+    setStatus('listMessage', 'جاري تحميل managed assets…');
+    try {
+      const response = await apiFetch(`/api/v1/managed-assets?${parameters}`);
+      if (!response.ok) throw new Error(await errorFrom(response));
+      const data = await response.json();
+      const assets = Array.isArray(data.assets) ? data.assets : [];
+      nextAfterId = data.nextAfterId || null;
+      renderAssets(assets);
+      byId('nextPage').disabled = !nextAfterId;
+      setStatus('listMessage', `${assets.length} managed asset(s) في الصفحة الحالية.`, false, true);
+    } catch (error) {
+      byId('assetRows').replaceChildren();
+      byId('summaryCards').replaceChildren();
+      byId('nextPage').disabled = true;
+      setStatus('listMessage', error.message || 'تعذر تحميل managed assets.', true);
+    }
+  }
+
+  function renderAssets(assets) {
+    const active = assets.filter(asset => asset.currentRevision?.lifecycleStatus === 'ACTIVE').length;
+    const retired = assets.filter(asset => asset.currentRevision?.lifecycleStatus === 'RETIRED').length;
+    const unknownCriticality = assets.filter(asset => asset.currentRevision?.businessCriticality === 'UNKNOWN').length;
+    byId('summaryCards').replaceChildren(
+      card('Page Rows', assets.length),
+      card('ACTIVE on page', active),
+      card('RETIRED on page', retired),
+      card('UNKNOWN criticality on page', unknownCriticality)
+    );
+    const body = byId('assetRows');
+    body.replaceChildren();
+    for (const asset of assets) {
+      const revision = asset.currentRevision || {};
+      const tr = document.createElement('tr');
+      const values = [
+        revision.displayName,
+        asset.customerAssetKey || '—',
+        null,
+        revision.environment,
+        revision.businessService,
+        revision.businessOwner,
+        revision.businessCriticality,
+        revision.revision,
+        formatInstant(revision.recordedAt)
+      ];
+      values.forEach((value, index) => {
+        const td = document.createElement('td');
+        if (index === 2) td.appendChild(lifecyclePill(revision.lifecycleStatus));
+        else td.textContent = String(value ?? '—');
+        if (index === 1) td.classList.add('ltr');
+        tr.appendChild(td);
+      });
+      const actions = document.createElement('td');
+      actions.className = 'row-actions';
+      const view = document.createElement('button');
+      view.type = 'button';
+      view.className = 'ghost';
+      view.textContent = 'عرض';
+      view.addEventListener('click', () => openDetail(asset.id));
+      actions.appendChild(view);
+      tr.appendChild(actions);
+      body.appendChild(tr);
+    }
+  }
+
+  function readForm(form) {
+    const data = new FormData(form);
+    const method = String(data.get('classificationMethod') || '');
+    const body = {
+      displayName: String(data.get('displayName') || '').trim(),
+      environment: String(data.get('environment') || ''),
+      businessService: String(data.get('businessService') || '').trim(),
+      businessOwner: String(data.get('businessOwner') || '').trim(),
+      businessCriticality: String(data.get('businessCriticality') || ''),
+      classificationMethod: method,
+      changeNote: String(data.get('changeNote') || '').trim()
+    };
+    if (method === 'GUIDED') {
+      body.guideContractId = String(data.get('guideContractId') || '').trim();
+      const rawGuideRevision = String(data.get('guideRevision') || '').trim();
+      body.guideRevision = rawGuideRevision ? Number(rawGuideRevision) : null;
+    }
+    return body;
+  }
+
+  function setGuideVisibility(form) {
+    const method = form.querySelector('.classificationMethod');
+    const fields = form.querySelector('.guideFields');
+    const guided = method.value === 'GUIDED';
+    fields.classList.toggle('hidden', !guided);
+    fields.querySelectorAll('input').forEach(input => { input.required = guided; });
+  }
+
+  async function createAsset(event) {
+    event.preventDefault();
+    if (!writeEnabled) return;
+    const form = event.currentTarget;
+    const body = readForm(form);
+    const customerAssetKey = String(new FormData(form).get('customerAssetKey') || '').trim();
+    if (customerAssetKey) body.customerAssetKey = customerAssetKey;
+    const submit = form.querySelector('button[type="submit"]');
+    submit.disabled = true;
+    setStatus('createMessage', 'جاري إنشاء managed asset…');
+    try {
+      const response = await apiFetch('/api/v1/managed-assets', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(body)
+      });
+      if (!response.ok) throw new Error(await errorFrom(response));
+      const asset = await response.json();
+      setStatus('createMessage', `تم إنشاء ${asset.currentRevision?.displayName || asset.id}.`, false, true);
+      form.reset();
+      setGuideVisibility(form);
+      await loadAssets();
+      byId('createDialog').close();
+      await openDetail(asset.id);
+    } catch (error) {
+      setStatus('createMessage', error.message || 'تعذر إنشاء managed asset.', true);
+    } finally {
+      submit.disabled = !writeEnabled;
+    }
+  }
+
+  async function fetchCurrentAsset(assetId) {
+    const response = await apiFetch(`/api/v1/managed-assets/${encodeURIComponent(assetId)}`);
+    if (!response.ok) throw new Error(await errorFrom(response));
+    const asset = await response.json();
+    const etag = response.headers.get('ETag');
+    if (!etag) throw new Error('Managed asset response is missing ETag.');
+    return {asset, etag};
+  }
+
+  async function openDetail(assetId) {
+    selectedAssetId = assetId;
+    selectedAsset = null;
+    selectedEtag = null;
+    nextBeforeRevision = null;
+    byId('detailGrid').replaceChildren();
+    byId('historyList').replaceChildren();
+    setStatus('detailMessage', 'جاري تحميل current managed asset…');
+    byId('detailDialog').showModal();
+    try {
+      const current = await fetchCurrentAsset(assetId);
+      selectedAsset = current.asset;
+      selectedEtag = current.etag;
+      renderDetail(current.asset);
+      setStatus('detailMessage', `Current revision ${current.asset.currentRevision.revision}.`, false, true);
+      await loadHistory(false);
+    } catch (error) {
+      setStatus('detailMessage', error.message || 'تعذر تحميل managed asset.', true);
+    }
+  }
+
+  function renderDetail(asset) {
+    const revision = asset.currentRevision || {};
+    byId('detailSubtitle').textContent = revision.displayName || asset.id;
+    byId('detailGrid').replaceChildren(
+      detail('Managed Asset ID', asset.id, true),
+      detail('Customer Asset Key', asset.customerAssetKey || '—', true),
+      detail('Created At', formatInstant(asset.createdAt)),
+      detail('Current Revision', revision.revision),
+      detail('Lifecycle', revision.lifecycleStatus),
+      detail('Environment', revision.environment),
+      detail('Business Service', revision.businessService),
+      detail('Business Owner', revision.businessOwner),
+      detail('Business Criticality', revision.businessCriticality),
+      detail('Classification Method', revision.classificationMethod),
+      detail('Guide Contract', revision.guideContractId || '—'),
+      detail('Guide Revision', revision.guideRevision ?? '—'),
+      detail('Changed By', revision.changedBy || '—'),
+      detail('Recorded At', formatInstant(revision.recordedAt)),
+      detail('Context Source', revision.contextSource || '—'),
+      detail('Evidence SHA-256', revision.evidenceSha256 || '—', true),
+      detail('Change Note', revision.changeNote || '—')
+    );
+    byId('openRevise').disabled = !writeEnabled;
+  }
+
+  async function reloadDetail() {
+    if (!selectedAssetId) return;
+    setStatus('detailMessage', 'جاري تحديث current managed asset…');
+    try {
+      const current = await fetchCurrentAsset(selectedAssetId);
+      selectedAsset = current.asset;
+      selectedEtag = current.etag;
+      renderDetail(current.asset);
+      nextBeforeRevision = null;
+      await loadHistory(false);
+      setStatus('detailMessage', `تم التحديث إلى revision ${current.asset.currentRevision.revision}.`, false, true);
+    } catch (error) {
+      setStatus('detailMessage', error.message || 'تعذر تحديث managed asset.', true);
+    }
+  }
+
+  async function loadHistory(append) {
+    if (!historyReadEnabled || !selectedAssetId) return;
+    const params = new URLSearchParams({limit:'20'});
+    if (append && nextBeforeRevision) params.set('beforeRevision', String(nextBeforeRevision));
+    if (!append) byId('historyList').replaceChildren();
+    setStatus('historyMessage', 'جاري تحميل revision history…');
+    try {
+      const response = await apiFetch(`/api/v1/managed-assets/${encodeURIComponent(selectedAssetId)}/revisions?${params}`);
+      if (!response.ok) throw new Error(await errorFrom(response));
+      const data = await response.json();
+      const revisions = Array.isArray(data.revisions) ? data.revisions : [];
+      for (const revision of revisions) byId('historyList').appendChild(historyItem(revision));
+      nextBeforeRevision = data.nextBeforeRevision || null;
+      byId('olderHistory').disabled = !nextBeforeRevision;
+      setStatus('historyMessage', `${revisions.length} revision(s) loaded.`, false, true);
+    } catch (error) {
+      setStatus('historyMessage', error.message || 'تعذر تحميل revision history.', true);
+    }
+  }
+
+  function historyItem(revision) {
+    const article = document.createElement('article');
+    article.className = 'history-item';
+    const head = document.createElement('header');
+    const title = document.createElement('strong');
+    title.textContent = `Revision ${revision.revision}`;
+    head.append(title, lifecyclePill(revision.lifecycleStatus));
+    const meta = document.createElement('div');
+    meta.className = 'history-meta';
+    const lines = [
+      `${revision.displayName} · ${revision.environment} · ${revision.businessCriticality}`,
+      `${revision.businessService} · ${revision.businessOwner}`,
+      `classification: ${revision.classificationMethod}${revision.guideContractId ? ` · ${revision.guideContractId} r${revision.guideRevision}` : ''}`,
+      `changedBy: ${revision.changedBy || '—'} · recordedAt: ${formatInstant(revision.recordedAt)}`,
+      `changeNote: ${revision.changeNote || '—'}`
+    ];
+    lines.forEach(line => {
+      const div = document.createElement('div');
+      div.textContent = line;
+      meta.appendChild(div);
+    });
+    article.append(head, meta);
+    return article;
+  }
+
+  function openReviseDialog() {
+    if (!selectedAsset || !selectedEtag || !writeEnabled) return;
+    const revision = selectedAsset.currentRevision;
+    const form = byId('reviseForm');
+    form.elements.lifecycleStatus.value = revision.lifecycleStatus;
+    form.elements.displayName.value = revision.displayName;
+    form.elements.environment.value = revision.environment;
+    form.elements.businessService.value = revision.businessService;
+    form.elements.businessOwner.value = revision.businessOwner;
+    form.elements.businessCriticality.value = revision.businessCriticality;
+    form.elements.classificationMethod.value = revision.classificationMethod;
+    form.elements.guideContractId.value = revision.guideContractId || '';
+    form.elements.guideRevision.value = revision.guideRevision ?? '';
+    form.elements.changeNote.value = '';
+    setGuideVisibility(form);
+    setStatus('reviseMessage', '');
+    byId('reviseDialog').showModal();
+  }
+
+  async function reviseAsset(event) {
+    event.preventDefault();
+    if (!selectedAssetId || !selectedEtag || !writeEnabled) return;
+    const form = event.currentTarget;
+    const body = readForm(form);
+    body.lifecycleStatus = String(new FormData(form).get('lifecycleStatus') || '');
+    const submit = form.querySelector('button[type="submit"]');
+    submit.disabled = true;
+    setStatus('reviseMessage', 'جاري حفظ immutable revision…');
+    try {
+      const response = await apiFetch(`/api/v1/managed-assets/${encodeURIComponent(selectedAssetId)}/revisions`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json','If-Match':selectedEtag},
+        body:JSON.stringify(body)
+      });
+      if (response.status === 412) {
+        setStatus('reviseMessage', 'الأصل تغيّر بعد آخر GET. لن يتم الدمج تلقائياً. أغلق النموذج أو حدّث التفاصيل وراجع القيم.', true);
+        return;
+      }
+      if (!response.ok) throw new Error(await errorFrom(response));
+      const asset = await response.json();
+      const etag = response.headers.get('ETag');
+      if (!etag) throw new Error('Managed asset revision response is missing ETag.');
+      selectedAsset = asset;
+      selectedEtag = etag;
+      renderDetail(asset);
+      setStatus('reviseMessage', `تم اعتماد revision ${asset.currentRevision.revision}.`, false, true);
+      byId('reviseDialog').close();
+      nextBeforeRevision = null;
+      await loadHistory(false);
+      await loadAssets();
+      setStatus('detailMessage', `Current revision ${asset.currentRevision.revision}.`, false, true);
+    } catch (error) {
+      setStatus('reviseMessage', error.message || 'تعذر حفظ managed asset revision.', true);
+    } finally {
+      submit.disabled = !writeEnabled;
+    }
+  }
+
+  document.querySelectorAll('[data-close-dialog]').forEach(button => {
+    button.addEventListener('click', () => byId(button.dataset.closeDialog).close());
+  });
+
+  document.querySelectorAll('form').forEach(form => {
+    const method = form.querySelector('.classificationMethod');
+    if (method) {
+      method.addEventListener('change', () => setGuideVisibility(form));
+      setGuideVisibility(form);
+    }
+  });
+
+  byId('saveToken').addEventListener('click', async () => {
+    const supplied = byId('apiToken').value.trim();
+    if (!supplied) {
+      setStatus('healthMessage', 'ألصق مفتاح الوصول أولاً.', true);
+      return;
+    }
+    apiToken = supplied;
+    sessionStorage.setItem('rbvmApiToken', supplied);
+    byId('apiToken').value = '';
+    await loadHealth();
+    await loadAssets();
+  });
+
+  byId('refresh').addEventListener('click', loadAssets);
+  byId('lifecycleFilter').addEventListener('change', () => {
+    byId('afterId').value = '';
+    loadAssets();
+  });
+  byId('clearCursor').addEventListener('click', () => {
+    byId('afterId').value = '';
+    loadAssets();
+  });
+  byId('nextPage').addEventListener('click', () => {
+    if (!nextAfterId) return;
+    byId('afterId').value = nextAfterId;
+    loadAssets();
+  });
+  byId('openCreate').addEventListener('click', () => {
+    setStatus('createMessage', '');
+    byId('createDialog').showModal();
+  });
+  byId('createForm').addEventListener('submit', createAsset);
+  byId('reloadDetail').addEventListener('click', reloadDetail);
+  byId('openRevise').addEventListener('click', openReviseDialog);
+  byId('reviseForm').addEventListener('submit', reviseAsset);
+  byId('olderHistory').addEventListener('click', () => loadHistory(true));
+
+  if (apiToken) {
+    loadHealth().then(loadAssets);
+  } else {
+    loadHealth();
+  }
+</script>
+</body>
+</html>
