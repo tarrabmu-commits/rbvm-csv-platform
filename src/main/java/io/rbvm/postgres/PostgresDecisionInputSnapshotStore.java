@@ -3,7 +3,10 @@ package io.rbvm.postgres;
 import io.rbvm.decision.RbvmDecisionInputSnapshot;
 import io.rbvm.decision.RbvmDecisionInputSnapshot.DimensionInput;
 import io.rbvm.decision.RbvmDecisionInputSnapshot.DimensionState;
+import io.rbvm.decision.RbvmDecisionInputSnapshot.BindingKind;
+import io.rbvm.decision.RbvmDecisionInputSnapshot.BindingReference;
 import io.rbvm.decision.RbvmDecisionInputSnapshot.EvidenceReference;
+import io.rbvm.decision.RbvmDecisionInputSnapshot.NativeEvidenceKind;
 import io.rbvm.decision.RbvmDecisionMethodologyPolicy;
 import io.rbvm.decision.RbvmDecisionMethodologyPolicy.EvidenceDimension;
 
@@ -64,6 +67,10 @@ public final class PostgresDecisionInputSnapshotStore implements DecisionInputSn
     public DecisionInputSnapshotInstallResult install(RbvmDecisionInputSnapshot snapshot)
             throws IOException {
         Objects.requireNonNull(snapshot, "snapshot");
+        if (snapshot.isV2() && schemaVersion < 20) {
+            throw new IOException(
+                    "Decision Input Snapshot V2 requires PostgreSQL schema version 20");
+        }
         try (Connection connection = connections.open()) {
             beginTransaction(connection);
             try {
@@ -166,7 +173,7 @@ public final class PostgresDecisionInputSnapshotStore implements DecisionInputSn
             }
             if (!stored.semantics().equals(snapshot.semantics())
                     || !stored.canonicalPayloadFormat().equals(
-                            RbvmDecisionInputSnapshot.CANONICAL_PAYLOAD_FORMAT)
+                            snapshot.canonicalPayloadFormat())
                     || !Arrays.equals(stored.canonicalPayload(), snapshot.canonicalPayload())) {
                 throw new IOException(
                         "Persisted decision input snapshot canonical payload or semantics do not match normalized snapshot fields");
@@ -333,7 +340,7 @@ public final class PostgresDecisionInputSnapshotStore implements DecisionInputSn
             statement.setString(7, snapshot.contractId());
             statement.setString(8, snapshot.semantics());
             statement.setString(9, snapshot.snapshotSha256());
-            statement.setString(10, RbvmDecisionInputSnapshot.CANONICAL_PAYLOAD_FORMAT);
+            statement.setString(10, snapshot.canonicalPayloadFormat());
             statement.setBytes(11, snapshot.canonicalPayload());
             statement.setTimestamp(12, Timestamp.from(snapshot.evaluatedAt()));
             statement.setTimestamp(13, Timestamp.from(persistedAt));
@@ -341,7 +348,7 @@ public final class PostgresDecisionInputSnapshotStore implements DecisionInputSn
         }
     }
 
-    private static void insertDimensionsAndReferences(
+    private void insertDimensionsAndReferences(
             Connection connection,
             UUID tenantId,
             UUID snapshotId,
@@ -361,26 +368,62 @@ public final class PostgresDecisionInputSnapshotStore implements DecisionInputSn
                 statement.executeUpdate();
             }
             for (EvidenceReference reference : input.evidenceReferences()) {
-                try (PreparedStatement statement = connection.prepareStatement("""
-                        INSERT INTO rbvm.decision_input_evidence_reference(
-                            tenant_id, snapshot_id, evidence_dimension, evidence_id,
-                            evidence_sha256, evidence_source, observed_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                        """)) {
-                    statement.setObject(1, tenantId);
-                    statement.setObject(2, snapshotId);
-                    statement.setString(3, dimension.name());
-                    statement.setObject(4, reference.evidenceId());
-                    statement.setString(5, reference.evidenceSha256());
-                    statement.setString(6, reference.evidenceSource());
-                    statement.setTimestamp(7, Timestamp.from(reference.observedAt()));
-                    statement.executeUpdate();
+                if (schemaVersion >= 20) {
+                    try (PreparedStatement statement = connection.prepareStatement("""
+                            INSERT INTO rbvm.decision_input_evidence_reference(
+                                tenant_id, snapshot_id, evidence_dimension,
+                                native_evidence_kind, evidence_id,
+                                evidence_sha256, evidence_source, observed_at,
+                                binding_kind, binding_id, binding_sha256,
+                                binding_source, binding_observed_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """)) {
+                        statement.setObject(1, tenantId);
+                        statement.setObject(2, snapshotId);
+                        statement.setString(3, dimension.name());
+                        statement.setString(4, reference.nativeEvidenceKind().name());
+                        statement.setObject(5, reference.evidenceId());
+                        statement.setString(6, reference.evidenceSha256());
+                        statement.setString(7, reference.evidenceSource());
+                        statement.setTimestamp(8, Timestamp.from(reference.observedAt()));
+                        BindingReference binding = reference.bindingReference();
+                        if (binding == null) {
+                            statement.setObject(9, null);
+                            statement.setObject(10, null);
+                            statement.setObject(11, null);
+                            statement.setObject(12, null);
+                            statement.setObject(13, null);
+                        } else {
+                            statement.setString(9, binding.bindingKind().name());
+                            statement.setObject(10, binding.bindingId());
+                            statement.setString(11, binding.bindingSha256());
+                            statement.setString(12, binding.bindingSource());
+                            statement.setTimestamp(13, Timestamp.from(binding.recordedAt()));
+                        }
+                        statement.executeUpdate();
+                    }
+                } else {
+                    try (PreparedStatement statement = connection.prepareStatement("""
+                            INSERT INTO rbvm.decision_input_evidence_reference(
+                                tenant_id, snapshot_id, evidence_dimension, evidence_id,
+                                evidence_sha256, evidence_source, observed_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                            """)) {
+                        statement.setObject(1, tenantId);
+                        statement.setObject(2, snapshotId);
+                        statement.setString(3, dimension.name());
+                        statement.setObject(4, reference.evidenceId());
+                        statement.setString(5, reference.evidenceSha256());
+                        statement.setString(6, reference.evidenceSource());
+                        statement.setTimestamp(7, Timestamp.from(reference.observedAt()));
+                        statement.executeUpdate();
+                    }
                 }
             }
         }
     }
 
-    private static EnumMap<EvidenceDimension, DimensionInput> loadDimensions(
+    private EnumMap<EvidenceDimension, DimensionInput> loadDimensions(
             Connection connection,
             UUID tenantId,
             UUID snapshotId
@@ -426,31 +469,65 @@ public final class PostgresDecisionInputSnapshotStore implements DecisionInputSn
         return dimensions;
     }
 
-    private static List<EvidenceReference> loadReferences(
+    private List<EvidenceReference> loadReferences(
             Connection connection,
             UUID tenantId,
             UUID snapshotId,
             EvidenceDimension dimension
     ) throws SQLException {
         List<EvidenceReference> references = new ArrayList<>();
-        try (PreparedStatement statement = connection.prepareStatement("""
-                SELECT evidence_id, evidence_sha256, evidence_source, observed_at
-                FROM rbvm.decision_input_evidence_reference
-                WHERE tenant_id = ? AND snapshot_id = ? AND evidence_dimension = ?
-                ORDER BY evidence_id
-                """)) {
+        String sql = schemaVersion >= 20
+                ? """
+                    SELECT native_evidence_kind, evidence_id, evidence_sha256,
+                           evidence_source, observed_at,
+                           binding_kind, binding_id, binding_sha256,
+                           binding_source, binding_observed_at
+                    FROM rbvm.decision_input_evidence_reference
+                    WHERE tenant_id = ? AND snapshot_id = ? AND evidence_dimension = ?
+                    ORDER BY native_evidence_kind, evidence_id
+                    """
+                : """
+                    SELECT evidence_id, evidence_sha256, evidence_source, observed_at
+                    FROM rbvm.decision_input_evidence_reference
+                    WHERE tenant_id = ? AND snapshot_id = ? AND evidence_dimension = ?
+                    ORDER BY evidence_id
+                    """;
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, tenantId);
             statement.setObject(2, snapshotId);
             statement.setString(3, dimension.name());
             try (ResultSet rows = statement.executeQuery()) {
                 while (rows.next()) {
-                    references.add(new EvidenceReference(
-                            dimension,
-                            rows.getObject(1, UUID.class),
-                            rows.getString(2).trim(),
-                            rows.getString(3),
-                            rows.getTimestamp(4).toInstant()
-                    ));
+                    if (schemaVersion >= 20) {
+                        BindingReference binding = null;
+                        String bindingKind = rows.getString(6);
+                        if (bindingKind != null) {
+                            binding = new BindingReference(
+                                    BindingKind.valueOf(bindingKind),
+                                    rows.getObject(7, UUID.class),
+                                    rows.getString(8).trim(),
+                                    rows.getString(9),
+                                    rows.getTimestamp(10).toInstant()
+                            );
+                        }
+                        references.add(new EvidenceReference(
+                                dimension,
+                                NativeEvidenceKind.valueOf(rows.getString(1)),
+                                rows.getObject(2, UUID.class),
+                                rows.getString(3).trim(),
+                                rows.getString(4),
+                                rows.getTimestamp(5).toInstant(),
+                                binding
+                        ));
+                    } else {
+                        references.add(new EvidenceReference(
+                                dimension,
+                                rows.getObject(1, UUID.class),
+                                rows.getString(2).trim(),
+                                rows.getString(3),
+                                rows.getTimestamp(4).toInstant()
+                        ));
+                    }
                 }
             }
         }

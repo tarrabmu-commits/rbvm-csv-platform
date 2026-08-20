@@ -4,7 +4,10 @@ import io.rbvm.decision.DecisionInputEvidenceSelection;
 import io.rbvm.decision.DecisionInputEvidenceSelection.Candidate;
 import io.rbvm.decision.DecisionInputEvidenceSelection.Selection;
 import io.rbvm.decision.RbvmDecisionInputSnapshot;
+import io.rbvm.decision.RbvmDecisionInputSnapshot.BindingKind;
+import io.rbvm.decision.RbvmDecisionInputSnapshot.BindingReference;
 import io.rbvm.decision.RbvmDecisionInputSnapshot.DimensionInput;
+import io.rbvm.decision.RbvmDecisionInputSnapshot.NativeEvidenceKind;
 import io.rbvm.decision.RbvmDecisionMethodologyPolicy;
 import io.rbvm.decision.RbvmDecisionMethodologyPolicy.EvidenceDimension;
 import io.rbvm.decision.RbvmDecisionMethodologyPolicy.EvidenceSelectionPolicy;
@@ -108,7 +111,8 @@ public final class PostgresDecisionInputSnapshotBuilder implements DecisionInput
                             tenantId,
                             finding,
                             dimension,
-                            evaluatedAt
+                            evaluatedAt,
+                            schemaVersion
                     );
                     Selection selection = DecisionInputEvidenceSelection.select(
                             selectionPolicy,
@@ -125,13 +129,21 @@ public final class PostgresDecisionInputSnapshotBuilder implements DecisionInput
                     );
                 }
 
-                RbvmDecisionInputSnapshot snapshot = RbvmDecisionInputSnapshot.create(
-                        findingId,
-                        methodology.revision(),
-                        methodology.policySha256(),
-                        evaluatedAt,
-                        dimensions
-                );
+                RbvmDecisionInputSnapshot snapshot = schemaVersion >= 20
+                        ? RbvmDecisionInputSnapshot.createV2(
+                                findingId,
+                                methodology.revision(),
+                                methodology.policySha256(),
+                                evaluatedAt,
+                                dimensions
+                        )
+                        : RbvmDecisionInputSnapshot.create(
+                                findingId,
+                                methodology.revision(),
+                                methodology.policySha256(),
+                                evaluatedAt,
+                                dimensions
+                        );
                 connection.commit();
                 return snapshot;
             } catch (IOException | SQLException | RuntimeException exception) {
@@ -218,7 +230,8 @@ public final class PostgresDecisionInputSnapshotBuilder implements DecisionInput
             UUID tenantId,
             FindingScope finding,
             EvidenceDimension dimension,
-            Instant evaluatedAt
+            Instant evaluatedAt,
+            int schemaVersion
     ) throws SQLException, IOException {
         return switch (dimension) {
             case APPLICABILITY -> loadApplicability(
@@ -230,7 +243,7 @@ public final class PostgresDecisionInputSnapshotBuilder implements DecisionInput
             case EXPLOITATION_PROBABILITY -> loadEpss(
                     connection, tenantId, finding, evaluatedAt);
             case ASSET_CONTEXT -> loadAssetContext(
-                    connection, tenantId, finding, evaluatedAt);
+                    connection, tenantId, finding, evaluatedAt, schemaVersion);
             case NETWORK_REACHABILITY -> loadNetworkReachability(
                     connection, tenantId, finding, evaluatedAt);
             case BUSINESS_MISSION_IMPACT -> loadBusinessImpact(
@@ -408,7 +421,8 @@ public final class PostgresDecisionInputSnapshotBuilder implements DecisionInput
             Connection connection,
             UUID tenantId,
             FindingScope finding,
-            Instant evaluatedAt
+            Instant evaluatedAt,
+            int schemaVersion
     ) throws SQLException, IOException {
         List<Candidate> output = new ArrayList<>();
         try (PreparedStatement statement = connection.prepareStatement("""
@@ -438,7 +452,108 @@ public final class PostgresDecisionInputSnapshotBuilder implements DecisionInput
                 }
             }
         }
+        if (schemaVersion >= 20) {
+            loadManagedAssetContext(connection, tenantId, finding, evaluatedAt, output);
+        }
         return List.copyOf(output);
+    }
+
+    private static void loadManagedAssetContext(
+            Connection connection,
+            UUID tenantId,
+            FindingScope finding,
+            Instant evaluatedAt,
+            List<Candidate> output
+    ) throws SQLException, IOException {
+        UUID linkEventId;
+        String linkSha256;
+        String linkMethod;
+        Instant linkRecordedAt;
+        String linkStatus;
+        UUID managedAssetId;
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT id, evidence_sha256, link_method, recorded_at,
+                       link_status, managed_asset_id
+                FROM rbvm.scanner_managed_asset_link_event
+                WHERE tenant_id = ?
+                  AND scanner_asset_id = ?
+                  AND recorded_at <= ?
+                ORDER BY revision DESC
+                LIMIT 1
+                """)) {
+            statement.setObject(1, tenantId);
+            statement.setObject(2, finding.assetId());
+            statement.setTimestamp(3, Timestamp.from(evaluatedAt));
+            try (ResultSet rows = statement.executeQuery()) {
+                if (!rows.next()) {
+                    return;
+                }
+                linkEventId = rows.getObject(1, UUID.class);
+                linkSha256 = rows.getString(2);
+                linkMethod = rows.getString(3);
+                linkRecordedAt = rows.getTimestamp(4).toInstant();
+                linkStatus = rows.getString(5);
+                managedAssetId = rows.getObject(6, UUID.class);
+            }
+        }
+        if ("UNLINKED".equals(linkStatus)) {
+            return;
+        }
+        if (!"LINKED".equals(linkStatus) || managedAssetId == null) {
+            throw new IOException("Persisted scanner-managed-asset link state is invalid");
+        }
+
+        BindingReference binding;
+        try {
+            binding = new BindingReference(
+                    BindingKind.SCANNER_MANAGED_ASSET_LINK_EVENT,
+                    linkEventId,
+                    linkSha256 == null ? null : linkSha256.trim(),
+                    linkMethod,
+                    linkRecordedAt
+            );
+        } catch (IllegalArgumentException | NullPointerException exception) {
+            throw new IOException(
+                    "Persisted scanner-managed-asset link provenance is invalid",
+                    exception
+            );
+        }
+
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT id, evidence_sha256, context_source, recorded_at
+                FROM rbvm.managed_asset_revision
+                WHERE tenant_id = ?
+                  AND managed_asset_id = ?
+                  AND recorded_at <= ?
+                ORDER BY revision DESC
+                LIMIT 1
+                """)) {
+            statement.setObject(1, tenantId);
+            statement.setObject(2, managedAssetId);
+            statement.setTimestamp(3, Timestamp.from(evaluatedAt));
+            try (ResultSet rows = statement.executeQuery()) {
+                if (!rows.next()) {
+                    return;
+                }
+                try {
+                    output.add(new Candidate(
+                            EvidenceDimension.ASSET_CONTEXT,
+                            assetSubgrain(finding),
+                            NativeEvidenceKind.MANAGED_ASSET_REVISION,
+                            rows.getObject(1, UUID.class),
+                            rows.getString(2).trim(),
+                            rows.getString(3),
+                            rows.getTimestamp(4).toInstant(),
+                            binding
+                    ));
+                } catch (IllegalArgumentException | NullPointerException exception) {
+                    throw new IOException(
+                            "Persisted managed asset context metadata is invalid",
+                            exception
+                    );
+                }
+            }
+        }
     }
 
     private static List<Candidate> loadNetworkReachability(

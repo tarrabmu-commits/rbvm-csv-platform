@@ -2,6 +2,7 @@ package io.rbvm.postgres;
 
 import io.rbvm.decision.DecisionInputEvidenceResolver;
 import io.rbvm.decision.RbvmDecisionInputSnapshot;
+import io.rbvm.decision.RbvmDecisionInputSnapshot.BindingReference;
 import io.rbvm.decision.RbvmDecisionInputSnapshot.EvidenceReference;
 import io.rbvm.decision.RbvmDecisionMethodologyPolicy.EvidenceDimension;
 import io.rbvm.decision.RbvmResolvedDecisionInput;
@@ -74,6 +75,10 @@ public final class PostgresDecisionInputEvidenceResolver implements DecisionInpu
     @Override
     public RbvmResolvedDecisionInput resolve(RbvmDecisionInputSnapshot snapshot) throws IOException {
         Objects.requireNonNull(snapshot, "snapshot");
+        if (snapshot.isV2() && schemaVersion < 20) {
+            throw new IOException(
+                    "Decision Input Snapshot V2 requires PostgreSQL schema version 20");
+        }
         try (Connection connection = connections.open()) {
             beginReadTransaction(connection);
             try {
@@ -84,7 +89,12 @@ public final class PostgresDecisionInputEvidenceResolver implements DecisionInpu
                     List<ResolvedEvidence> values = new ArrayList<>();
                     for (EvidenceReference reference
                             : snapshot.dimensions().get(dimension).evidenceReferences()) {
-                        values.add(resolveReference(connection, tenantId, reference));
+                        values.add(resolveReference(
+                                connection,
+                                tenantId,
+                                snapshot,
+                                reference
+                        ));
                     }
                     resolved.put(dimension, List.copyOf(values));
                 }
@@ -117,16 +127,26 @@ public final class PostgresDecisionInputEvidenceResolver implements DecisionInpu
     private static ResolvedEvidence resolveReference(
             Connection connection,
             UUID tenantId,
+            RbvmDecisionInputSnapshot snapshot,
             EvidenceReference reference
     ) throws SQLException, IOException {
-        return switch (reference.dimension()) {
-            case APPLICABILITY -> resolveApplicability(connection, tenantId, reference);
-            case TECHNICAL_SEVERITY -> resolveCvss(connection, tenantId, reference);
-            case KNOWN_EXPLOITATION -> resolveKev(connection, tenantId, reference);
-            case EXPLOITATION_PROBABILITY -> resolveEpss(connection, tenantId, reference);
-            case ASSET_CONTEXT -> resolveAssetContext(connection, tenantId, reference);
-            case NETWORK_REACHABILITY -> resolveReachability(connection, tenantId, reference);
-            case BUSINESS_MISSION_IMPACT -> resolveBusinessImpact(connection, tenantId, reference);
+        return switch (reference.nativeEvidenceKind()) {
+            case APPLICABILITY_ASSESSMENT ->
+                    resolveApplicability(connection, tenantId, reference);
+            case CVSS_V31_BASE_EVIDENCE ->
+                    resolveCvss(connection, tenantId, reference);
+            case CISA_KEV_EVIDENCE ->
+                    resolveKev(connection, tenantId, reference);
+            case EPSS_EVIDENCE ->
+                    resolveEpss(connection, tenantId, reference);
+            case ASSET_CONTEXT_EVIDENCE ->
+                    resolveAssetContext(connection, tenantId, reference);
+            case MANAGED_ASSET_REVISION ->
+                    resolveManagedAssetContext(connection, tenantId, snapshot, reference);
+            case NETWORK_REACHABILITY_EVIDENCE ->
+                    resolveReachability(connection, tenantId, reference);
+            case BUSINESS_IMPACT_EVIDENCE ->
+                    resolveBusinessImpact(connection, tenantId, reference);
         };
     }
 
@@ -274,6 +294,130 @@ public final class PostgresDecisionInputEvidenceResolver implements DecisionInpu
                         rows.getString(6),
                         criticality
                 ));
+            }
+        }
+    }
+
+    private static AssetContextEvidenceValue resolveManagedAssetContext(
+            Connection connection,
+            UUID tenantId,
+            RbvmDecisionInputSnapshot snapshot,
+            EvidenceReference reference
+    ) throws SQLException, IOException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT managed_asset_id, evidence_sha256, context_source, recorded_at,
+                       environment, business_service, business_owner, business_criticality
+                FROM rbvm.managed_asset_revision
+                WHERE tenant_id = ? AND id = ?
+                """)) {
+            bindIdentity(statement, tenantId, reference.evidenceId());
+            try (ResultSet rows = statement.executeQuery()) {
+                requireRow(rows, reference);
+                UUID managedAssetId = rows.getObject(1, UUID.class);
+                verifyReference(
+                        reference,
+                        rows.getString(2),
+                        rows.getString(3),
+                        rows.getTimestamp(4).toInstant()
+                );
+                verifyManagedAssetBinding(
+                        connection,
+                        tenantId,
+                        snapshot,
+                        reference,
+                        managedAssetId
+                );
+                Environment environment = enumValue(
+                        Environment.class,
+                        rows.getString(5),
+                        reference
+                );
+                BusinessCriticality criticality = enumValue(
+                        BusinessCriticality.class,
+                        rows.getString(8),
+                        reference
+                );
+                return mapped(reference, () -> new AssetContextEvidenceValue(
+                        reference,
+                        environment,
+                        rows.getString(6),
+                        rows.getString(7),
+                        criticality
+                ));
+            }
+        }
+    }
+
+    private static void verifyManagedAssetBinding(
+            Connection connection,
+            UUID tenantId,
+            RbvmDecisionInputSnapshot snapshot,
+            EvidenceReference reference,
+            UUID managedAssetId
+    ) throws SQLException, IOException {
+        BindingReference binding = Objects.requireNonNull(
+                reference.bindingReference(),
+                "managed asset reference binding"
+        );
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT evidence_sha256, link_method, recorded_at,
+                       scanner_asset_id, link_status, managed_asset_id
+                FROM rbvm.scanner_managed_asset_link_event
+                WHERE tenant_id = ? AND id = ?
+                """)) {
+            statement.setObject(1, tenantId);
+            statement.setObject(2, binding.bindingId());
+            try (ResultSet rows = statement.executeQuery()) {
+                if (!rows.next()) {
+                    throw new IOException(
+                            "Decision Input managed-asset binding does not resolve to native link event");
+                }
+                String linkSha = rows.getString(1);
+                String linkMethod = rows.getString(2);
+                java.time.Instant linkRecordedAt = rows.getTimestamp(3).toInstant();
+                UUID scannerAssetId = rows.getObject(4, UUID.class);
+                String linkStatus = rows.getString(5);
+                UUID linkManagedAssetId = rows.getObject(6, UUID.class);
+                if (!Objects.equals(binding.bindingSha256(),
+                                linkSha == null ? null : linkSha.trim())
+                        || !Objects.equals(binding.bindingSource(), linkMethod)
+                        || !Objects.equals(binding.recordedAt(), linkRecordedAt)
+                        || !"LINKED".equals(linkStatus)
+                        || !Objects.equals(managedAssetId, linkManagedAssetId)) {
+                    throw new IOException(
+                            "Decision Input managed-asset binding provenance does not match native link event");
+                }
+                UUID findingAssetId = requireFindingAsset(
+                        connection,
+                        tenantId,
+                        snapshot.findingId()
+                );
+                if (!Objects.equals(scannerAssetId, findingAssetId)) {
+                    throw new IOException(
+                            "Decision Input managed-asset binding does not belong to snapshot Finding asset");
+                }
+            }
+        }
+    }
+
+    private static UUID requireFindingAsset(
+            Connection connection,
+            UUID tenantId,
+            UUID findingId
+    ) throws SQLException, IOException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT asset_id
+                FROM rbvm.exposure
+                WHERE tenant_id = ? AND id = ?
+                """)) {
+            statement.setObject(1, tenantId);
+            statement.setObject(2, findingId);
+            try (ResultSet rows = statement.executeQuery()) {
+                if (!rows.next()) {
+                    throw new IOException(
+                            "Decision Input snapshot Finding_ID no longer resolves");
+                }
+                return rows.getObject(1, UUID.class);
             }
         }
     }
