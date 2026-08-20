@@ -27,7 +27,11 @@ def main() -> None:
         "new PostgresDecisionInputSnapshotStore(connections, false)",
         "new PostgresDecisionInputSnapshotBuilder",
         "new DefaultDecisionInputSnapshotMaterializer(builder, snapshots)",
+        "new PostgresDecisionInputEvidenceResolver(connections, installedVersion)",
+        "Optional.of(evidenceResolver)",
         "Optional<DecisionRuntime> decisionRuntime",
+        "Optional<DecisionInputEvidenceResolver> evidenceResolver",
+        "this(methodologyPolicies, snapshots, materializer, Optional.empty())",
     )
     for marker in required_factory:
         if marker not in factory:
@@ -52,6 +56,7 @@ def main() -> None:
         "max(revision)",
         "current_policy",
         "active_policy",
+        "formulaengine",
     )
     lowered = (factory + " " + materializer).lower()
     for marker in forbidden:

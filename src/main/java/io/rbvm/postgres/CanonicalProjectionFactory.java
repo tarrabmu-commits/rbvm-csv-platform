@@ -2,6 +2,7 @@ package io.rbvm.postgres;
 
 import io.rbvm.csv.CanonicalProjection;
 import io.rbvm.csv.NoopCanonicalProjection;
+import io.rbvm.decision.DecisionInputEvidenceResolver;
 import io.rbvm.domain.DomainCatalog;
 import io.rbvm.domain.InMemoryDomainCatalog;
 
@@ -131,10 +132,13 @@ public final class CanonicalProjectionFactory {
                             methodologyPolicies,
                             installedVersion
                     );
+            PostgresDecisionInputEvidenceResolver evidenceResolver =
+                    new PostgresDecisionInputEvidenceResolver(connections, installedVersion);
             decisionRuntime = Optional.of(new DecisionRuntime(
                     methodologyPolicies,
                     snapshots,
-                    new DefaultDecisionInputSnapshotMaterializer(builder, snapshots)
+                    new DefaultDecisionInputSnapshotMaterializer(builder, snapshots),
+                    Optional.of(evidenceResolver)
             ));
         }
         return new RuntimeComponents(
@@ -355,12 +359,23 @@ public final class CanonicalProjectionFactory {
     public record DecisionRuntime(
             DecisionMethodologyPolicyStore methodologyPolicies,
             DecisionInputSnapshotStore snapshots,
-            DecisionInputSnapshotMaterializer materializer
+            DecisionInputSnapshotMaterializer materializer,
+            Optional<DecisionInputEvidenceResolver> evidenceResolver
     ) {
         public DecisionRuntime {
             methodologyPolicies = Objects.requireNonNull(methodologyPolicies, "methodologyPolicies");
             snapshots = Objects.requireNonNull(snapshots, "snapshots");
             materializer = Objects.requireNonNull(materializer, "materializer");
+            evidenceResolver = Objects.requireNonNull(evidenceResolver, "evidenceResolver");
+        }
+
+        /** Backward-compatible constructor through snapshot materialization runtime. */
+        public DecisionRuntime(
+                DecisionMethodologyPolicyStore methodologyPolicies,
+                DecisionInputSnapshotStore snapshots,
+                DecisionInputSnapshotMaterializer materializer
+        ) {
+            this(methodologyPolicies, snapshots, materializer, Optional.empty());
         }
     }
 }
