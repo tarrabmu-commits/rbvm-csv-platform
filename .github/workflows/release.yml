@@ -33,18 +33,18 @@ jobs:
       - name: Attest build provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
-          subject-path: dist/rbvm-csv-platform-0.19.0.jar
+          subject-path: dist/rbvm-csv-platform-0.20.0.jar
       - name: Attest SPDX SBOM
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
-          subject-path: dist/rbvm-csv-platform-0.19.0.jar
-          sbom-path: dist/rbvm-csv-platform-0.19.0.spdx.json
+          subject-path: dist/rbvm-csv-platform-0.20.0.jar
+          sbom-path: dist/rbvm-csv-platform-0.20.0.spdx.json
       - name: Publish immutable release files
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            dist/rbvm-csv-platform-0.19.0.jar \
-            dist/rbvm-csv-platform-0.19.0.jar.sha256 \
-            dist/rbvm-csv-platform-0.19.0.spdx.json \
+            dist/rbvm-csv-platform-0.20.0.jar \
+            dist/rbvm-csv-platform-0.20.0.jar.sha256 \
+            dist/rbvm-csv-platform-0.20.0.spdx.json \
             --verify-tag --generate-notes --title "RBVM CSV Platform $GITHUB_REF_NAME"
