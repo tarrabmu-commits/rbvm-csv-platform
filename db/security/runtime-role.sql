@@ -47,7 +47,9 @@ GRANT SELECT, INSERT ON
     rbvm.decision_methodology_source_allowlist,
     rbvm.decision_input_snapshot,
     rbvm.decision_input_dimension,
-    rbvm.decision_input_evidence_reference
+    rbvm.decision_input_evidence_reference,
+    rbvm.managed_asset,
+    rbvm.managed_asset_revision
 TO rbvm_runtime;
 
 GRANT SELECT ON
@@ -79,7 +81,9 @@ GRANT SELECT ON
     rbvm.current_network_reachability_evidence,
     rbvm.finding_network_reachability_evidence,
     rbvm.current_business_impact_evidence,
-    rbvm.finding_business_impact_evidence
+    rbvm.finding_business_impact_evidence,
+    rbvm.current_managed_asset,
+    rbvm.active_managed_asset
 TO rbvm_runtime;
 
 GRANT USAGE, SELECT ON SEQUENCE rbvm.case_audit_event_database_sequence TO rbvm_runtime;
@@ -103,3 +107,5 @@ REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.decision_methodology_source_allowlist FR
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.decision_input_snapshot FROM rbvm_runtime;
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.decision_input_dimension FROM rbvm_runtime;
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.decision_input_evidence_reference FROM rbvm_runtime;
+REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.managed_asset FROM rbvm_runtime;
+REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.managed_asset_revision FROM rbvm_runtime;
