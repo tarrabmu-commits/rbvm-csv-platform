@@ -68,6 +68,7 @@ public final class CanonicalProjectionFactory {
         Optional<NetworkReachabilityEvidenceReader> networkReachabilityEvidenceReader = Optional.empty();
         Optional<BusinessImpactImporter> businessImpactImporter = Optional.empty();
         Optional<BusinessImpactEvidenceReader> businessImpactEvidenceReader = Optional.empty();
+        Optional<DecisionRuntime> decisionRuntime = Optional.empty();
         if (installedVersion >= 9) {
             PostgresApplicabilityImporter importer = new PostgresApplicabilityImporter(
                     connections,
@@ -119,6 +120,23 @@ public final class CanonicalProjectionFactory {
                     new PostgresBusinessImpactEvidenceReader(connections)
             );
         }
+        if (installedVersion >= 17) {
+            PostgresDecisionMethodologyPolicyStore methodologyPolicies =
+                    new PostgresDecisionMethodologyPolicyStore(connections, false);
+            PostgresDecisionInputSnapshotStore snapshots =
+                    new PostgresDecisionInputSnapshotStore(connections, false);
+            PostgresDecisionInputSnapshotBuilder builder =
+                    new PostgresDecisionInputSnapshotBuilder(
+                            connections,
+                            methodologyPolicies,
+                            installedVersion
+                    );
+            decisionRuntime = Optional.of(new DecisionRuntime(
+                    methodologyPolicies,
+                    snapshots,
+                    new DefaultDecisionInputSnapshotMaterializer(builder, snapshots)
+            ));
+        }
         return new RuntimeComponents(
                 projection,
                 readCatalog,
@@ -135,7 +153,8 @@ public final class CanonicalProjectionFactory {
                 networkReachabilityImporter,
                 networkReachabilityEvidenceReader,
                 businessImpactImporter,
-                businessImpactEvidenceReader
+                businessImpactEvidenceReader,
+                decisionRuntime
         );
     }
 
@@ -155,7 +174,8 @@ public final class CanonicalProjectionFactory {
             Optional<NetworkReachabilityImporter> networkReachabilityImporter,
             Optional<NetworkReachabilityEvidenceReader> networkReachabilityEvidenceReader,
             Optional<BusinessImpactImporter> businessImpactImporter,
-            Optional<BusinessImpactEvidenceReader> businessImpactEvidenceReader
+            Optional<BusinessImpactEvidenceReader> businessImpactEvidenceReader,
+            Optional<DecisionRuntime> decisionRuntime
     ) {
         public RuntimeComponents {
             Objects.requireNonNull(canonicalProjection, "canonicalProjection");
@@ -174,6 +194,47 @@ public final class CanonicalProjectionFactory {
             networkReachabilityEvidenceReader = Objects.requireNonNull(networkReachabilityEvidenceReader, "networkReachabilityEvidenceReader");
             businessImpactImporter = Objects.requireNonNull(businessImpactImporter, "businessImpactImporter");
             businessImpactEvidenceReader = Objects.requireNonNull(businessImpactEvidenceReader, "businessImpactEvidenceReader");
+            decisionRuntime = Objects.requireNonNull(decisionRuntime, "decisionRuntime");
+        }
+
+        /** Backward-compatible constructor through the Business Impact V15 runtime layer. */
+        public RuntimeComponents(
+                CanonicalProjection canonicalProjection,
+                DomainCatalog readCatalog,
+                Optional<ApplicabilityImporter> applicabilityImporter,
+                Optional<ApplicabilityFindingExporter> applicabilityFindingExporter,
+                Optional<CvssV31Importer> cvssV31Importer,
+                Optional<CvssV31EvidenceReader> cvssV31EvidenceReader,
+                Optional<CisaKevImporter> cisaKevImporter,
+                Optional<CisaKevEvidenceReader> cisaKevEvidenceReader,
+                Optional<EpssImporter> epssImporter,
+                Optional<EpssEvidenceReader> epssEvidenceReader,
+                Optional<AssetContextImporter> assetContextImporter,
+                Optional<AssetContextEvidenceReader> assetContextEvidenceReader,
+                Optional<NetworkReachabilityImporter> networkReachabilityImporter,
+                Optional<NetworkReachabilityEvidenceReader> networkReachabilityEvidenceReader,
+                Optional<BusinessImpactImporter> businessImpactImporter,
+                Optional<BusinessImpactEvidenceReader> businessImpactEvidenceReader
+        ) {
+            this(
+                    canonicalProjection,
+                    readCatalog,
+                    applicabilityImporter,
+                    applicabilityFindingExporter,
+                    cvssV31Importer,
+                    cvssV31EvidenceReader,
+                    cisaKevImporter,
+                    cisaKevEvidenceReader,
+                    epssImporter,
+                    epssEvidenceReader,
+                    assetContextImporter,
+                    assetContextEvidenceReader,
+                    networkReachabilityImporter,
+                    networkReachabilityEvidenceReader,
+                    businessImpactImporter,
+                    businessImpactEvidenceReader,
+                    Optional.empty()
+            );
         }
 
         public RuntimeComponents(CanonicalProjection canonicalProjection, DomainCatalog readCatalog) {
@@ -265,7 +326,6 @@ public final class CanonicalProjectionFactory {
                     Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
         }
 
-
         /** Backward-compatible constructor through the Network Reachability V14 runtime capability layer. */
         public RuntimeComponents(
                 CanonicalProjection canonicalProjection,
@@ -288,6 +348,19 @@ public final class CanonicalProjectionFactory {
                     epssImporter, epssEvidenceReader, assetContextImporter, assetContextEvidenceReader,
                     networkReachabilityImporter, networkReachabilityEvidenceReader,
                     Optional.empty(), Optional.empty());
+        }
+    }
+
+    /** Complete Decision Input runtime capability. Exposed only when PostgreSQL schema V17+ exists. */
+    public record DecisionRuntime(
+            DecisionMethodologyPolicyStore methodologyPolicies,
+            DecisionInputSnapshotStore snapshots,
+            DecisionInputSnapshotMaterializer materializer
+    ) {
+        public DecisionRuntime {
+            methodologyPolicies = Objects.requireNonNull(methodologyPolicies, "methodologyPolicies");
+            snapshots = Objects.requireNonNull(snapshots, "snapshots");
+            materializer = Objects.requireNonNull(materializer, "materializer");
         }
     }
 }
