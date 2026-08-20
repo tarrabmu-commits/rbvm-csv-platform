@@ -1,6 +1,8 @@
 package io.rbvm.postgres;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 
 public final class PostgresManagedAssetRegistrySelfTest {
@@ -10,6 +12,7 @@ public final class PostgresManagedAssetRegistrySelfTest {
     public static void main(String[] args) throws Exception {
         rejectsPreV18Schema();
         acceptsV18SchemaWithoutOpeningConnection();
+        bundlesV18Migration();
         System.out.println("PostgresManagedAssetRegistrySelfTest: PASS");
     }
 
@@ -34,5 +37,16 @@ public final class PostgresManagedAssetRegistrySelfTest {
                 Clock.systemUTC()
         );
         assert registry.schemaVersion() == 18;
+    }
+
+    private static void bundlesV18Migration() throws Exception {
+        try (InputStream input = PostgresManagedAssetRegistrySelfTest.class.getResourceAsStream(
+                "/db/migration/V18__managed_asset_registry.sql")) {
+            assert input != null : "V18 migration must be bundled in runtime resources";
+            String sql = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+            assert sql.contains("CREATE TABLE rbvm.managed_asset (");
+            assert sql.contains("CREATE TABLE rbvm.managed_asset_revision (");
+            assert sql.contains("CREATE VIEW rbvm.current_managed_asset AS");
+        }
     }
 }
