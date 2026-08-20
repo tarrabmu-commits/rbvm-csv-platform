@@ -43,7 +43,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat .rbvm-bootstrap/v21/part-* | base64 -d > /tmp/rbvm-v21-publish.zip
+          cat \
+            .rbvm-bootstrap/v21/part-00 \
+            .rbvm-bootstrap/v21/part-03 \
+            .rbvm-bootstrap/v21/part-04 \
+            .rbvm-bootstrap/v21/part-05 \
+            .rbvm-bootstrap/v21/part-06 \
+            | base64 -d > /tmp/rbvm-v21-publish.zip
           rm -rf /tmp/rbvm-v21-publish
           mkdir -p /tmp/rbvm-v21-publish
           unzip -q /tmp/rbvm-v21-publish.zip -d /tmp/rbvm-v21-publish
