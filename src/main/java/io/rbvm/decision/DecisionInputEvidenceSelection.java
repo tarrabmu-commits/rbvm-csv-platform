@@ -1,7 +1,9 @@
 package io.rbvm.decision;
 
+import io.rbvm.decision.RbvmDecisionInputSnapshot.BindingReference;
 import io.rbvm.decision.RbvmDecisionInputSnapshot.DimensionState;
 import io.rbvm.decision.RbvmDecisionInputSnapshot.EvidenceReference;
+import io.rbvm.decision.RbvmDecisionInputSnapshot.NativeEvidenceKind;
 import io.rbvm.decision.RbvmDecisionMethodologyPolicy.EvidenceDimension;
 import io.rbvm.decision.RbvmDecisionMethodologyPolicy.EvidenceSelectionPolicy;
 import io.rbvm.decision.RbvmDecisionMethodologyPolicy.FreshnessMode;
@@ -27,12 +29,9 @@ public final class DecisionInputEvidenceSelection {
     }
 
     /**
-     * Selects latest admissible evidence independently per semantic source within each sub-grain.
-     *
-     * <p>Dimension state precedence is deliberately explicit because the snapshot contract has one
-     * state per dimension: AMBIGUOUS takes precedence over STALE; STALE over PRESENT; an empty
-     * admissible selection is MISSING. Stale references retained under AMBIGUOUS remain auditable
-     * through their observation timestamps and the immutable methodology freshness policy.</p>
+     * Selects latest admissible evidence independently per semantic source and native evidence kind
+     * within each sub-grain. The methodology allowlist still filters semantic source only; native
+     * kind prevents two independent native stores from being silently coalesced.
      */
     public static Selection select(
             EvidenceSelectionPolicy policy,
@@ -43,7 +42,7 @@ public final class DecisionInputEvidenceSelection {
         Objects.requireNonNull(evaluatedAt, "evaluatedAt");
         Objects.requireNonNull(candidates, "candidates");
 
-        Map<String, Map<String, List<Candidate>>> bySubgrainAndSource = new HashMap<>();
+        Map<String, Map<SourceIdentity, List<Candidate>>> bySubgrainAndSource = new HashMap<>();
         for (Candidate candidate : candidates) {
             Objects.requireNonNull(candidate, "candidates must not contain null");
             if (candidate.dimension() != policy.dimension()) {
@@ -56,9 +55,13 @@ public final class DecisionInputEvidenceSelection {
             if (!sourceAllowed(policy, candidate.evidenceSource())) {
                 continue;
             }
+            SourceIdentity sourceIdentity = new SourceIdentity(
+                    candidate.evidenceSource(),
+                    candidate.nativeEvidenceKind()
+            );
             bySubgrainAndSource
                     .computeIfAbsent(candidate.subgrainKey(), ignored -> new HashMap<>())
-                    .computeIfAbsent(candidate.evidenceSource(), ignored -> new ArrayList<>())
+                    .computeIfAbsent(sourceIdentity, ignored -> new ArrayList<>())
                     .add(candidate);
         }
 
@@ -69,12 +72,15 @@ public final class DecisionInputEvidenceSelection {
         List<String> subgrainKeys = new ArrayList<>(bySubgrainAndSource.keySet());
         subgrainKeys.sort(String::compareTo);
         for (String subgrainKey : subgrainKeys) {
-            Map<String, List<Candidate>> bySource = bySubgrainAndSource.get(subgrainKey);
+            Map<SourceIdentity, List<Candidate>> bySource =
+                    bySubgrainAndSource.get(subgrainKey);
             List<SelectedCandidate> subgrainSelected = new ArrayList<>();
 
-            List<String> sources = new ArrayList<>(bySource.keySet());
-            sources.sort(String::compareTo);
-            for (String source : sources) {
+            List<SourceIdentity> sources = new ArrayList<>(bySource.keySet());
+            sources.sort(Comparator
+                    .comparing(SourceIdentity::source)
+                    .thenComparing(item -> item.nativeEvidenceKind().name()));
+            for (SourceIdentity source : sources) {
                 List<Candidate> sourceCandidates = bySource.get(source);
                 Instant latest = sourceCandidates.stream()
                         .map(Candidate::observedAt)
@@ -82,7 +88,10 @@ public final class DecisionInputEvidenceSelection {
                         .orElseThrow();
                 sourceCandidates.stream()
                         .filter(candidate -> candidate.observedAt().equals(latest))
-                        .sorted(Comparator.comparing(Candidate::evidenceId))
+                        .sorted(Comparator
+                                .comparing((Candidate candidate) ->
+                                        candidate.nativeEvidenceKind().name())
+                                .thenComparing(Candidate::evidenceId))
                         .map(candidate -> new SelectedCandidate(
                                 candidate,
                                 isStale(policy, evaluatedAt, candidate.observedAt())
@@ -102,6 +111,7 @@ public final class DecisionInputEvidenceSelection {
         selected.sort(Comparator
                 .comparing((SelectedCandidate item) -> item.candidate().subgrainKey())
                 .thenComparing(item -> item.candidate().evidenceSource())
+                .thenComparing(item -> item.candidate().nativeEvidenceKind().name())
                 .thenComparing(item -> item.candidate().observedAt())
                 .thenComparing(item -> item.candidate().evidenceId()));
 
@@ -158,29 +168,71 @@ public final class DecisionInputEvidenceSelection {
     public record Candidate(
             EvidenceDimension dimension,
             String subgrainKey,
+            NativeEvidenceKind nativeEvidenceKind,
             UUID evidenceId,
             String evidenceSha256,
             String evidenceSource,
-            Instant observedAt
+            Instant observedAt,
+            BindingReference bindingReference
     ) {
+        /** Historical constructor for dimensions that have one native evidence store. */
+        public Candidate(
+                EvidenceDimension dimension,
+                String subgrainKey,
+                UUID evidenceId,
+                String evidenceSha256,
+                String evidenceSource,
+                Instant observedAt
+        ) {
+            this(
+                    dimension,
+                    subgrainKey,
+                    NativeEvidenceKind.defaultFor(dimension),
+                    evidenceId,
+                    evidenceSha256,
+                    evidenceSource,
+                    observedAt,
+                    null
+            );
+        }
+
         public Candidate {
             dimension = Objects.requireNonNull(dimension, "dimension");
             subgrainKey = requireText(subgrainKey, "subgrainKey", 1024);
+            nativeEvidenceKind = Objects.requireNonNull(
+                    nativeEvidenceKind,
+                    "nativeEvidenceKind"
+            );
+            if (!nativeEvidenceKind.supports(dimension)) {
+                throw new IllegalArgumentException(
+                        "nativeEvidenceKind is incompatible with candidate dimension");
+            }
             evidenceId = Objects.requireNonNull(evidenceId, "evidenceId");
             if (evidenceSha256 == null || !evidenceSha256.matches("[a-f0-9]{64}")) {
                 throw new IllegalArgumentException("evidenceSha256 must be lowercase SHA-256");
             }
             evidenceSource = requireText(evidenceSource, "evidenceSource", 256);
             observedAt = Objects.requireNonNull(observedAt, "observedAt");
+            if (nativeEvidenceKind == NativeEvidenceKind.MANAGED_ASSET_REVISION) {
+                Objects.requireNonNull(
+                        bindingReference,
+                        "managed asset revision candidate requires bindingReference"
+                );
+            } else if (bindingReference != null) {
+                throw new IllegalArgumentException(
+                        "bindingReference is only supported for managed asset revision candidates");
+            }
         }
 
         private EvidenceReference toEvidenceReference() {
             return new EvidenceReference(
                     dimension,
+                    nativeEvidenceKind,
                     evidenceId,
                     evidenceSha256,
                     evidenceSource,
-                    observedAt
+                    observedAt,
+                    bindingReference
             );
         }
     }
@@ -212,6 +264,13 @@ public final class DecisionInputEvidenceSelection {
     }
 
     private record SelectedCandidate(Candidate candidate, boolean stale) {
+    }
+
+    private record SourceIdentity(String source, NativeEvidenceKind nativeEvidenceKind) {
+        private SourceIdentity {
+            Objects.requireNonNull(source, "source");
+            Objects.requireNonNull(nativeEvidenceKind, "nativeEvidenceKind");
+        }
     }
 
     private static String requireText(String value, String field, int maximumLength) {
