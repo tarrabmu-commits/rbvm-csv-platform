@@ -1,5 +1,6 @@
 package io.rbvm.csv;
 
+import io.rbvm.asset.ManagedAssetSelfTest;
 import io.rbvm.decision.DecisionInputEvidenceSelectionSelfTest;
 import io.rbvm.decision.RbvmDecisionInputSnapshotSelfTest;
 import io.rbvm.decision.RbvmDecisionMethodologyPolicySelfTest;
@@ -27,6 +28,7 @@ public final class PlatformSelfTest {
         ApplicabilityCsvContractSelfTest.main(args);
         AssetContextCsvContractSelfTest.main(args);
         AssetClassificationGuideV1SelfTest.main(args);
+        ManagedAssetSelfTest.main(args);
         CvssV31BaseScoreCalculatorSelfTest.main(args);
         CvssV31CsvContractSelfTest.main(args);
         CisaKevEvidenceSelfTest.main(args);
