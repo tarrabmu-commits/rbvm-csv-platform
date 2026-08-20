@@ -6,6 +6,7 @@ import io.rbvm.decision.RbvmDecisionMethodologyPolicySelfTest;
 import io.rbvm.decision.RbvmResolvedDecisionInputSelfTest;
 import io.rbvm.postgres.DecisionInputSnapshotMaterializerSelfTest;
 import io.rbvm.postgres.DecisionRuntimeFactorySelfTest;
+import io.rbvm.postgres.PostgresDecisionInputEvidenceResolverSelfTest;
 import io.rbvm.postgres.PostgresDecisionInputSnapshotBuilderSelfTest;
 import io.rbvm.postgres.PostgresDecisionInputSnapshotStoreSelfTest;
 import io.rbvm.postgres.PostgresDecisionMethodologyPolicyStoreSelfTest;
@@ -51,6 +52,7 @@ public final class PlatformSelfTest {
         PostgresDecisionInputSnapshotBuilderSelfTest.main(args);
         DecisionInputSnapshotMaterializerSelfTest.main(args);
         DecisionRuntimeFactorySelfTest.main(args);
+        PostgresDecisionInputEvidenceResolverSelfTest.main(args);
         System.out.println("PlatformSelfTest: PASS");
     }
 }
