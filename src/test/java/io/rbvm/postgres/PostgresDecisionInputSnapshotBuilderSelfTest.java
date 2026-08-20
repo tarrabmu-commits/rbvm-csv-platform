@@ -342,7 +342,8 @@ public final class PostgresDecisionInputSnapshotBuilderSelfTest {
         }
 
         private PreparedStatement prepared(String sql) {
-            String normalized = " ".join(sql.split("\\s+")).toLowerCase(java.util.Locale.ROOT);
+            String normalized = String.join(" ", sql.split("\\s+"))
+                    .toLowerCase(java.util.Locale.ROOT);
             queries.add(normalized);
             Map<Integer, Object> parameters = new HashMap<>();
             return proxy(PreparedStatement.class, (proxy, method, args) -> {
