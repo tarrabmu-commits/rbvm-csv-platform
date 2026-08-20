@@ -3,13 +3,14 @@ name: apply-decision-input-v22
 on:
   push:
     branches: [agent/decision-input-v22]
+  pull_request:
 
 permissions:
   contents: write
 
 jobs:
   apply-and-compile:
-    if: ${{ !contains(github.event.head_commit.message, '[v22-applied]') }}
+    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[v22-applied]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -23,9 +24,13 @@ jobs:
           java-version: '21'
       - name: Apply exact-context V22 PostgreSQL patches
         run: |
-          python3 .rbvm-v22/03_builder.py
-          python3 .rbvm-v22/04_resolved_resolver.py
-          python3 .rbvm-v22/05_store_migrator.py
+          if grep -q 'RbvmDecisionInputSnapshot.BindingKind' src/main/java/io/rbvm/postgres/PostgresDecisionInputSnapshotBuilder.java; then
+            echo 'V22 PostgreSQL patch already applied'
+          else
+            python3 .rbvm-v22/03_builder.py
+            python3 .rbvm-v22/04_resolved_resolver.py
+            python3 .rbvm-v22/05_store_migrator.py
+          fi
       - name: Compile main and tests
         run: ./scripts/compile.sh --tests
       - name: Run platform self-tests
@@ -41,5 +46,9 @@ jobs:
             src/main/java/io/rbvm/postgres/PostgresDecisionInputSnapshotStore.java \
             src/main/java/io/rbvm/postgres/PostgresMigrator.java
           git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'No V22 core changes to commit'
+            exit 0
+          fi
           git commit -m 'Integrate managed asset context into Decision Input V2 [v22-applied]'
           git push origin HEAD:agent/decision-input-v22
