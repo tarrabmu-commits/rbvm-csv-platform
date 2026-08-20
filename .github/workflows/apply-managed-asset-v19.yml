@@ -32,23 +32,134 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git apply --whitespace=error .rbvm-bootstrap/patches/01-registry-read.patch
-          git apply --whitespace=error .rbvm-bootstrap/patches/02-registry-write.patch
+          cat > /tmp/apply_context_patch.py <<'PY'
+          from pathlib import Path
+          import sys
+
+          def clean_path(raw):
+              value = raw.strip().split('\t', 1)[0]
+              if value == '/dev/null':
+                  return value
+              if value.startswith('a/') or value.startswith('b/'):
+                  value = value[2:]
+              return value
+
+          def find_block(haystack, needle, start):
+              if not needle:
+                  return start
+              last = len(haystack) - len(needle)
+              for pos in range(start, last + 1):
+                  if haystack[pos:pos + len(needle)] == needle:
+                      return pos
+              for pos in range(0, min(start, last + 1)):
+                  if haystack[pos:pos + len(needle)] == needle:
+                      return pos
+              return -1
+
+          def apply_section(old_path, new_path, hunks, patch_name):
+              target = new_path if new_path != '/dev/null' else old_path
+              if target == '/dev/null':
+                  raise RuntimeError(f'{patch_name}: invalid /dev/null target')
+              path = Path(target)
+              if old_path == '/dev/null':
+                  current = []
+              else:
+                  if not path.is_file():
+                      raise RuntimeError(f'{patch_name}: target does not exist: {path}')
+                  current = path.read_text(encoding='utf-8').splitlines(keepends=True)
+              cursor = 0
+              for hunk_no, (old_lines, new_lines) in enumerate(hunks, 1):
+                  if not old_lines:
+                      if old_path != '/dev/null':
+                          raise RuntimeError(
+                              f'{patch_name}: hunk {hunk_no} has no old context for existing file {path}'
+                          )
+                      pos = cursor
+                  else:
+                      pos = find_block(current, old_lines, cursor)
+                      if pos < 0:
+                          preview = ''.join(old_lines[:6]).replace('\n', '\\n')
+                          raise RuntimeError(
+                              f'{patch_name}: hunk {hunk_no} old context not found in {path}: {preview}'
+                          )
+                  current[pos:pos + len(old_lines)] = new_lines
+                  cursor = pos + len(new_lines)
+              if new_path == '/dev/null':
+                  path.unlink()
+              else:
+                  path.parent.mkdir(parents=True, exist_ok=True)
+                  path.write_text(''.join(current), encoding='utf-8')
+
+          def apply_patch(patch_path):
+              lines = patch_path.read_text(encoding='utf-8').splitlines(keepends=True)
+              i = 0
+              sections = 0
+              while i < len(lines):
+                  if not lines[i].startswith('--- '):
+                      i += 1
+                      continue
+                  if i + 1 >= len(lines) or not lines[i + 1].startswith('+++ '):
+                      raise RuntimeError(f'{patch_path.name}: malformed file header at line {i + 1}')
+                  old_path = clean_path(lines[i][4:])
+                  new_path = clean_path(lines[i + 1][4:])
+                  i += 2
+                  hunks = []
+                  while i < len(lines) and not lines[i].startswith('--- '):
+                      if not lines[i].startswith('@@'):
+                          i += 1
+                          continue
+                      i += 1
+                      old_lines = []
+                      new_lines = []
+                      while i < len(lines):
+                          line = lines[i]
+                          if line.startswith('@@') or (
+                              line.startswith('--- ')
+                              and i + 1 < len(lines)
+                              and lines[i + 1].startswith('+++ ')
+                          ):
+                              break
+                          if line.startswith(' '):
+                              old_lines.append(line[1:])
+                              new_lines.append(line[1:])
+                          elif line.startswith('-'):
+                              old_lines.append(line[1:])
+                          elif line.startswith('+'):
+                              new_lines.append(line[1:])
+                          elif line.startswith('\\ No newline at end of file'):
+                              pass
+                          else:
+                              raise RuntimeError(
+                                  f'{patch_path.name}: unsupported hunk line at {i + 1}: {line!r}'
+                              )
+                          i += 1
+                      hunks.append((old_lines, new_lines))
+                  if not hunks:
+                      raise RuntimeError(f'{patch_path.name}: no hunks for {old_path} -> {new_path}')
+                  apply_section(old_path, new_path, hunks, patch_path.name)
+                  sections += 1
+              if sections == 0:
+                  raise RuntimeError(f'{patch_path.name}: no file sections')
+              print(f'{patch_path.name}: applied {sections} file section(s)')
+
+          for arg in sys.argv[1:]:
+              apply_patch(Path(arg))
+          PY
           cat .rbvm-bootstrap/remaining/part-* | base64 -d > /tmp/rbvm-v19-remaining.zip
+          rm -rf /tmp/rbvm-v19-patches
           mkdir -p /tmp/rbvm-v19-patches
           unzip -q /tmp/rbvm-v19-remaining.zip -d /tmp/rbvm-v19-patches
-          for patch in \
-            03-api.patch \
-            04-http-runtime.patch \
-            05-api-test.patch \
-            06-http-test.patch \
-            07-test-wiring.patch \
-            08-docs.patch \
-            09-openapi.patch \
-            10-verification-version.patch
-          do
-            git apply --whitespace=error "/tmp/rbvm-v19-patches/$patch"
-          done
+          python3 /tmp/apply_context_patch.py \
+            .rbvm-bootstrap/patches/01-registry-read.patch \
+            .rbvm-bootstrap/patches/02-registry-write.patch \
+            /tmp/rbvm-v19-patches/03-api.patch \
+            /tmp/rbvm-v19-patches/04-http-runtime.patch \
+            /tmp/rbvm-v19-patches/05-api-test.patch \
+            /tmp/rbvm-v19-patches/06-http-test.patch \
+            /tmp/rbvm-v19-patches/07-test-wiring.patch \
+            /tmp/rbvm-v19-patches/08-docs.patch \
+            /tmp/rbvm-v19-patches/09-openapi.patch \
+            /tmp/rbvm-v19-patches/10-verification-version.patch
           sed -i 's/0\.18\.0/0.19.0/g' \
             .github/workflows/verify.yml \
             .github/workflows/release.yml \
