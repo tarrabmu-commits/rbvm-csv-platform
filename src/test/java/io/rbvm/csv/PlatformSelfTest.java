@@ -1,6 +1,7 @@
 package io.rbvm.csv;
 
 import io.rbvm.asset.ManagedAssetSelfTest;
+import io.rbvm.asset.ScannerManagedAssetLinkSelfTest;
 import io.rbvm.decision.DecisionInputEvidenceSelectionSelfTest;
 import io.rbvm.decision.RbvmDecisionInputSnapshotSelfTest;
 import io.rbvm.decision.RbvmDecisionMethodologyPolicySelfTest;
@@ -13,6 +14,7 @@ import io.rbvm.postgres.PostgresDecisionInputSnapshotStoreSelfTest;
 import io.rbvm.postgres.PostgresDecisionMethodologyPolicyStoreSelfTest;
 import io.rbvm.postgres.PostgresFoundationSelfTest;
 import io.rbvm.postgres.PostgresManagedAssetRegistrySelfTest;
+import io.rbvm.postgres.PostgresScannerManagedAssetLinkRegistrySelfTest;
 
 import io.rbvm.domain.DomainCatalogSelfTest;
 import io.rbvm.security.ApiSecuritySelfTest;
@@ -30,6 +32,7 @@ public final class PlatformSelfTest {
         AssetContextCsvContractSelfTest.main(args);
         AssetClassificationGuideV1SelfTest.main(args);
         ManagedAssetSelfTest.main(args);
+        ScannerManagedAssetLinkSelfTest.main(args);
         ManagedAssetApiSelfTest.main(args);
         CvssV31BaseScoreCalculatorSelfTest.main(args);
         CvssV31CsvContractSelfTest.main(args);
@@ -54,6 +57,7 @@ public final class PlatformSelfTest {
         CanonicalProjectionSelfTest.main(args);
         PostgresFoundationSelfTest.main(args);
         PostgresManagedAssetRegistrySelfTest.main(args);
+        PostgresScannerManagedAssetLinkRegistrySelfTest.main(args);
         PostgresDecisionMethodologyPolicyStoreSelfTest.main(args);
         PostgresDecisionInputSnapshotStoreSelfTest.main(args);
         PostgresDecisionInputSnapshotBuilderSelfTest.main(args);

@@ -101,15 +101,16 @@ The HTTP boundary preserves server-owned audit metadata: the authenticated princ
 
 See `docs/MANAGED_ASSET_API_V1.md` for the request contract, pagination, ETag/If-Match behavior, status mapping, and authorization requirements.
 
-## Deliberate boundary after Increment 19
+## State after Increment 21
 
-The managed-asset registry and its HTTP API still do **not**:
+Increment 20 added the browser asset-management UI. Increment 21 adds `SCANNER_MANAGED_ASSET_LINK_V1`, an explicit customer-confirmed, append-only link-decision stream between scanner `rbvm.asset` identities and durable `rbvm.managed_asset` identities. The link is never inferred from hostname, IP, OS, product, or vulnerability intelligence.
 
-- add a browser asset-management UI;
-- link `managed_asset` to scanner `rbvm.asset` identities;
-- infer that link from hostname, IP, OS, product, or vulnerability intelligence;
+The managed-asset registry still does **not**:
+
+- expose scanner-link mutation controls through HTTP or the browser UI;
 - alter V13 imported Asset Context evidence;
-- change Decision Input selection or resolution;
+- choose precedence between V13 Asset Context and managed-asset context;
+- feed managed-asset context into Decision Input selection or resolution;
 - derive Risk, Priority, SLA, treatment, or Formula output.
 
-The next semantic step is an explicit customer-controlled managed-asset ↔ scanner-asset identity link. Only after that association exists should customer-managed context be wired into Decision Input.
+The next semantic step is Decision Input integration with an explicit, versioned rule for how linked managed-asset customer context coexists with V13 Asset Context evidence.

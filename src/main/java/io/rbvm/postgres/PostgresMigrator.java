@@ -37,7 +37,8 @@ public final class PostgresMigrator {
             new Migration(15, "V15__business_impact_persistence.sql"),
             new Migration(16, "V16__decision_methodology_policy_persistence.sql"),
             new Migration(17, "V17__decision_input_snapshot_persistence.sql"),
-            new Migration(18, "V18__managed_asset_registry.sql")
+            new Migration(18, "V18__managed_asset_registry.sql"),
+            new Migration(19, "V19__scanner_managed_asset_link.sql")
     );
 
     private final JdbcConnectionFactory connections;

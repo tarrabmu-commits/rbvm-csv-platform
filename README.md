@@ -1,4 +1,4 @@
-# RBVM CSV Platform — Increment 20
+# RBVM CSV Platform — Increment 21
 
 منصة محلية قابلة للتشغيل لإدخال `WAZUH_CSV_V1` أوعقد `WAZUH_CSV_V2` الاختياري وتحويل الأدلة إلى
 نموذج RBVM موحّد: Assets وVulnerabilities وComponents وObservations وExposures
@@ -20,10 +20,11 @@
 - Asset Context مستقلة عبر `ASSET_CONTEXT_CSV_V1` كدليل تنظيمي على مستوى الـAsset، مع Environment وBusiness Service وOwner وqualitative Business Criticality وsource SHA-256؛ ولا تتحول هذه القيم تلقائياً إلى risk أوpriority.
 - Network Reachability مستقلة عبر `NETWORK_REACHABILITY_CSV_V1` كدليل تقني scoped حسب origin + endpoint + source + time؛ غياب row لا يعني `NOT_REACHABLE`، و`NOT_REACHABLE` لا يعني global isolation.
 - Business/Mission Impact مستقلة عبر `BUSINESS_IMPACT_CSV_V1` كدليل نوعي source-reported على مستوى Asset + Business Service + impact dimension؛ `SEVERE|HIGH|MODERATE|LOW|NEGLIGIBLE|UNKNOWN` تبقى classifications بلا numeric weight.
-- PostgreSQL V9 يحفظ Applicability history، V10 يحفظ CVSS history، V11 يحفظ CISA KEV snapshot-bound history، V12 يحفظ EPSS score snapshots وCVE score history، وV13 يحفظ immutable Asset Context snapshots/evidence، وV14 يحفظ immutable scoped Network Reachability snapshots/evidence، وV15 يحفظ immutable qualitative Business/Mission Impact snapshots/evidence، وV16/V17 يحفظان Decision Methodology وDecision Input snapshots، وV18 يحفظ customer-managed asset identity مع immutable revision history.
+- PostgreSQL V9 يحفظ Applicability history، V10 يحفظ CVSS history، V11 يحفظ CISA KEV snapshot-bound history، V12 يحفظ EPSS score snapshots وCVE score history، وV13 يحفظ immutable Asset Context snapshots/evidence، وV14 يحفظ immutable scoped Network Reachability snapshots/evidence، وV15 يحفظ immutable qualitative Business/Mission Impact snapshots/evidence، وV16/V17 يحفظان Decision Methodology وDecision Input snapshots، وV18 يحفظ customer-managed asset identity مع immutable revision history، وV19 يحفظ explicit scanner↔managed-asset link decisions كسجل append-only.
 - API مخصصة لاستيراد Applicability وCVSS وKEV وEPSS وAsset Context وNetwork Reachability وBusiness/Mission Impact وقراءة current evidence، مع Managed Asset API لإنشاء وقراءة وتعديل inventory العميل عبر revisions غير قابلة للمسح، وصفحات تشغيل مستقلة على `/cvss` و`/kev` و`/epss` و`/asset-context` و`/reachability` و`/business-impact` و`/assets`.
 - Managed Asset writes تستخدم strong `ETag`/`If-Match` optimistic concurrency؛ `changedBy` مشتق من الهوية الموثقة، ولا يوجد `DELETE` لأن retirement/reactivation revisions صريحة ومدققة.
-- Managed Assets UI على `/assets` تستهلك API V1 فقط: list/create/detail/history وcomplete-state immutable revisions مع conflict review صريح عند `412`، بدون scanner linking أوscoring.
+- Managed Assets UI على `/assets` تستهلك API V1 فقط: list/create/detail/history وcomplete-state immutable revisions مع conflict review صريح عند `412`؛ Increment 21 يضيف link persistence داخلياً لكنه لا يضيف link controls للـUI بعد.
+- Scanner↔Managed Asset linking صار explicit customer-confirmed فقط عبر `SCANNER_MANAGED_ASSET_LINK_V1`: غياب history يعني never assessed، و`UNLINKED` قرار صريح مختلف عن الغياب؛ لا hostname/OS/product/intelligence inference ولا hidden winner.
 - current CVSS/KEV/EPSS وAsset Context وNetwork Reachability وBusiness/Mission Impact evidence تبقى per-source من دون اختيار winner مخفي أوthreshold-to-priority mapping؛ Business Criticality تبقى qualitative evidence فقط.
 - ملخص coverage وfreshness للاستخبارات القديمة مع حد stale معلن قدره 7 أيام وتوزيع الأولوية.
 - تحديث استخبارات مجدول وآمن مع cache مربوط ببصمة CVE ولقطات ذرية قابلة للعمل offline.
@@ -45,8 +46,8 @@
 - PostgreSQL projection متزامنة: Import لا يكتمل قبل Commit معاملة قاعدة البيانات.
 - إعادة إرسال آمنة للـImports وأحداث Workflow من الأدلة المحلية بعد الانقطاع.
 - PostgreSQL Read Catalog لملخص الكاتالوج والبحث وتفاصيل الحالات.
-- Migration runner بتدقيق SHA-256 وقفل PostgreSQL advisory وتسلسل V1–V18.
-- دور Runtime محدود، وحراس append-only يمنعون تعديل أوحذف أدلة التدقيق وApplicability/CVSS/KEV/EPSS/Asset Context وManaged Asset history.
+- Migration runner بتدقيق SHA-256 وقفل PostgreSQL advisory وتسلسل V1–V19.
+- دور Runtime محدود، وحراس append-only يمنعون تعديل أوحذف أدلة التدقيق وApplicability/CVSS/KEV/EPSS/Asset Context وManaged Asset وscanner-link history.
 - TLS `verify-full` وأدوات Backup/Restore واختبار قطع الاتصال.
 - Health يصرّح بمصدر القراءة وحالة PostgreSQL reconciliation وبقدرات Applicability وCVSS v3.1 وCISA KEV وEPSS وAsset Context وManaged Assets.
 - Bearer API keys ببصمات SHA-256 فقط وRBAC لأدوار Viewer/Operator/Admin.
@@ -56,7 +57,7 @@
 - JAR reproducible مع SHA-256 وSPDX 2.3 SBOM وGitHub artifact attestations.
 - كل GitHub Action مثبت على commit SHA كامل، مع CodeQL وجدول release موثّق.
 - GitHub Actions للتحقق والبناء، واختبار تعافي حي بعد إعادة تشغيل PostgreSQL.
-- OpenAPI 0.20.0 موحّد مع runtime Applicability/CVSS/CISA KEV/EPSS/Asset Context/Network Reachability/Business Impact وManaged Assets، إضافة إلى migrations واختبارات contract/domain/HTTP.
+- OpenAPI 0.21.0 موحّد مع runtime Applicability/CVSS/CISA KEV/EPSS/Asset Context/Network Reachability/Business Impact وManaged Assets، إضافة إلى migrations واختبارات contract/domain/HTTP.
 
 ## التشغيل المحلي
 
@@ -120,7 +121,7 @@ http://127.0.0.1:8080/assets
 
 ```bash
 ./scripts/build-distribution.sh
-java -jar dist/rbvm-csv-platform-0.20.0.jar
+java -jar dist/rbvm-csv-platform-0.21.0.jar
 ```
 
 ولتشغيل الاختبارات ثم تحليل ملف من CLI:
@@ -133,10 +134,10 @@ java -jar dist/rbvm-csv-platform-0.20.0.jar
 
 ```bash
 ./scripts/verify-reproducible-build.sh
-sha256sum --check dist/rbvm-csv-platform-0.20.0.jar.sha256
+sha256sum --check dist/rbvm-csv-platform-0.21.0.jar.sha256
 ```
 
-ينشر tag مطابق مثل `v0.20.0` Release يحتوي JAR وchecksum وSPDX SBOM، ويولد
+ينشر tag مطابق مثل `v0.21.0` Release يحتوي JAR وchecksum وSPDX SBOM، ويولد
 GitHub build-provenance وSBOM attestations. يتحقق workflow من تطابق tag مع
 Gradle وOpenAPI واسم الحزمة قبل النشر.
 
