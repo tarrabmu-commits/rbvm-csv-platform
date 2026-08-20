@@ -80,8 +80,8 @@ public final class PostgresManagedAssetRegistry implements ManagedAssetRegistry 
                 UUID tenantId = requireTenant(connection);
                 ManagedAsset existing = loadById(connection, tenantId, managedAssetId);
                 if (existing != null) {
-                    MutationStatus status = Objects.equals(
-                            existing.customerAssetKey(), normalizedCustomerKey)
+                    MutationStatus status = existing.currentRevision().revision() == 1
+                            && Objects.equals(existing.customerAssetKey(), normalizedCustomerKey)
                             && initialRevision.sameCustomerState(existing.currentRevision())
                             ? MutationStatus.REPLAYED
                             : MutationStatus.ASSET_ID_CONFLICT;
