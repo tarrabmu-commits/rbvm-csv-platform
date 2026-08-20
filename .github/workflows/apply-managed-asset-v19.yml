@@ -1,0 +1,93 @@
+name: apply-managed-asset-v19
+
+on:
+  push:
+    branches: ['agent/managed-asset-api-v19']
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Install verifier dependency
+        run: python -m pip install --require-hashes -r scripts/verification-requirements.txt
+      - name: Apply reviewed Increment 19 patch set
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --whitespace=error .rbvm-bootstrap/patches/01-registry-read.patch
+          git apply --whitespace=error .rbvm-bootstrap/patches/02-registry-write.patch
+          cat .rbvm-bootstrap/remaining/part-* | base64 -d > /tmp/rbvm-v19-remaining.zip
+          mkdir -p /tmp/rbvm-v19-patches
+          unzip -q /tmp/rbvm-v19-remaining.zip -d /tmp/rbvm-v19-patches
+          for patch in \
+            03-api.patch \
+            04-http-runtime.patch \
+            05-api-test.patch \
+            06-http-test.patch \
+            07-test-wiring.patch \
+            08-docs.patch \
+            09-openapi.patch \
+            10-verification-version.patch
+          do
+            git apply --whitespace=error "/tmp/rbvm-v19-patches/$patch"
+          done
+          sed -i 's/0\.18\.0/0.19.0/g' \
+            .github/workflows/verify.yml \
+            .github/workflows/release.yml \
+            scripts/verify-reproducible-build.sh
+      - name: Verify release contract and repository
+        run: |
+          ./scripts/verify-release-version.sh v0.19.0
+          ./scripts/verify.sh
+          ./scripts/verify-reproducible-build.sh
+      - name: Commit verified Increment 19
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm -r -- .rbvm-bootstrap
+          git rm -- .github/workflows/apply-managed-asset-v19.yml
+          git config user.name 'rbvm-ci-bootstrap'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -- \
+            .github/workflows/verify.yml \
+            .github/workflows/release.yml \
+            README.md \
+            api/openapi.yaml \
+            build.gradle.kts \
+            docs/INCREMENT_19_VALIDATION.md \
+            docs/MANAGED_ASSET_API_V1.md \
+            docs/MANAGED_ASSET_REGISTRY_V1.md \
+            scripts/build-distribution.sh \
+            scripts/verify-api.py \
+            scripts/verify-managed-asset-api.py \
+            scripts/verify-reproducible-build.sh \
+            scripts/verify.sh \
+            src/main/java/io/rbvm/asset/ManagedAssetRegistry.java \
+            src/main/java/io/rbvm/csv/CsvPlatformServer.java \
+            src/main/java/io/rbvm/csv/ManagedAssetApi.java \
+            src/main/java/io/rbvm/csv/ManagedAssetHttpRouter.java \
+            src/main/java/io/rbvm/postgres/CanonicalProjectionFactory.java \
+            src/main/java/io/rbvm/postgres/PostgresManagedAssetReadStore.java \
+            src/main/java/io/rbvm/postgres/PostgresManagedAssetRegistry.java \
+            src/test/java/io/rbvm/csv/CsvManagedAssetHttpSelfTest.java \
+            src/test/java/io/rbvm/csv/ManagedAssetApiSelfTest.java \
+            src/test/java/io/rbvm/csv/PlatformSelfTest.java \
+            src/test/java/io/rbvm/postgres/DecisionRuntimeFactorySelfTest.java
+          git diff --cached --check
+          git commit -m 'Add V19 managed asset API'
+          git push origin HEAD:agent/managed-asset-api-v19
