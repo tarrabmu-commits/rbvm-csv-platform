@@ -48,7 +48,8 @@ CREATE TABLE rbvm.managed_asset_revision (
     change_note text NOT NULL DEFAULT '',
     recorded_at timestamptz NOT NULL,
     UNIQUE (tenant_id, id),
-    PRIMARY KEY (tenant_id, managed_asset_id, revision),
+    CONSTRAINT managed_asset_one_numbered_revision
+        UNIQUE (tenant_id, managed_asset_id, revision),
     CONSTRAINT managed_asset_revision_identity
         UNIQUE (tenant_id, managed_asset_id, id),
     CONSTRAINT managed_asset_guide_basis CHECK (
