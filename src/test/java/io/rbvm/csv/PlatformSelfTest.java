@@ -12,6 +12,7 @@ import io.rbvm.postgres.PostgresDecisionInputSnapshotBuilderSelfTest;
 import io.rbvm.postgres.PostgresDecisionInputSnapshotStoreSelfTest;
 import io.rbvm.postgres.PostgresDecisionMethodologyPolicyStoreSelfTest;
 import io.rbvm.postgres.PostgresFoundationSelfTest;
+import io.rbvm.postgres.PostgresManagedAssetRegistrySelfTest;
 
 import io.rbvm.domain.DomainCatalogSelfTest;
 import io.rbvm.security.ApiSecuritySelfTest;
@@ -50,6 +51,7 @@ public final class PlatformSelfTest {
         CsvBusinessImpactHttpSelfTest.main(args);
         CanonicalProjectionSelfTest.main(args);
         PostgresFoundationSelfTest.main(args);
+        PostgresManagedAssetRegistrySelfTest.main(args);
         PostgresDecisionMethodologyPolicyStoreSelfTest.main(args);
         PostgresDecisionInputSnapshotStoreSelfTest.main(args);
         PostgresDecisionInputSnapshotBuilderSelfTest.main(args);
