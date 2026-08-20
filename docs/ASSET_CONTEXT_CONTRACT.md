@@ -50,6 +50,25 @@ Within one file, the observation key is:
 
 These same immutable-history rules are intended for V13 persistence.
 
+## Customer classification guidance
+
+`ASSET_CLASSIFICATION_GUIDE_V1` is the versioned customer-facing guide for choosing the organizational values represented by this contract. Its standards traceability is documented by `RBVM_STANDARDS_BASELINE_V1`.
+
+The guide is deliberately advisory:
+
+- it explains the current canonical `Environment` and `Business_Criticality` choices;
+- it helps the customer identify a `Business_Service` and accountable `Business_Owner`;
+- it distinguishes direct standards concepts from platform mappings and RBVM-specific policy;
+- it preserves `UNKNOWN` rather than forcing a guessed answer;
+- it does not calculate, recommend, or persist a risk score, priority, SLA, or hidden numeric classification;
+- the customer remains the authority that confirms the Asset Context evidence.
+
+The platform must not infer customer context from Wazuh asset names, OS names, product names, CVEs, CVSS, KEV, EPSS, or finding counts.
+
+`MISSION_CRITICAL` is a platform/customer organizational label informed by NIST Business Impact Analysis concepts. It is not presented as a literal FIPS 199 category. The exact Environment vocabulary is also an RBVM platform taxonomy rather than a NIST taxonomy.
+
+The current CSV contract does not contain a guide-revision column. A future direct customer UI write path may preserve guide revision as additional provenance only through an explicit backward-compatible contract/schema evolution; existing fields must not be silently overloaded.
+
 ## Deliberate boundary
 
 `Business_Criticality` is not a numeric multiplier and `Environment` is not a risk coefficient. This contract does not contain or derive:

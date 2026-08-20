@@ -12,6 +12,7 @@
     header { display:flex; justify-content:space-between; gap:24px; align-items:flex-start; }
     h1 { margin:0 0 8px; font-size:clamp(2rem,5vw,4rem); letter-spacing:-.04em; }
     h2 { margin:0 0 16px; font-size:1.25rem; }
+    h3 { margin:0 0 10px; font-size:1.05rem; }
     p { margin:0; color:var(--muted); line-height:1.8; }
     a { color:var(--accent); }
     .badge { border:1px solid var(--border); border-radius:999px; padding:9px 13px; color:var(--accent); white-space:nowrap; }
@@ -21,8 +22,8 @@
     label { display:grid; gap:8px; color:var(--muted); font-size:.9rem; }
     input { width:100%; min-height:49px; border:1px solid var(--border); background:rgba(4,7,17,.55); color:var(--text); border-radius:12px; padding:13px 14px; font:inherit; }
     input[type=file]::file-selector-button { background:#24443f; color:var(--text); border:0; border-radius:8px; padding:8px 12px; margin-inline-end:10px; cursor:pointer; }
-    button { min-height:49px; border:0; border-radius:12px; padding:14px 20px; background:var(--accent); color:#071713; font-weight:800; cursor:pointer; }
-    button.secondary { background:#d7f3eb; }
+    button,.button-link { min-height:49px; border:0; border-radius:12px; padding:14px 20px; background:var(--accent); color:#071713; font-weight:800; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; }
+    button.secondary,.button-link.secondary { background:#d7f3eb; }
     button:disabled { opacity:.5; cursor:wait; }
     .status { min-height:28px; margin-top:14px; color:var(--muted); }
     .status.error { color:var(--danger); }
@@ -39,8 +40,22 @@
     code { direction:ltr; unicode-bidi:embed; }
     .issues { margin-top:16px; white-space:pre-wrap; direction:ltr; text-align:left; color:var(--muted); font-size:.82rem; }
     .hidden { display:none !important; }
-    @media (max-width:950px) { header{display:block}.badge{display:inline-block;margin-top:16px}.grid,.filters{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)} }
-    @media (max-width:480px) { .cards{grid-template-columns:1fr} }
+    .guide-nav { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:18px; }
+    .guide-tab { background:rgba(145,215,198,.12); color:var(--text); border:1px solid var(--border); }
+    .guide-tab.active { background:var(--accent); color:#071713; }
+    .guide-panel { margin-top:18px; }
+    .guide-options { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; margin-top:16px; }
+    .guide-option { padding:18px; border:1px solid var(--border); border-radius:16px; background:rgba(4,7,17,.38); }
+    .guide-option code { display:inline-block; color:var(--accent); font-weight:800; margin-bottom:8px; }
+    .guide-option p { font-size:.92rem; }
+    .questions { margin:14px 0 0; padding-inline-start:22px; color:var(--muted); line-height:1.8; }
+    .questions li + li { margin-top:5px; }
+    .origin { display:inline-block; margin-top:8px; padding:5px 9px; border:1px solid var(--border); border-radius:999px; color:var(--warn); font-size:.76rem; }
+    .reference-list { display:grid; gap:10px; margin-top:14px; }
+    .reference-list a { display:block; padding:13px 15px; border:1px solid var(--border); border-radius:12px; background:rgba(4,7,17,.32); text-decoration:none; }
+    .guide-actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:18px; }
+    @media (max-width:950px) { header{display:block}.badge{display:inline-block;margin-top:16px}.grid,.filters{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)}.guide-nav{grid-template-columns:repeat(2,1fr)}.guide-options{grid-template-columns:1fr} }
+    @media (max-width:480px) { .cards,.guide-nav{grid-template-columns:1fr} }
   </style>
 </head>
 <body>
@@ -49,68 +64,182 @@
     <div>
       <h1>Asset Context Evidence</h1>
       <p>Organizational context على مستوى الـasset: environment، business service، owner، وqualitative Business Criticality مع provenance كامل، بدون تحويلها تلقائياً إلى Risk أو Priority.</p>
-      <p><a href="/">العودة للمنصة الرئيسية</a> · <a href="/cvss">CVSS v3.1</a> · <a href="/kev">CISA KEV</a> · <a href="/epss">EPSS</a></p>
+      <p><a href="/">العودة للمنصة الرئيسية</a> · <a href="/cvss">CVSS v3.1</a> · <a href="/kev">CISA KEV</a> · <a href="/epss">EPSS</a> · <a href="/asset-context?guide=1">دليل اختيار Asset Context</a></p>
     </div>
     <div class="badge">ASSET_CONTEXT_CSV_V1 · PostgreSQL V13+</div>
   </header>
 
-  <section class="panel">
-    <h2>الدخول</h2>
-    <div class="grid">
-      <label>API access token
-        <input id="apiToken" type="password" autocomplete="off" spellcheck="false" placeholder="الصق مفتاح الوصول هنا">
-      </label>
-      <button id="saveToken" class="secondary">استخدام المفتاح</button>
-    </div>
-    <div id="healthMessage" class="status">جاري التحقق من Asset Context runtime capability…</div>
-  </section>
+  <div id="contextWorkspace">
+    <section class="panel">
+      <h2>الدخول</h2>
+      <div class="grid">
+        <label>API access token
+          <input id="apiToken" type="password" autocomplete="off" spellcheck="false" placeholder="الصق مفتاح الوصول هنا">
+        </label>
+        <button id="saveToken" class="secondary">استخدام المفتاح</button>
+      </div>
+      <div id="healthMessage" class="status">جاري التحقق من Asset Context runtime capability…</div>
+    </section>
 
-  <section class="panel">
-    <h2>1. استيراد ASSET_CONTEXT_CSV_V1</h2>
-    <div class="grid">
-      <label>ملف Asset Context CSV
-        <input id="contextFile" type="file" accept=".csv,text/csv">
-      </label>
-      <button id="importContext">استيراد الدليل</button>
-    </div>
-    <div id="importMessage" class="status"></div>
-    <div id="importResult" class="hidden">
-      <div id="importCards" class="cards"></div>
-      <div id="issues" class="issues"></div>
-    </div>
-    <p class="note">الـimporter يحل الصفوف إلى assets موجودة مسبقاً فقط. Asset غير موجود في tenant/source profile يتم quarantine ولا يتم إنشاؤه من ملف السياق.</p>
-  </section>
+    <section class="panel">
+      <h2>اختيار بيانات الأصل</h2>
+      <p>بيانات Asset Context يجب أن تأتي من معرفة المؤسسة نفسها، وليس من اسم السيرفر أو CVSS/KEV/EPSS. إذا كنت غير متأكد من معنى الخيارات افتح الدليل المعياري قبل تجهيز أو استيراد السياق.</p>
+      <div class="guide-actions">
+        <a class="button-link" href="/asset-context?guide=1">ساعدني أختار القيم</a>
+      </div>
+      <p class="note">الدليل يشرح الخيارات ومتى تستخدمها ويعرض أساسها المعياري. لا يحسب Risk Score ولا يحفظ اختياراً بالنيابة عن الزبون.</p>
+    </section>
 
-  <section class="panel">
-    <h2>2. Current Per-Source Asset Context</h2>
-    <div class="filters">
-      <label>Asset name / source ID prefix
-        <input id="assetFilter" placeholder="web-">
-      </label>
-      <label>Source profile
-        <input id="profileFilter" placeholder="wazuh-primary">
-      </label>
-      <label>Context source
-        <input id="sourceFilter" placeholder="CMDB inventory export">
-      </label>
-      <label>Limit
-        <input id="limit" type="number" min="1" max="500" value="100">
-      </label>
-      <button id="refresh" class="secondary">تحديث</button>
-    </div>
-    <div id="evidenceMessage" class="status"></div>
-    <div id="evidenceCards" class="cards"></div>
-    <div class="scroll">
-      <table>
-        <thead><tr><th>Asset</th><th>Source Profile</th><th>Identity Basis</th><th>Source ID</th><th>Environment</th><th>Business Service</th><th>Business Owner</th><th>Business Criticality</th><th>Context Source</th><th>Source SHA-256</th><th>Observed At</th><th>Evidence Ingested</th><th>Snapshot Ingested</th></tr></thead>
-        <tbody id="evidenceRows"></tbody>
-      </table>
-    </div>
-    <p class="note warning">Business Criticality هنا qualitative evidence فقط—ليست numeric weight ولا Risk Score ولا Priority ولا SLA. إذا في أكثر من context source تبقى المصادر مستقلة، وهذه الصفحة لا تختار winner بينها.</p>
-  </section>
+    <section class="panel">
+      <h2>1. استيراد ASSET_CONTEXT_CSV_V1</h2>
+      <div class="grid">
+        <label>ملف Asset Context CSV
+          <input id="contextFile" type="file" accept=".csv,text/csv">
+        </label>
+        <button id="importContext">استيراد الدليل</button>
+      </div>
+      <div id="importMessage" class="status"></div>
+      <div id="importResult" class="hidden">
+        <div id="importCards" class="cards"></div>
+        <div id="issues" class="issues"></div>
+      </div>
+      <p class="note">الـimporter يحل الصفوف إلى assets موجودة مسبقاً فقط. Asset غير موجود في tenant/source profile يتم quarantine ولا يتم إنشاؤه من ملف السياق.</p>
+    </section>
+
+    <section class="panel">
+      <h2>2. Current Per-Source Asset Context</h2>
+      <div class="filters">
+        <label>Asset name / source ID prefix
+          <input id="assetFilter" placeholder="web-">
+        </label>
+        <label>Source profile
+          <input id="profileFilter" placeholder="wazuh-primary">
+        </label>
+        <label>Context source
+          <input id="sourceFilter" placeholder="CMDB inventory export">
+        </label>
+        <label>Limit
+          <input id="limit" type="number" min="1" max="500" value="100">
+        </label>
+        <button id="refresh" class="secondary">تحديث</button>
+      </div>
+      <div id="evidenceMessage" class="status"></div>
+      <div id="evidenceCards" class="cards"></div>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Asset</th><th>Source Profile</th><th>Identity Basis</th><th>Source ID</th><th>Environment</th><th>Business Service</th><th>Business Owner</th><th>Business Criticality</th><th>Context Source</th><th>Source SHA-256</th><th>Observed At</th><th>Evidence Ingested</th><th>Snapshot Ingested</th></tr></thead>
+          <tbody id="evidenceRows"></tbody>
+        </table>
+      </div>
+      <p class="note warning">Business Criticality هنا qualitative evidence فقط—ليست numeric weight ولا Risk Score ولا Priority ولا SLA. إذا في أكثر من context source تبقى المصادر مستقلة، وهذه الصفحة لا تختار winner بينها.</p>
+    </section>
+  </div>
+
+  <div id="classificationGuide" class="hidden">
+    <section class="panel">
+      <h2>دليل اختيار Asset Context</h2>
+      <p><strong>ASSET_CLASSIFICATION_GUIDE_V1 · Revision 1</strong></p>
+      <p>هذا الدليل يساعدك تفهم كل خيار قبل أن تؤكد بيانات الأصل. الاختيار يجب أن يعتمد على استخدام الأصل وتأثيره الحقيقي داخل مؤسستك، وليس على Severity الثغرات الموجودة عليه.</p>
+      <div class="guide-actions">
+        <a class="button-link secondary" href="/asset-context">العودة إلى Asset Context</a>
+      </div>
+      <p class="note warning">الدليل لا يعطي نقاط ولا يجمع الإجابات ولا يصنع تصنيفاً آلياً. إذا لم تتوفر معلومات كافية استخدم <code>UNKNOWN</code> بدل التخمين.</p>
+    </section>
+
+    <section class="panel">
+      <h2>اختر الحقل الذي تريد فهمه</h2>
+      <div class="guide-nav">
+        <button class="guide-tab active" data-guide-target="environmentGuide">Environment</button>
+        <button class="guide-tab" data-guide-target="serviceGuide">Business Service</button>
+        <button class="guide-tab" data-guide-target="ownerGuide">Business Owner</button>
+        <button class="guide-tab" data-guide-target="criticalityGuide">Business Criticality</button>
+      </div>
+
+      <div id="environmentGuide" class="guide-panel">
+        <h3>Environment</h3>
+        <span class="origin">RBVM_POLICY</span>
+        <p>القائمة التالية taxonomy تشغيلية للمنصة وليست taxonomy رسمية من NIST. اختَر حسب الاستخدام الفعلي للأصل، وليس حسب اسمه.</p>
+        <div class="guide-options">
+          <div class="guide-option"><code>PRODUCTION</code><p>الأصل يقدّم حالياً خدمة live للأعمال أو العملاء أو الموظفين أو العمليات.</p></div>
+          <div class="guide-option"><code>PRE_PRODUCTION</code><p>Staging/acceptance/release-candidate للتحقق قبل الإنتاج، لكنه ليس الخدمة الإنتاجية الحية نفسها.</p></div>
+          <div class="guide-option"><code>DEVELOPMENT</code><p>الغرض الأساسي تطوير software أو configuration بواسطة فرق الهندسة.</p></div>
+          <div class="guide-option"><code>TEST</code><p>الغرض الأساسي QA أو integration/automated testing أو اختبار رسمي مضبوط.</p></div>
+          <div class="guide-option"><code>SANDBOX</code><p>تجارب أو prototypes أو demonstrations معزولة وليست بيئة إنتاج أو اختبار رسمي.</p></div>
+          <div class="guide-option"><code>DISASTER_RECOVERY</code><p>الغرض الأساسي استمرارية أو استعادة خدمة/بيئة أخرى بعد disruption.</p></div>
+          <div class="guide-option"><code>UNKNOWN</code><p>تمت مراجعة الحقل لكن لا توجد معلومة تنظيمية موثوقة تكفي لتحديد البيئة.</p></div>
+        </div>
+        <ul class="questions">
+          <li>هل يخدم الأصل مستخدمين أو عمليات حقيقية الآن؟</li>
+          <li>هل الغرض منه تطوير، اختبار، staging، أم recovery؟</li>
+          <li>لا تستخدم hostname مثل <code>*-prod</code> أو <code>*-uat</code> كدليل حاسم.</li>
+        </ul>
+      </div>
+
+      <div id="serviceGuide" class="guide-panel hidden">
+        <h3>Business Service</h3>
+        <span class="origin">STANDARD_DERIVED</span>
+        <p>المقصود الخدمة أو capability التجارية/التطبيقية التي يدعمها الأصل. الاسم يحدده الزبون؛ المنصة لا تملك قائمة عالمية ولا تحول اسم المنتج إلى Business Service.</p>
+        <ul class="questions">
+          <li>ما الوظيفة التي تتعطل أو تتدهور إذا صار هذا الأصل غير متاح أو غير موثوق؟</li>
+          <li>أي Service Owner يعتبر هذا الأصل جزءاً من خدمته؟</li>
+          <li>هل الاسم المقترح capability مثل Payroll/Billing/Customer Portal وليس مجرد Linux/Oracle/nginx؟</li>
+          <li>إذا تم التقييم ولم تستطع تحديد الخدمة، استخدم <code>UNKNOWN</code>.</li>
+        </ul>
+        <div class="guide-options">
+          <div class="guide-option"><code>Oracle → Payroll</code><p>مثال توضيحي: Oracle تقنية، بينما Payroll قد تكون الخدمة التي تمكّنها.</p></div>
+          <div class="guide-option"><code>nginx → Customer Portal</code><p>مثال فقط، وليس قاعدة inference آلية.</p></div>
+        </div>
+      </div>
+
+      <div id="ownerGuide" class="guide-panel hidden">
+        <h3>Business Owner</h3>
+        <span class="origin">STANDARD_DERIVED</span>
+        <p>الشخص أو الفريق المسؤول تنظيمياً عن business/application context المرتبط بالأصل، وليس بالضرورة الفريق الذي يدير نظام التشغيل.</p>
+        <ul class="questions">
+          <li>من هو accountable عن الخدمة التي يدعمها الأصل؟</li>
+          <li>من يستطيع اتخاذ أو اعتماد قرار أعمال حول disruption أو risk acceptance أو service priority؟</li>
+          <li>هل كتبت Business/Application Owner بدل Technical Administrator فقط؟</li>
+          <li>إذا تمت المراجعة ولم يتضح المالك، استخدم <code>UNKNOWN</code>.</li>
+        </ul>
+        <div class="guide-option"><code>مثال</code><p>Technical administration: Infrastructure Team · Business/Application owner: Finance Applications.</p></div>
+      </div>
+
+      <div id="criticalityGuide" class="guide-panel hidden">
+        <h3>Business Criticality</h3>
+        <span class="origin">STANDARD_DERIVED</span>
+        <p>هذا تصنيف لأهمية الأصل بالنسبة للمؤسسة، وليس Severity للثغرة. فكّر في أثر فقدان availability/integrity/confidentiality، البدائل، dependencies، والآثار التشغيلية/المالية/التنظيمية/السلامة/السمعة/المهمة.</p>
+        <div class="guide-options">
+          <div class="guide-option"><code>MISSION_CRITICAL</code><p>يوجد دليل تنظيمي/BIA موثوق أن الأصل يمكّن مباشرة وظيفة أساسية، وفقده يشل أو يمنع الوظيفة بدون بديل مقبول. هذا label خاص بالمنصة/الزبون مستند إلى مفاهيم BIA؛ ليس category حرفية في FIPS 199.</p></div>
+          <div class="guide-option"><code>HIGH</code><p>فقد أو compromise الأصل يسبب serious adverse effect على خدمة أو عملية مهمة، لكن الأدلة لا تحقق الشرط الأقوى لـMISSION_CRITICAL.</p></div>
+          <div class="guide-option"><code>MODERATE</code><p>الأثر meaningful ويحتاج استجابة إدارية/تشغيلية، مع إمكانية استمرار الوظائف الأساسية بتدهور مقبول أو بدائل عملية.</p></div>
+          <div class="guide-option"><code>LOW</code><p>الأثر التنظيمي المتوقع محدود ولا يمنع materially الوظائف المهمة من الاستمرار. LOW لا تعني أن ثغرات الأصل آمنة أو غير مهمة.</p></div>
+          <div class="guide-option"><code>UNKNOWN</code><p>تم التفكير في criticality لكن معلومات business impact أو ownership غير كافية لتصنيف يمكن الدفاع عنه.</p></div>
+        </div>
+        <ul class="questions">
+          <li>أي mission/business function يمكّنها الأصل؟</li>
+          <li>ماذا يحدث إذا فقد Availability أو Integrity أو Confidentiality؟</li>
+          <li>هل يوجد workaround أو substitute فعّال؟</li>
+          <li>هل تعتمد عليه خدمات مهمة أخرى؟</li>
+          <li>هل قد يسبب الفشل أثراً خطيراً operational/financial/regulatory/safety/reputational/mission؟</li>
+          <li>لا تستنتج criticality من CVSS أو KEV أو EPSS أو Wazuh Severity أو عدد findings.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>الأساس المرجعي</h2>
+      <p>نستخدم كلمة <strong>Based on / Informed by</strong> عندما يكون تعريف المنصة mapping خاصاً بنا. لا ندّعي أن NIST اختار التصنيف النهائي للزبون.</p>
+      <div class="reference-list">
+        <a href="https://www.nist.gov/cyberframework" target="_blank" rel="noopener noreferrer"><strong>NIST CSF 2.0</strong><br><span>Asset prioritization and organizational context.</span></a>
+        <a href="https://csrc.nist.gov/pubs/ir/8286/d/upd1/final" target="_blank" rel="noopener noreferrer"><strong>NIST IR 8286D Update 1 (2025)</strong><br><span>BIA-informed asset criticality, mission/business objectives, and dependencies.</span></a>
+        <a href="https://csrc.nist.gov/pubs/fips/199/final" target="_blank" rel="noopener noreferrer"><strong>FIPS 199</strong><br><span>LOW / MODERATE / HIGH potential-impact concepts for confidentiality, integrity, and availability.</span></a>
+      </div>
+    </section>
+  </div>
 </main>
 <script>
   const byId = id => document.getElementById(id);
+  const guideMode = new URLSearchParams(window.location.search).get('guide') === '1';
   let apiToken = sessionStorage.getItem('rbvmApiToken') || '';
   let importEnabled = false;
   let readEnabled = false;
@@ -182,6 +311,11 @@
       setStatus('evidenceMessage',`${data.count} current per-source asset context evidence row(s).`);
     } catch(error) { setStatus('evidenceMessage',error.message || 'تعذر قراءة Asset Context evidence.',true); }
   }
+  function activateGuide(targetId) {
+    document.querySelectorAll('.guide-panel').forEach(panel=>panel.classList.toggle('hidden',panel.id!==targetId));
+    document.querySelectorAll('.guide-tab').forEach(button=>button.classList.toggle('active',button.dataset.guideTarget===targetId));
+  }
+  document.querySelectorAll('.guide-tab').forEach(button=>button.addEventListener('click',()=>activateGuide(button.dataset.guideTarget)));
   byId('saveToken').addEventListener('click',async()=>{
     const supplied=byId('apiToken').value.trim(); if(!supplied){setStatus('healthMessage','ألصق مفتاح الوصول أولاً.',true);return;}
     apiToken=supplied; sessionStorage.setItem('rbvmApiToken',supplied); byId('apiToken').value=''; await loadHealth(); await loadEvidence();
@@ -200,7 +334,14 @@
     finally { button.disabled=!importEnabled; }
   });
   byId('refresh').addEventListener('click',loadEvidence);
-  if(apiToken) loadHealth().then(loadEvidence); else loadHealth();
+
+  if(guideMode) {
+    byId('contextWorkspace').classList.add('hidden');
+    byId('classificationGuide').classList.remove('hidden');
+    document.title='RBVM · Asset Classification Guide V1';
+  } else {
+    if(apiToken) loadHealth().then(loadEvidence); else loadHealth();
+  }
 </script>
 </body>
 </html>
