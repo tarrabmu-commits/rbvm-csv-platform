@@ -30,9 +30,9 @@ public final class PostgresMigratorSelfTest {
     private static void appliesAndReplaysVersionedMigrations() throws Exception {
         FakeDatabase database = new FakeDatabase();
         PostgresMigrator migrator = new PostgresMigrator(database::connection);
-        assert migrator.migrate() == 18;
-        assert database.checksums.size() == 18;
-        assert database.commits == 18;
+        assert migrator.migrate() == 19;
+        assert database.checksums.size() == 19;
+        assert database.commits == 19;
         assert database.rollbacks == 0;
         assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.observation"));
         assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE VIEW rbvm.operational_finding"));
@@ -70,6 +70,9 @@ public final class PostgresMigratorSelfTest {
         assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.managed_asset ("));
         assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.managed_asset_revision"));
         assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE VIEW rbvm.current_managed_asset"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.scanner_managed_asset_link_event"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE VIEW rbvm.current_scanner_managed_asset_link"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE VIEW rbvm.active_scanner_managed_asset_link"));
 
         long observationCreates = count(database, "CREATE TABLE rbvm.observation (");
         long operationalFindingCreates = count(database, "CREATE VIEW rbvm.operational_finding");
@@ -93,9 +96,11 @@ public final class PostgresMigratorSelfTest {
         long decisionInputReferenceCreates = count(database, "CREATE TABLE rbvm.decision_input_evidence_reference");
         long managedAssetCreates = count(database, "CREATE TABLE rbvm.managed_asset (");
         long managedAssetRevisionCreates = count(database, "CREATE TABLE rbvm.managed_asset_revision");
+        long scannerManagedAssetLinkCreates = count(
+                database, "CREATE TABLE rbvm.scanner_managed_asset_link_event");
 
-        assert migrator.migrate() == 18;
-        assert database.commits == 18 : "replay must not reapply migrations";
+        assert migrator.migrate() == 19;
+        assert database.commits == 19 : "replay must not reapply migrations";
         assert count(database, "CREATE TABLE rbvm.observation (") == observationCreates;
         assert count(database, "CREATE VIEW rbvm.operational_finding") == operationalFindingCreates;
         assert count(database, "CREATE TABLE rbvm.applicability_assessment") == applicabilityCreates;
@@ -118,6 +123,8 @@ public final class PostgresMigratorSelfTest {
         assert count(database, "CREATE TABLE rbvm.decision_input_evidence_reference") == decisionInputReferenceCreates;
         assert count(database, "CREATE TABLE rbvm.managed_asset (") == managedAssetCreates;
         assert count(database, "CREATE TABLE rbvm.managed_asset_revision") == managedAssetRevisionCreates;
+        assert count(database, "CREATE TABLE rbvm.scanner_managed_asset_link_event")
+                == scannerManagedAssetLinkCreates;
         assert database.advisoryLocks == 2;
         assert database.advisoryUnlocks == 2;
     }
