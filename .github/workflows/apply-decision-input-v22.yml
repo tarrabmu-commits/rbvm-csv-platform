@@ -31,6 +31,25 @@ jobs:
             python3 .rbvm-v22/04_resolved_resolver.py
             python3 .rbvm-v22/05_store_migrator.py
           fi
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('src/test/java/io/rbvm/postgres/PostgresMigratorSelfTest.java')
+          text = path.read_text()
+          changes = {
+              'assert migrator.migrate() == 19;': 'assert migrator.migrate() == 20;',
+              'assert database.checksums.size() == 19;': 'assert database.checksums.size() == 20;',
+              'assert database.commits == 19;': 'assert database.commits == 20;',
+              'assert database.commits == 19 : "replay must not reapply migrations";':
+                  'assert database.commits == 20 : "replay must not reapply migrations";'
+          }
+          for old, new in changes.items():
+              if old not in text:
+                  if new in text:
+                      continue
+                  raise SystemExit(f'missing exact migrator self-test context: {old}')
+              text = text.replace(old, new)
+          path.write_text(text)
+          PY
       - name: Compile main and tests
         run: ./scripts/compile.sh --tests
       - name: Run platform self-tests
@@ -44,7 +63,8 @@ jobs:
             src/main/java/io/rbvm/postgres/PostgresDecisionInputSnapshotBuilder.java \
             src/main/java/io/rbvm/postgres/PostgresDecisionInputEvidenceResolver.java \
             src/main/java/io/rbvm/postgres/PostgresDecisionInputSnapshotStore.java \
-            src/main/java/io/rbvm/postgres/PostgresMigrator.java
+            src/main/java/io/rbvm/postgres/PostgresMigrator.java \
+            src/test/java/io/rbvm/postgres/PostgresMigratorSelfTest.java
           git diff --cached --check
           if git diff --cached --quiet; then
             echo 'No V22 core changes to commit'
