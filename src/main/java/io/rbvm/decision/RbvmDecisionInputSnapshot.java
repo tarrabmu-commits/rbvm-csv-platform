@@ -24,8 +24,9 @@ import java.util.UUID;
 /**
  * Immutable, policy-bound evidence-reference snapshot for one canonical Finding_ID.
  *
- * <p>The snapshot records evidence eligibility state only. It contains no evidence values, risk
- * score, priority, SLA, formula result, weights, or Case aggregation.</p>
+ * <p>V1 references are dimension-addressed. V2 adds an explicit native-evidence kind and, for
+ * managed-asset context, the exact scanner-to-managed-asset link event that authorized the join.
+ * Neither version contains a decision formula or a source winner.</p>
  */
 public record RbvmDecisionInputSnapshot(
         String contractId,
@@ -36,16 +37,27 @@ public record RbvmDecisionInputSnapshot(
         Instant evaluatedAt,
         Map<EvidenceDimension, DimensionInput> dimensions
 ) {
-    public static final String ID = "RBVM_DECISION_INPUT_SNAPSHOT_V1";
-    public static final String SEMANTICS =
+    public static final String V1_ID = "RBVM_DECISION_INPUT_SNAPSHOT_V1";
+    public static final String V2_ID = "RBVM_DECISION_INPUT_SNAPSHOT_V2";
+    /** Backward-compatible alias for the historical V1 contract. */
+    public static final String ID = V1_ID;
+
+    public static final String V1_SEMANTICS =
             "FINDING_SCOPED_POLICY_BOUND_EVIDENCE_REFERENCE_SNAPSHOT";
-    public static final String CANONICAL_PAYLOAD_FORMAT =
+    public static final String V2_SEMANTICS =
+            "FINDING_SCOPED_POLICY_BOUND_TYPED_EVIDENCE_REFERENCE_SNAPSHOT";
+    /** Backward-compatible alias for the historical V1 semantics. */
+    public static final String SEMANTICS = V1_SEMANTICS;
+
+    public static final String V1_CANONICAL_PAYLOAD_FORMAT =
             "RBVM_DECISION_INPUT_SNAPSHOT_CANONICAL_BINARY_V1";
+    public static final String V2_CANONICAL_PAYLOAD_FORMAT =
+            "RBVM_DECISION_INPUT_SNAPSHOT_CANONICAL_BINARY_V2";
+    /** Backward-compatible alias for the historical V1 payload format. */
+    public static final String CANONICAL_PAYLOAD_FORMAT = V1_CANONICAL_PAYLOAD_FORMAT;
 
     public RbvmDecisionInputSnapshot {
-        if (!ID.equals(contractId)) {
-            throw new IllegalArgumentException("contractId must be " + ID);
-        }
+        requireContract(contractId);
         findingId = Objects.requireNonNull(findingId, "findingId");
         if (methodologyRevision < 1) {
             throw new IllegalArgumentException("methodologyRevision must be positive");
@@ -53,10 +65,8 @@ public record RbvmDecisionInputSnapshot(
         methodologyPolicySha256 = requireSha(methodologyPolicySha256, "methodologyPolicySha256");
         evaluatedAt = Objects.requireNonNull(evaluatedAt, "evaluatedAt");
 
-        EnumMap<EvidenceDimension, DimensionInput> normalized = normalizeDimensions(
-                dimensions,
-                evaluatedAt
-        );
+        EnumMap<EvidenceDimension, DimensionInput> normalized =
+                normalizeDimensions(dimensions, evaluatedAt, contractId);
         dimensions = Collections.unmodifiableMap(normalized);
         snapshotSha256 = requireSha(snapshotSha256, "snapshotSha256");
         String expected = canonicalSha256(
@@ -80,31 +90,79 @@ public record RbvmDecisionInputSnapshot(
             Instant evaluatedAt,
             Map<EvidenceDimension, DimensionInput> dimensions
     ) {
-        EnumMap<EvidenceDimension, DimensionInput> normalized = normalizeDimensions(
-                dimensions,
-                Objects.requireNonNull(evaluatedAt, "evaluatedAt")
+        return createForContract(
+                V1_ID,
+                findingId,
+                methodologyRevision,
+                methodologyPolicySha256,
+                evaluatedAt,
+                dimensions
+        );
+    }
+
+    public static RbvmDecisionInputSnapshot createV2(
+            UUID findingId,
+            int methodologyRevision,
+            String methodologyPolicySha256,
+            Instant evaluatedAt,
+            Map<EvidenceDimension, DimensionInput> dimensions
+    ) {
+        return createForContract(
+                V2_ID,
+                findingId,
+                methodologyRevision,
+                methodologyPolicySha256,
+                evaluatedAt,
+                dimensions
+        );
+    }
+
+    private static RbvmDecisionInputSnapshot createForContract(
+            String contractId,
+            UUID findingId,
+            int methodologyRevision,
+            String methodologyPolicySha256,
+            Instant evaluatedAt,
+            Map<EvidenceDimension, DimensionInput> dimensions
+    ) {
+        requireContract(contractId);
+        Objects.requireNonNull(findingId, "findingId");
+        Objects.requireNonNull(evaluatedAt, "evaluatedAt");
+        EnumMap<EvidenceDimension, DimensionInput> normalized =
+                normalizeDimensions(dimensions, evaluatedAt, contractId);
+        String normalizedPolicySha = requireSha(
+                methodologyPolicySha256,
+                "methodologyPolicySha256"
         );
         String sha = canonicalSha256(
-                ID,
-                Objects.requireNonNull(findingId, "findingId"),
+                contractId,
+                findingId,
                 methodologyRevision,
-                requireSha(methodologyPolicySha256, "methodologyPolicySha256"),
+                normalizedPolicySha,
                 evaluatedAt,
                 normalized
         );
         return new RbvmDecisionInputSnapshot(
-                ID,
+                contractId,
                 sha,
                 findingId,
                 methodologyRevision,
-                methodologyPolicySha256,
+                normalizedPolicySha,
                 evaluatedAt,
                 normalized
         );
     }
 
+    public boolean isV2() {
+        return V2_ID.equals(contractId);
+    }
+
     public String semantics() {
-        return SEMANTICS;
+        return semanticsFor(contractId);
+    }
+
+    public String canonicalPayloadFormat() {
+        return canonicalPayloadFormatFor(contractId);
     }
 
     public byte[] canonicalPayload() {
@@ -125,6 +183,60 @@ public record RbvmDecisionInputSnapshot(
         STALE
     }
 
+    public enum NativeEvidenceKind {
+        APPLICABILITY_ASSESSMENT(EvidenceDimension.APPLICABILITY),
+        CVSS_V31_BASE_EVIDENCE(EvidenceDimension.TECHNICAL_SEVERITY),
+        CISA_KEV_EVIDENCE(EvidenceDimension.KNOWN_EXPLOITATION),
+        EPSS_EVIDENCE(EvidenceDimension.EXPLOITATION_PROBABILITY),
+        ASSET_CONTEXT_EVIDENCE(EvidenceDimension.ASSET_CONTEXT),
+        MANAGED_ASSET_REVISION(EvidenceDimension.ASSET_CONTEXT),
+        NETWORK_REACHABILITY_EVIDENCE(EvidenceDimension.NETWORK_REACHABILITY),
+        BUSINESS_IMPACT_EVIDENCE(EvidenceDimension.BUSINESS_MISSION_IMPACT);
+
+        private final EvidenceDimension dimension;
+
+        NativeEvidenceKind(EvidenceDimension dimension) {
+            this.dimension = dimension;
+        }
+
+        public boolean supports(EvidenceDimension candidateDimension) {
+            return dimension == candidateDimension;
+        }
+
+        public static NativeEvidenceKind defaultFor(EvidenceDimension dimension) {
+            return switch (Objects.requireNonNull(dimension, "dimension")) {
+                case APPLICABILITY -> APPLICABILITY_ASSESSMENT;
+                case TECHNICAL_SEVERITY -> CVSS_V31_BASE_EVIDENCE;
+                case KNOWN_EXPLOITATION -> CISA_KEV_EVIDENCE;
+                case EXPLOITATION_PROBABILITY -> EPSS_EVIDENCE;
+                case ASSET_CONTEXT -> ASSET_CONTEXT_EVIDENCE;
+                case NETWORK_REACHABILITY -> NETWORK_REACHABILITY_EVIDENCE;
+                case BUSINESS_MISSION_IMPACT -> BUSINESS_IMPACT_EVIDENCE;
+            };
+        }
+    }
+
+    public enum BindingKind {
+        SCANNER_MANAGED_ASSET_LINK_EVENT
+    }
+
+    /** Immutable provenance for an evidence reference that depends on an explicit identity link. */
+    public record BindingReference(
+            BindingKind bindingKind,
+            UUID bindingId,
+            String bindingSha256,
+            String bindingSource,
+            Instant recordedAt
+    ) {
+        public BindingReference {
+            bindingKind = Objects.requireNonNull(bindingKind, "bindingKind");
+            bindingId = Objects.requireNonNull(bindingId, "bindingId");
+            bindingSha256 = requireSha(bindingSha256, "bindingSha256");
+            bindingSource = requireText(bindingSource, "bindingSource", 256);
+            recordedAt = Objects.requireNonNull(recordedAt, "recordedAt");
+        }
+    }
+
     public record DimensionInput(
             EvidenceDimension dimension,
             DimensionState state,
@@ -136,20 +248,27 @@ public record RbvmDecisionInputSnapshot(
             Objects.requireNonNull(evidenceReferences, "evidenceReferences");
 
             List<EvidenceReference> normalized = new ArrayList<>(evidenceReferences.size());
-            Set<UUID> evidenceIds = new HashSet<>();
+            Set<NativeEvidenceIdentity> identities = new HashSet<>();
             for (EvidenceReference reference : evidenceReferences) {
                 Objects.requireNonNull(reference, "evidenceReference");
                 if (reference.dimension() != dimension) {
                     throw new IllegalArgumentException(
                             "Evidence reference dimension must match DimensionInput dimension");
                 }
-                if (!evidenceIds.add(reference.evidenceId())) {
+                NativeEvidenceIdentity identity = new NativeEvidenceIdentity(
+                        reference.nativeEvidenceKind(),
+                        reference.evidenceId()
+                );
+                if (!identities.add(identity)) {
                     throw new IllegalArgumentException(
-                            "DimensionInput must not repeat an evidence UUID");
+                            "DimensionInput must not repeat a native evidence identity");
                 }
                 normalized.add(reference);
             }
-            normalized.sort(Comparator.comparing(EvidenceReference::evidenceId));
+            normalized.sort(Comparator
+                    .comparing((EvidenceReference reference) ->
+                            reference.nativeEvidenceKind().name())
+                    .thenComparing(EvidenceReference::evidenceId));
             evidenceReferences = List.copyOf(normalized);
 
             switch (state) {
@@ -178,29 +297,68 @@ public record RbvmDecisionInputSnapshot(
     /** Immutable pointer to one native evidence row; values remain in the native evidence table. */
     public record EvidenceReference(
             EvidenceDimension dimension,
+            NativeEvidenceKind nativeEvidenceKind,
             UUID evidenceId,
             String evidenceSha256,
             String evidenceSource,
-            Instant observedAt
+            Instant observedAt,
+            BindingReference bindingReference
     ) {
+        /** Historical V1-compatible constructor with dimension-derived native evidence kind. */
+        public EvidenceReference(
+                EvidenceDimension dimension,
+                UUID evidenceId,
+                String evidenceSha256,
+                String evidenceSource,
+                Instant observedAt
+        ) {
+            this(
+                    dimension,
+                    NativeEvidenceKind.defaultFor(dimension),
+                    evidenceId,
+                    evidenceSha256,
+                    evidenceSource,
+                    observedAt,
+                    null
+            );
+        }
+
         public EvidenceReference {
             dimension = Objects.requireNonNull(dimension, "dimension");
+            nativeEvidenceKind = Objects.requireNonNull(
+                    nativeEvidenceKind,
+                    "nativeEvidenceKind"
+            );
+            if (!nativeEvidenceKind.supports(dimension)) {
+                throw new IllegalArgumentException(
+                        "nativeEvidenceKind is incompatible with evidence dimension");
+            }
             evidenceId = Objects.requireNonNull(evidenceId, "evidenceId");
             evidenceSha256 = requireSha(evidenceSha256, "evidenceSha256");
-            if (evidenceSource == null
-                    || evidenceSource.trim().isEmpty()
-                    || evidenceSource.trim().length() > 256
-                    || evidenceSource.indexOf('\u0000') >= 0) {
-                throw new IllegalArgumentException("evidenceSource is invalid");
-            }
-            evidenceSource = evidenceSource.trim();
+            evidenceSource = requireText(evidenceSource, "evidenceSource", 256);
             observedAt = Objects.requireNonNull(observedAt, "observedAt");
+
+            if (nativeEvidenceKind == NativeEvidenceKind.MANAGED_ASSET_REVISION) {
+                Objects.requireNonNull(
+                        bindingReference,
+                        "managed-asset evidence requires bindingReference"
+                );
+                if (bindingReference.bindingKind()
+                        != BindingKind.SCANNER_MANAGED_ASSET_LINK_EVENT) {
+                    throw new IllegalArgumentException(
+                            "managed-asset evidence requires scanner-managed-asset link binding");
+                }
+            } else if (bindingReference != null) {
+                throw new IllegalArgumentException(
+                        "bindingReference is only supported for managed-asset revisions");
+            }
         }
     }
 
     private static EnumMap<EvidenceDimension, DimensionInput> normalizeDimensions(
             Map<EvidenceDimension, DimensionInput> dimensions,
-            Instant evaluatedAt
+            Instant evaluatedAt,
+            String contractId
     ) {
         Objects.requireNonNull(dimensions, "dimensions");
         EnumMap<EvidenceDimension, DimensionInput> normalized =
@@ -210,6 +368,7 @@ public record RbvmDecisionInputSnapshot(
             throw new IllegalArgumentException(
                     "Decision input snapshot must classify every evidence dimension");
         }
+        boolean v1 = V1_ID.equals(contractId);
         for (Map.Entry<EvidenceDimension, DimensionInput> entry : normalized.entrySet()) {
             DimensionInput input = Objects.requireNonNull(entry.getValue(), "dimensionInput");
             if (input.dimension() != entry.getKey()) {
@@ -220,6 +379,17 @@ public record RbvmDecisionInputSnapshot(
                 if (reference.observedAt().isAfter(evaluatedAt)) {
                     throw new IllegalArgumentException(
                             "Decision input must not reference evidence observed after evaluatedAt");
+                }
+                if (reference.bindingReference() != null
+                        && reference.bindingReference().recordedAt().isAfter(evaluatedAt)) {
+                    throw new IllegalArgumentException(
+                            "Decision input must not reference a binding recorded after evaluatedAt");
+                }
+                if (v1 && (reference.nativeEvidenceKind()
+                        != NativeEvidenceKind.defaultFor(reference.dimension())
+                        || reference.bindingReference() != null)) {
+                    throw new IllegalArgumentException(
+                            "V1 Decision Input cannot contain typed alternate native evidence");
                 }
             }
         }
@@ -259,11 +429,12 @@ public record RbvmDecisionInputSnapshot(
             Map<EvidenceDimension, DimensionInput> dimensions
     ) {
         try {
+            boolean v2 = V2_ID.equals(contractId);
             ByteArrayOutputStream buffer = new ByteArrayOutputStream();
             try (DataOutputStream output = new DataOutputStream(buffer)) {
-                writeString(output, CANONICAL_PAYLOAD_FORMAT);
+                writeString(output, canonicalPayloadFormatFor(contractId));
                 writeString(output, contractId);
-                writeString(output, SEMANTICS);
+                writeString(output, semanticsFor(contractId));
                 output.writeLong(findingId.getMostSignificantBits());
                 output.writeLong(findingId.getLeastSignificantBits());
                 output.writeInt(methodologyRevision);
@@ -276,19 +447,57 @@ public record RbvmDecisionInputSnapshot(
                     writeString(output, input.state().name());
                     output.writeInt(input.evidenceReferences().size());
                     for (EvidenceReference reference : input.evidenceReferences()) {
+                        if (v2) {
+                            writeString(output, reference.nativeEvidenceKind().name());
+                        }
                         output.writeLong(reference.evidenceId().getMostSignificantBits());
                         output.writeLong(reference.evidenceId().getLeastSignificantBits());
                         writeString(output, reference.evidenceSha256());
                         writeString(output, reference.evidenceSource());
                         output.writeLong(reference.observedAt().getEpochSecond());
                         output.writeInt(reference.observedAt().getNano());
+                        if (v2) {
+                            BindingReference binding = reference.bindingReference();
+                            output.writeBoolean(binding != null);
+                            if (binding != null) {
+                                writeString(output, binding.bindingKind().name());
+                                output.writeLong(binding.bindingId().getMostSignificantBits());
+                                output.writeLong(binding.bindingId().getLeastSignificantBits());
+                                writeString(output, binding.bindingSha256());
+                                writeString(output, binding.bindingSource());
+                                output.writeLong(binding.recordedAt().getEpochSecond());
+                                output.writeInt(binding.recordedAt().getNano());
+                            }
+                        }
                     }
                 }
             }
             return buffer.toByteArray();
         } catch (IOException exception) {
-            throw new IllegalStateException("Unexpected in-memory snapshot canonicalization failure", exception);
+            throw new IllegalStateException(
+                    "Unexpected in-memory snapshot canonicalization failure",
+                    exception
+            );
         }
+    }
+
+    private static void requireContract(String contractId) {
+        if (!V1_ID.equals(contractId) && !V2_ID.equals(contractId)) {
+            throw new IllegalArgumentException(
+                    "contractId must be " + V1_ID + " or " + V2_ID);
+        }
+    }
+
+    private static String semanticsFor(String contractId) {
+        requireContract(contractId);
+        return V2_ID.equals(contractId) ? V2_SEMANTICS : V1_SEMANTICS;
+    }
+
+    private static String canonicalPayloadFormatFor(String contractId) {
+        requireContract(contractId);
+        return V2_ID.equals(contractId)
+                ? V2_CANONICAL_PAYLOAD_FORMAT
+                : V1_CANONICAL_PAYLOAD_FORMAT;
     }
 
     private static void writeString(DataOutputStream output, String value) throws IOException {
@@ -302,5 +511,21 @@ public record RbvmDecisionInputSnapshot(
             throw new IllegalArgumentException(field + " must be lowercase SHA-256");
         }
         return value;
+    }
+
+    private static String requireText(String value, String field, int maximumLength) {
+        if (value == null) {
+            throw new IllegalArgumentException(field + " must not be null");
+        }
+        String normalized = value.trim();
+        if (normalized.isEmpty()
+                || normalized.length() > maximumLength
+                || normalized.indexOf('\u0000') >= 0) {
+            throw new IllegalArgumentException(field + " is invalid");
+        }
+        return normalized;
+    }
+
+    private record NativeEvidenceIdentity(NativeEvidenceKind kind, UUID id) {
     }
 }
