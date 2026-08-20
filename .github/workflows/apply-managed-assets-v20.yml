@@ -48,6 +48,18 @@ jobs:
           mkdir -p /tmp/rbvm-v20-payload
           unzip -q /tmp/rbvm-v20-payload.zip -d /tmp/rbvm-v20-payload
           python3 /tmp/rbvm-v20-payload/rbvm-v20-ui-bundle/apply_v20.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/verify-api.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''    if document.get("info", {}).get("version") != "0.19.0":
+                  raise AssertionError("OpenAPI info.version must match Increment 19")'''
+          new = '''    if document.get("info", {}).get("version") != "0.20.0":
+                  raise AssertionError("OpenAPI info.version must match Increment 20")'''
+          if text.count(old) != 1:
+              raise SystemExit('verify-api V19 version assertion context mismatch')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+          PY
           git diff --check
       - if: steps.bootstrap.outputs.needed == 'true'
         name: Verify release contract and repository
@@ -71,6 +83,7 @@ jobs:
             docs/INCREMENT_20_VALIDATION.md \
             docs/MANAGED_ASSETS_UI_V1.md \
             scripts/build-distribution.sh \
+            scripts/verify-api.py \
             scripts/verify-managed-assets-ui.py \
             scripts/verify-reproducible-build.sh \
             scripts/verify-web.py \
