@@ -79,6 +79,7 @@ def main():
         (asset_context, True),
         (root / "src/main/resources/web/network-reachability.html", True),
         (root / "src/main/resources/web/business-impact.html", True),
+        (root / "src/main/resources/web/assets.html", True),
     ]
     total_ids = sum(verify_page(path, requires_session_token=token) for path, token in pages)
     verify_asset_classification_guide(asset_context)
