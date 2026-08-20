@@ -169,17 +169,17 @@ jobs:
           ./scripts/verify-release-version.sh v0.19.0
           ./scripts/verify.sh
           ./scripts/verify-reproducible-build.sh
-      - name: Commit verified Increment 19
+      - name: Commit verified Increment 19 source
         shell: bash
         run: |
           set -euo pipefail
+          # Workflow files were verified above, but GITHUB_TOKEN cannot update workflow refs.
+          # Restore them here; the connected GitHub publisher updates them atomically afterward.
+          git restore -- .github/workflows/verify.yml .github/workflows/release.yml
           git rm -r -- .rbvm-bootstrap
-          git rm -- .github/workflows/apply-managed-asset-v19.yml
           git config user.name 'rbvm-ci-bootstrap'
           git config user.email 'actions@users.noreply.github.com'
           git add -- \
-            .github/workflows/verify.yml \
-            .github/workflows/release.yml \
             README.md \
             api/openapi.yaml \
             build.gradle.kts \
