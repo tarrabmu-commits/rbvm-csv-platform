@@ -46,15 +46,35 @@ css = text(WEB / "rbvm-ui.css")
 for needle in (
     "--rbvm-control-min: 44px",
     "--rbvm-font-sans: ui-sans-serif, system-ui",
+    "--rbvm-page-accent:",
+    'html[data-rbvm-page="cvss"]',
+    'html[data-rbvm-page="kev"]',
+    'html[data-rbvm-page="epss"]',
+    'html[data-rbvm-page="context"]',
+    'html[data-rbvm-page="reachability"]',
+    'html[data-rbvm-page="impact"]',
+    'html[data-rbvm-page="assets"]',
+    'html[data-rbvm-page="links"]',
     ":focus-visible",
     "@media (prefers-reduced-motion: reduce)",
     "@media (forced-colors: active)",
+    "@keyframes rbvm-module-enter",
     ".rbvm-skip-link",
     ".rbvm-shell",
     ".rbvm-nav",
     ".rbvm-mobile-nav",
     ".rbvm-mobile-nav summary",
     ".rbvm-mobile-nav a[aria-current=\"page\"]",
+    ".rbvm-page-hero",
+    ".rbvm-page-eyebrow",
+    ".rbvm-module",
+    ".rbvm-metric-card",
+    ".rbvm-table-frame",
+    ".rbvm-callout",
+    ".rbvm-status",
+    '[data-rbvm-state="ambiguous"]',
+    '[data-rbvm-state="stale"]',
+    '[data-rbvm-state="unknown"]',
     "dialog::backdrop",
 ):
     if needle not in css:
@@ -76,7 +96,10 @@ for selector in (
 javascript = text(WEB / "rbvm-ui.js")
 for needle in (
     "RBVM_FRONTEND_SYSTEM_V1",
+    "const PAGE_META = new Map([",
     "dialogOpeners = new WeakMap()",
+    "document.documentElement.dataset.rbvmPage = meta.id",
+    "document.documentElement.dataset.rbvmPageGroup",
     "aria-current",
     "تجاوز إلى المحتوى الرئيسي",
     "prefers-color-scheme: light",
@@ -86,7 +109,17 @@ for needle in (
     "disclosure.open ? 'إغلاق قائمة التنقل' : 'فتح قائمة التنقل'",
     "dark ? 'true' : 'false'",
     "skip.href = `#${main.id}`",
+    "enhanceHero",
+    "rbvm-page-eyebrow",
+    "normalizeModules",
+    "rbvm-module",
+    "rbvm-metric-card",
+    "rbvm-table-frame",
     "normalizeTables",
+    "rbvm-data-table",
+    "normalizeSemanticStates",
+    "data.rbvmState",
+    "MutationObserver",
     "normalizeDialogs",
     "dialogOpeners.set(dialog, trigger)",
     "dialogOpeners.delete(dialog)",
@@ -94,6 +127,20 @@ for needle in (
 ):
     if needle not in javascript:
         raise AssertionError(f"shared frontend JavaScript missing {needle!r}")
+
+for path, page_id in (
+    ("/", "overview"),
+    ("/cvss", "cvss"),
+    ("/kev", "kev"),
+    ("/epss", "epss"),
+    ("/asset-context", "context"),
+    ("/reachability", "reachability"),
+    ("/business-impact", "impact"),
+    ("/assets", "assets"),
+    ("/asset-links", "links"),
+):
+    if f"['{path}', {{id: '{page_id}'" not in javascript:
+        raise AssertionError(f"shared frontend page identity missing {path} -> {page_id}")
 
 if "trigger.id" in javascript or "rbvmOpenerId" in javascript:
     raise AssertionError("dialog focus restoration must not depend on opener IDs")
@@ -138,6 +185,9 @@ for needle in (
     "WCAG 2.2 Level AA",
     "WAI-ARIA",
     "RBVM_POLICY",
+    "Modular composition",
+    "Page identity",
+    "PRESENT|MISSING|UNKNOWN|STALE|AMBIGUOUS",
     "unsafe-inline",
 ):
     if needle not in doc:
