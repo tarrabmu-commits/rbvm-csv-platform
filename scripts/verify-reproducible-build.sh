@@ -49,10 +49,11 @@ RBVM_HOST=127.0.0.1 \
 RBVM_PORT="$port" \
 RBVM_DATA_DIR="$temporary/runtime" \
 RBVM_AUTH_MODE=DISABLED \
+RBVM_PROJECTION_BACKEND=DISABLED \
 java -jar "$JAR" >"$temporary/server.log" 2>&1 &
 server_pid=$!
 
-python3 - "$port" <<'PY'
+if ! python3 - "$port" <<'PY'
 import sys
 import time
 from urllib.error import URLError
@@ -84,8 +85,8 @@ def fetch(path):
 deadline = time.monotonic() + 12
 while True:
     try:
-        status, _, _ = fetch("/live")
-        if status == 200:
+        status, _, body = fetch("/api/v1/live")
+        if status == 200 and '"status": "UP"' in body:
             break
     except (URLError, TimeoutError, ConnectionError):
         pass
@@ -131,6 +132,11 @@ for headers in (css_headers, js_headers):
 
 print("packaged_frontend_smoke=PASS")
 PY
+then
+  echo "Packaged frontend smoke failed; server log follows:" >&2
+  cat "$temporary/server.log" >&2 || true
+  exit 1
+fi
 
 kill "$server_pid" 2>/dev/null || true
 wait "$server_pid" 2>/dev/null || true
