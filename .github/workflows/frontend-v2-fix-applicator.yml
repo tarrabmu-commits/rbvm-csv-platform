@@ -53,6 +53,20 @@ jobs:
 
           js_path = Path('src/main/resources/web/rbvm-ui.js')
           js = js_path.read_text(encoding='utf-8')
+          nav_old = "      items.forEach(([path, labelText, icon]) => list.append(h('li', {}, h('a', {class: 'nav-link', href: url(path), 'data-spa': 'true', 'data-route': path}, h('span', {class: 'nav-icon', text: icon}), h('span', {text: labelText}))));"
+          nav_new = """      items.forEach(([path, labelText, icon]) => {
+        list.append(h(
+          'li',
+          {},
+          h('a', {class: 'nav-link', href: url(path), 'data-spa': 'true', 'data-route': path},
+            h('span', {class: 'nav-icon', text: icon}),
+            h('span', {text: labelText}))
+        ));
+      });"""
+          if js.count(nav_old) != 1:
+              raise SystemExit('navigation syntax target must occur exactly once')
+          js = js.replace(nav_old, nav_new)
+
           start = "  function assetModel(initial={},withLifecycle=false){"
           end = "\n  function createAsset(){"
           if js.count(start) != 1 or js.count(end) != 1:
