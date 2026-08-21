@@ -45,6 +45,7 @@ jobs:
             scripts/verify-api.py \
             scripts/verify-managed-assets-ui.py \
             scripts/verify-reproducible-build.sh \
+            scripts/verify-scanner-managed-asset-link-api.py \
             src/main/resources/web/assets.html
           git diff --cached --check
           if git diff --cached --quiet; then
