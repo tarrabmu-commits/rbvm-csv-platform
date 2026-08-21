@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +24,13 @@ def text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def css_rule_body(stylesheet: str, selector: str) -> str:
+    match = re.search(rf"(?m)^{re.escape(selector)}\s*\{{([^}}]*)\}}", stylesheet)
+    if not match:
+        raise AssertionError(f"shared CSS missing rule for {selector!r}")
+    return match.group(1)
+
+
 for page in HTML_PAGES:
     value = text(WEB / page)
     if value.count(CSS_LINK) != 1:
@@ -37,6 +45,7 @@ for page in HTML_PAGES:
 css = text(WEB / "rbvm-ui.css")
 for needle in (
     "--rbvm-control-min: 44px",
+    "--rbvm-font-sans: ui-sans-serif, system-ui",
     ":focus-visible",
     "@media (prefers-reduced-motion: reduce)",
     "@media (forced-colors: active)",
@@ -51,6 +60,19 @@ for needle in (
     if needle not in css:
         raise AssertionError(f"shared CSS missing {needle!r}")
 
+if "Inter," in css:
+    raise AssertionError("shared frontend typography must remain system-font-only")
+
+for selector in (
+    ".rbvm-brand",
+    ".rbvm-nav a",
+    ".rbvm-icon-button",
+    "button, .button-link",
+    "input, select, textarea",
+):
+    if "min-height: var(--rbvm-control-min)" not in css_rule_body(css, selector):
+        raise AssertionError(f"{selector}: shared 44px control floor must be applied")
+
 javascript = text(WEB / "rbvm-ui.js")
 for needle in (
     "RBVM_FRONTEND_SYSTEM_V1",
@@ -59,6 +81,9 @@ for needle in (
     "prefers-color-scheme: light",
     "createMobileNav",
     "التنقل الرئيسي للموبايل",
+    "disclosure.open ? 'إغلاق قائمة التنقل' : 'فتح قائمة التنقل'",
+    "dark ? 'true' : 'false'",
+    "skip.href = `#${main.id}`",
     "normalizeTables",
     "normalizeDialogs",
     "aria-modal",
@@ -89,6 +114,16 @@ for needle in (
 verify = text(ROOT / "scripts/verify.sh")
 if "verify-frontend-system.py" not in verify:
     raise AssertionError("verify.sh must invoke the frontend system verifier")
+
+reproducible = text(ROOT / "scripts/verify-reproducible-build.sh")
+for needle in (
+    "/ui/rbvm-ui.css",
+    "/ui/rbvm-ui.js",
+    "RBVM_FRONTEND_SYSTEM_V1",
+    "Content-Security-Policy",
+):
+    if needle not in reproducible:
+        raise AssertionError(f"packaged frontend smoke missing {needle!r}")
 
 doc = text(ROOT / "docs/FRONTEND_SYSTEM_V1.md")
 for needle in (
