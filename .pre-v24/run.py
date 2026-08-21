@@ -21,3 +21,11 @@ if verifier_text.count(old_version) != 1:
         f"expected one V23 API release-version verifier anchor, found {verifier_text.count(old_version)}"
     )
 verifier.write_text(verifier_text.replace(old_version, new_version, 1), encoding="utf-8")
+
+hardening_doc = script.parents[1] / "docs/PRE_V24_HARDENING.md"
+doc_text = hardening_doc.read_text(encoding="utf-8")
+old_pg = "PostgreSQL CI uses a digest-pinned PostgreSQL 16.12 image"
+new_pg = "PostgreSQL CI uses a digest-pinned PostgreSQL 16.14 image"
+if doc_text.count(old_pg) != 1:
+    raise AssertionError(f"expected one PostgreSQL hardening-doc version anchor, found {doc_text.count(old_pg)}")
+hardening_doc.write_text(doc_text.replace(old_pg, new_pg, 1), encoding="utf-8")
