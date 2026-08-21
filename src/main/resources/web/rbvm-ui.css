@@ -443,8 +443,8 @@ dialog::backdrop { background: var(--rbvm-overlay) !important; backdrop-filter: 
     list-style: none;
   }
   .rbvm-mobile-nav summary::-webkit-details-marker { display: none; }
-  .rbvm-mobile-nav summary::after { content: '＋'; color: var(--rbvm-accent-strong); }
-  .rbvm-mobile-nav[open] summary::after { content: '−'; }
+  .rbvm-mobile-nav summary::after { content: '+'; color: var(--rbvm-accent-strong); }
+  .rbvm-mobile-nav[open] summary::after { content: '-'; }
   .rbvm-mobile-nav nav { padding-top: var(--rbvm-space-2); }
   .rbvm-mobile-nav ul {
     display: grid;
