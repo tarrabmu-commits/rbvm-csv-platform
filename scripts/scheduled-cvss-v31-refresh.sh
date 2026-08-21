@@ -17,10 +17,20 @@ API_BASE="${RBVM_API_BASE_URL:-http://127.0.0.1:8080}"
   echo "RBVM_CVSS_OFFLINE must be true or false" >&2
   exit 64
 }
-[[ -n "${RBVM_CVSS_API_KEY:-}" ]] || {
-  echo "RBVM_CVSS_API_KEY is required" >&2
-  exit 64
-}
+if [[ -z "${RBVM_CVSS_API_KEY:-}" ]]; then
+  case "$API_BASE" in
+    http://127.0.0.1|http://127.0.0.1:*|http://localhost|http://localhost:*|https://127.0.0.1|https://127.0.0.1:*|https://localhost|https://localhost:*)
+      # The local operator deployment defaults to RBVM_AUTH_MODE=DISABLED. The legacy
+      # importer still accepts a non-empty credential parameter, so use a non-secret
+      # compatibility marker without requiring operators to provision an access token.
+      RBVM_CVSS_API_KEY="local-auth-disabled"
+      ;;
+    *)
+      echo "RBVM_CVSS_API_KEY is required for non-local or authenticated API deployments" >&2
+      exit 64
+      ;;
+  esac
+fi
 [[ -f "$INPUT" && ! -L "$INPUT" ]] || {
   echo "RBVM_CVSS_INPUT must be a regular non-symlink file" >&2
   exit 66
@@ -65,8 +75,9 @@ python3 "$ROOT_DIR/scripts/collect-nvd-cvss-v31.py" "${collector_args[@]}"
 (cd "$staging" && sha256sum evidence.csv > evidence.csv.sha256)
 
 # The collector is never trusted to write to PostgreSQL directly. The generated contract is handed
-# to the same authenticated HTTP importer used by operators, preserving validation and tenant/CVE
-# resolution before persistence.
+# to the same HTTP importer used by operators, preserving validation and tenant/CVE resolution before
+# persistence. Local auth-disabled deployments require no operator-managed token; hardened remote
+# deployments still require an explicit credential.
 RBVM_CVSS_API_KEY="$RBVM_CVSS_API_KEY" \
   python3 "$ROOT_DIR/scripts/import-cvss-v31.py" "$csv" \
     --api-base "$API_BASE" \
