@@ -1,16 +1,5 @@
 # RBVM Frontend System V1
 
-## Arabic operator workspace
-
-تعتمد الواجهة العربية مساحة تشغيل موحدة ذات اتجاه RTL، وتنقلاً عربياً، وهوية بصرية
-هادئة مناسبة لعمليات إدارة المخاطر. الوضع الفاتح هو الافتراضي، مع وضع داكن اختياري،
-وتبقى المصطلحات المعيارية مثل CVSS وEPSS ومعرّفات العقود بصيغتها الأصلية حتى لا تضيع
-دلالتها الفنية.
-
-تجربة الدخول مركزية في شريط التطبيق. يتحقق العميل من الرمز عبر `/api/v1/session`،
-ويعرض هوية المشغّل ودوره، ويحفظ الرمز الخام في `sessionStorage` للتبويب الحالي فقط.
-إنهاء الجلسة يحذف الرمز فوراً، ولا تقبل الواجهة الرمز ضمن URL أو `localStorage`.
-
 `RBVM_FRONTEND_SYSTEM_V1` is the presentation contract for the operator-facing RBVM web UI. It is intentionally independent of Risk, Priority, Treatment, and SLA semantics.
 
 ## Scope

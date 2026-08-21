@@ -197,26 +197,24 @@ Gradle وOpenAPI واسم الحزمة قبل النشر.
 أنشئ مفتاحاً من دون وضع القيمة الخام في environment أوGit:
 
 ```bash
-./scripts/create-api-key.sh ~/.config/rbvm-platform/api-keys.conf \
-  ~/.config/rbvm-platform/operator.token soc-operator OPERATOR
+./scripts/create-api-key.sh ~/.config/rbvm/api-keys.conf \
+  ~/.config/rbvm/operator.token soc-operator OPERATOR
 ```
 
 يمكن إضافة وقت انتهاء UTC كوسيط خامس، ثم تدوير المفتاح بإضافة البديل وإعادة
 التشغيل، توزيع البديل، وإلغاء القديم:
 
 ```bash
-./scripts/create-api-key.sh ~/.config/rbvm-platform/api-keys.conf \
-  ~/.config/rbvm-platform/operator-next.token soc-operator OPERATOR 2026-12-31T23:59:59Z
+./scripts/create-api-key.sh ~/.config/rbvm/api-keys.conf \
+  ~/.config/rbvm/operator-next.token soc-operator OPERATOR 2026-12-31T23:59:59Z
 systemctl --user restart rbvm-csv-platform
-./scripts/revoke-api-key.sh ~/.config/rbvm-platform/api-keys.conf ~/.config/rbvm-platform/operator.token
+./scripts/revoke-api-key.sh ~/.config/rbvm/api-keys.conf ~/.config/rbvm/operator.token
 systemctl --user restart rbvm-csv-platform
 ```
 
 الأدوار متدرجة: `VIEWER` للقراءة وmetrics، و`OPERATOR` يضيف الاستيراد والقرارات،
 و`ADMIN` يحتفظ بكل صلاحيات API. صفحة الويب تطلب القيمة الخام وتحفظها في
-`sessionStorage` فقط طوال نافذة المتصفح. زر الدخول الموحّد يتحقق من الهوية عبر
-`GET /api/v1/session` ويعرض الدور الحالي، ويوفر إنهاءً فورياً للجلسة من كل الصفحات.
-يمكن فتح نافذة الدخول مباشرةً عبر `/?login=1`؛ لا يُوضع رمز الوصول في الرابط.
+`sessionStorage` فقط طوال نافذة المتصفح.
 
 ## API الأساسية
 
@@ -500,3 +498,4 @@ scanner↔managed-asset link صريح customer-confirmed، ولا يوجد sourc
 absence، وBusiness Criticality/Impact تبقى qualitative classifications بلا multiplier. لا يوجد asset-wide
 `internetExposed` verdict أوaggregate impact/attack-path score أوRisk/Priority/SLA مشتق. Formula V1 هي المرحلة
 التالية فقط بعد إغلاق pre-V24 live-integration hardening.
+
