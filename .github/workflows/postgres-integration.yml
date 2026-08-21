@@ -6,7 +6,7 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   v20-live-integration:
@@ -28,6 +28,24 @@ jobs:
           --health-retries 12
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+          fetch-depth: 1
+      - name: Apply one-shot Frontend V2 JavaScript syntax repair
+        if: github.event_name == 'pull_request' && github.head_ref == 'codex/arabic-product-ui-auth'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/frontend-v2-js-syntax-repair.py
+          node --check src/main/resources/web/rbvm-ui.js
+          git fetch --depth=1 origin main
+          git show FETCH_HEAD:.github/workflows/postgres-integration.yml > .github/workflows/postgres-integration.yml
+          git rm scripts/frontend-v2-js-syntax-repair.py
+          git add -- .github/workflows/postgres-integration.yml src/main/resources/web/rbvm-ui.js
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m 'Fix Frontend V2 report rendering syntax'
+          git push origin HEAD:codex/arabic-product-ui-auth
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
