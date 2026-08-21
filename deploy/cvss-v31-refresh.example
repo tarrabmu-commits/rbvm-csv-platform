@@ -5,12 +5,11 @@ RBVM_CVSS_CACHE_DIR=/var/cache/rbvm-platform/cvss-v31
 RBVM_CVSS_KEEP=14
 RBVM_CVSS_OFFLINE=false
 
-# Local HTTP is accepted. Any non-local API base must use HTTPS.
+# Local default: no access token is required when the platform runs with RBVM_AUTH_MODE=DISABLED.
 RBVM_API_BASE_URL=http://127.0.0.1:8080
 
-# Dedicated OPERATOR API key for the canonical CVSS import endpoint.
-# Load the real value from protected configuration / secret management.
-RBVM_CVSS_API_KEY=replace-me
+# Optional only for a hardened/authenticated API deployment.
+# RBVM_CVSS_API_KEY=from-a-secret-manager
 
 # Optional bound for the generated evidence handoff (default 16 MiB).
 RBVM_CVSS_MAX_BYTES=16777216
