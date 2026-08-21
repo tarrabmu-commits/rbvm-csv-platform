@@ -118,7 +118,7 @@ for needle in (
     "normalizeTables",
     "rbvm-data-table",
     "normalizeSemanticStates",
-    "data.rbvmState",
+    "dataset.rbvmState",
     "MutationObserver",
     "normalizeDialogs",
     "dialogOpeners.set(dialog, trigger)",
