@@ -11,3 +11,13 @@ if text.count(old) != 1:
     raise AssertionError(f"expected one guideRevision guard block, found {text.count(old)}")
 script.write_text(text.replace(old, new, 1), encoding="utf-8")
 subprocess.run([sys.executable, str(script)], check=True)
+
+verifier = script.parents[1] / "scripts/verify-scanner-managed-asset-link-api.py"
+verifier_text = verifier.read_text(encoding="utf-8")
+old_version = "        'version: 0.23.0',\n"
+new_version = "        'version: 0.23.1',\n"
+if verifier_text.count(old_version) != 1:
+    raise AssertionError(
+        f"expected one V23 API release-version verifier anchor, found {verifier_text.count(old_version)}"
+    )
+verifier.write_text(verifier_text.replace(old_version, new_version, 1), encoding="utf-8")
