@@ -3,7 +3,6 @@
 
   const FRONTEND_CONTRACT = 'RBVM_FRONTEND_SYSTEM_V1';
   const THEME_KEY = 'rbvm.ui.theme';
-  const TOKEN_KEY = 'rbvmApiToken';
   const dialogOpeners = new WeakMap();
   const PAGE_META = new Map([
     ['/', {id: 'overview', nav: 'العمليات', group: 'المنصة', eyebrow: 'مركز عمليات المخاطر', title: 'المخاطر، بقرار واضح', description: 'حوّل أدلة الثغرات إلى قرارات قابلة للتتبع، من الاستيراد حتى المعالجة.'}],
@@ -30,12 +29,7 @@
   function icon(name) {
     const paths = {
       sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.66 6.34l1.41-1.41"/>',
-      moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
-      login: '<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/>',
-      logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
-      shield: '<path d="M20 13c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V5l8-3 8 3v8Z"/><path d="m9 12 2 2 4-4"/>',
-      eye: '<path d="M2.1 12a10.7 10.7 0 0 1 19.8 0 10.7 10.7 0 0 1-19.8 0Z"/><circle cx="12" cy="12" r="3"/>',
-      close: '<path d="M18 6 6 18M6 6l12 12"/>'
+      moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>'
     };
     return `<svg class="rbvm-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths[name] || ''}</svg>`;
   }
@@ -154,164 +148,6 @@
     return disclosure;
   }
 
-  function readSessionToken() {
-    try {
-      return window.sessionStorage.getItem(TOKEN_KEY) || '';
-    } catch (_) {
-      return '';
-    }
-  }
-
-  function storeSessionToken(token) {
-    try {
-      if (token) window.sessionStorage.setItem(TOKEN_KEY, token);
-      else window.sessionStorage.removeItem(TOKEN_KEY);
-    } catch (_) {
-      // Storage can be unavailable in hardened browser modes; validation still works once.
-    }
-  }
-
-  async function validateSession(token) {
-    const response = await fetch('/api/v1/session', {
-      cache: 'no-store',
-      headers: {'Authorization': `Bearer ${token}`}
-    });
-    if (!response.ok) {
-      const problem = await response.json().catch(() => ({}));
-      const error = new Error(problem.detail || (response.status === 401 ? 'رمز الدخول غير صحيح.' : `تعذر تسجيل الدخول (${response.status}).`));
-      error.status = response.status;
-      throw error;
-    }
-    return response.json();
-  }
-
-  function createSessionControl() {
-    const trigger = document.createElement('button');
-    trigger.className = 'rbvm-session-button';
-    trigger.type = 'button';
-    trigger.setAttribute('aria-label', 'تسجيل الدخول إلى المنصة');
-    trigger.setAttribute('title', 'تسجيل الدخول');
-    trigger.innerHTML = `${icon('login')}<span class="rbvm-session-button__copy"><strong>تسجيل الدخول</strong><small>جلسة آمنة</small></span>`;
-
-    const dialog = document.createElement('dialog');
-    dialog.className = 'rbvm-session-dialog rbvm-dialog';
-    dialog.setAttribute('aria-labelledby', 'rbvm-session-title');
-    dialog.innerHTML = `
-      <div class="rbvm-session-dialog__head">
-        <span class="rbvm-session-dialog__symbol">${icon('shield')}</span>
-        <div><p>هوية المشغّل</p><h2 id="rbvm-session-title">الدخول إلى المنصة</h2></div>
-        <button class="rbvm-icon-button rbvm-session-close" type="button" aria-label="إغلاق" title="إغلاق">${icon('close')}</button>
-      </div>
-      <div class="rbvm-session-current" hidden>
-        <div><span>المستخدم الحالي</span><strong data-session-actor></strong></div>
-        <span class="rbvm-role" data-session-role></span>
-      </div>
-      <form class="rbvm-session-form">
-        <p>أدخل رمز الوصول الذي زوّدك به مسؤول المنصة. يبقى الرمز في هذا التبويب فقط ويُحذف عند إغلاقه.</p>
-        <label for="rbvm-session-token">رمز الوصول</label>
-        <div class="rbvm-secret-field">
-          <input id="rbvm-session-token" type="password" autocomplete="off" spellcheck="false" required placeholder="ألصق رمز الوصول">
-          <button type="button" class="rbvm-icon-button rbvm-secret-toggle" aria-label="إظهار الرمز" title="إظهار الرمز">${icon('eye')}</button>
-        </div>
-        <div class="rbvm-session-feedback" role="status" aria-live="polite"></div>
-        <div class="rbvm-session-actions">
-          <button type="submit">دخول</button>
-          <button type="button" class="ghost rbvm-session-cancel">إلغاء</button>
-          <button type="button" class="danger rbvm-session-logout" hidden>${icon('logout')}<span>إنهاء الجلسة</span></button>
-        </div>
-      </form>`;
-    document.body.append(dialog);
-
-    const form = dialog.querySelector('.rbvm-session-form');
-    const input = dialog.querySelector('#rbvm-session-token');
-    const feedback = dialog.querySelector('.rbvm-session-feedback');
-    const submit = form.querySelector('button[type="submit"]');
-    const current = dialog.querySelector('.rbvm-session-current');
-    const logout = dialog.querySelector('.rbvm-session-logout');
-
-    function setIdentity(identity) {
-      const roleLabels = {VIEWER: 'مشاهد', OPERATOR: 'مشغّل', ADMIN: 'مسؤول'};
-      document.body.dataset.rbvmAuth = 'authenticated';
-      trigger.classList.add('is-authenticated');
-      trigger.setAttribute('aria-label', `الجلسة الحالية: ${identity.actorId}`);
-      trigger.setAttribute('title', 'إدارة الجلسة');
-      trigger.innerHTML = `${icon('shield')}<span class="rbvm-session-button__copy"><strong></strong><small></small></span>`;
-      trigger.querySelector('strong').textContent = roleLabels[identity.role] || identity.role;
-      trigger.querySelector('small').textContent = identity.actorId;
-      current.hidden = false;
-      current.querySelector('[data-session-actor]').textContent = identity.actorId;
-      current.querySelector('[data-session-role]').textContent = roleLabels[identity.role] || identity.role;
-      logout.hidden = false;
-      submit.hidden = true;
-      input.closest('.rbvm-secret-field').hidden = true;
-      dialog.querySelector('label[for="rbvm-session-token"]').hidden = true;
-      form.querySelector('p').textContent = 'الجلسة فعّالة في هذا التبويب. يمكنك إنهاؤها فوراً من هنا.';
-    }
-
-    async function refreshIdentity() {
-      const token = readSessionToken();
-      if (!token) {
-        document.body.dataset.rbvmAuth = 'anonymous';
-        return;
-      }
-      trigger.classList.add('is-loading');
-      try {
-        setIdentity(await validateSession(token));
-      } catch (_) {
-        storeSessionToken('');
-        document.body.dataset.rbvmAuth = 'anonymous';
-      } finally {
-        trigger.classList.remove('is-loading');
-      }
-    }
-
-    trigger.addEventListener('click', () => {
-      dialog.showModal();
-      if (!readSessionToken()) requestAnimationFrame(() => input.focus());
-    });
-    dialog.querySelector('.rbvm-session-close').addEventListener('click', () => dialog.close());
-    dialog.querySelector('.rbvm-session-cancel').addEventListener('click', () => dialog.close());
-    dialog.querySelector('.rbvm-secret-toggle').addEventListener('click', event => {
-      const visible = input.type === 'text';
-      input.type = visible ? 'password' : 'text';
-      event.currentTarget.setAttribute('aria-label', visible ? 'إظهار الرمز' : 'إخفاء الرمز');
-      event.currentTarget.setAttribute('title', visible ? 'إظهار الرمز' : 'إخفاء الرمز');
-    });
-    form.addEventListener('submit', async event => {
-      event.preventDefault();
-      const token = input.value.trim();
-      if (!token) return;
-      submit.disabled = true;
-      feedback.className = 'rbvm-session-feedback';
-      feedback.textContent = 'جارٍ التحقق من الهوية…';
-      try {
-        const identity = await validateSession(token);
-        storeSessionToken(token);
-        feedback.classList.add('success');
-        feedback.textContent = `مرحباً ${identity.actorId}. جارٍ تجهيز مساحة العمل…`;
-        window.setTimeout(() => window.location.reload(), 350);
-      } catch (error) {
-        feedback.classList.add('error');
-        feedback.textContent = error.message || 'تعذر التحقق من رمز الدخول.';
-        input.select();
-      } finally {
-        submit.disabled = false;
-      }
-    });
-    logout.addEventListener('click', () => {
-      storeSessionToken('');
-      window.location.reload();
-    });
-    refreshIdentity();
-    if (new URLSearchParams(window.location.search).get('login') === '1') {
-      window.setTimeout(() => {
-        dialog.showModal();
-        input.focus();
-      }, 0);
-    }
-    return trigger;
-  }
-
   function createShell() {
     if (document.querySelector('.rbvm-shell')) return;
 
@@ -386,7 +222,7 @@
 
     const primaryNav = createNav();
     const mobileNav = createMobileNav();
-    tools.append(pageChip, themeButton, createSessionControl());
+    tools.append(pageChip, themeButton);
     inner.append(brand, primaryNav, mobileNav, tools);
     shell.append(inner);
 
@@ -517,16 +353,12 @@
     });
   }
 
-  function normalizeAuthMessages() {
-    if (document.body.dataset.rbvmAuth !== 'anonymous') return;
-    const runtime = document.querySelector('#runtimeHealth');
-    if (runtime && runtime.textContent !== 'سجّل الدخول لعرض حالة المنصة والبيانات.') {
-      runtime.textContent = 'سجّل الدخول لعرض حالة المنصة والبيانات.';
-      runtime.classList.remove('degraded');
-    }
-  }
-
   function normalizeLegacyAuth() {
+    try {
+      window.sessionStorage.removeItem('rbvmApiToken');
+    } catch (_) {
+      // Legacy token storage is optional and intentionally unused by the operator UI.
+    }
     document.querySelectorAll('#apiToken').forEach(input => {
       const section = input.closest('section, .panel');
       if (section) {
@@ -597,7 +429,6 @@
     const observer = new MutationObserver(() => {
       normalizeSemanticStates();
       normalizeGuideTabs();
-      normalizeAuthMessages();
     });
     observer.observe(document.body, {subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class', 'data-state']});
   }
@@ -644,7 +475,6 @@
     normalizeModules(main);
     normalizeLegacyAuth();
     localizeInterface();
-    normalizeAuthMessages();
     normalizeTables();
     normalizeExternalState();
     normalizeGuideTabs();
