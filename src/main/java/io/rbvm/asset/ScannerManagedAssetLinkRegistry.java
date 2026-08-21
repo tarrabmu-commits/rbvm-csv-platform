@@ -3,6 +3,7 @@ package io.rbvm.asset;
 import io.rbvm.asset.ScannerManagedAssetLink.ChangeDraft;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -23,6 +24,9 @@ public interface ScannerManagedAssetLinkRegistry {
     /** Immutable newest-first event history. Empty optional means the scanner asset does not exist. */
     Optional<HistoryPage> history(UUID scannerAssetId, int limit, Integer beforeRevision)
             throws IOException;
+
+    /** Tenant-scoped scanner identities with their latest explicit link decision, if one exists. */
+    ScannerAssetPage list(int limit, UUID afterId) throws IOException;
 
     enum MutationStatus {
         UPDATED,
@@ -71,5 +75,49 @@ public interface ScannerManagedAssetLinkRegistry {
                 throw new IllegalArgumentException("nextBeforeRevision must be positive");
             }
         }
+    }
+
+    record ScannerAssetSummary(
+            UUID scannerAssetId,
+            String observedName,
+            String osNameRaw,
+            String sourceProfileKey,
+            String identityBasis,
+            String identityConfidence,
+            Instant firstObservedAt,
+            Instant lastObservedAt,
+            ScannerManagedAssetLink current
+    ) {
+        public ScannerAssetSummary {
+            Objects.requireNonNull(scannerAssetId, "scannerAssetId");
+            observedName = requireText(observedName, "observedName");
+            osNameRaw = Objects.requireNonNull(osNameRaw, "osNameRaw");
+            sourceProfileKey = requireText(sourceProfileKey, "sourceProfileKey");
+            identityBasis = requireText(identityBasis, "identityBasis");
+            identityConfidence = requireText(identityConfidence, "identityConfidence");
+            Objects.requireNonNull(firstObservedAt, "firstObservedAt");
+            Objects.requireNonNull(lastObservedAt, "lastObservedAt");
+            if (firstObservedAt.isAfter(lastObservedAt)) {
+                throw new IllegalArgumentException("firstObservedAt must not be after lastObservedAt");
+            }
+            if (current != null && !scannerAssetId.equals(current.scannerAssetId())) {
+                throw new IllegalArgumentException("current link belongs to another scanner asset");
+            }
+        }
+    }
+
+    record ScannerAssetPage(List<ScannerAssetSummary> assets, UUID nextAfterId) {
+        public ScannerAssetPage {
+            assets = List.copyOf(Objects.requireNonNull(assets, "assets"));
+        }
+    }
+
+    private static String requireText(String value, String name) {
+        Objects.requireNonNull(value, name);
+        String normalized = value.trim();
+        if (normalized.isEmpty()) {
+            throw new IllegalArgumentException(name + " must not be blank");
+        }
+        return normalized;
     }
 }
