@@ -312,6 +312,7 @@
 
   function localizeInterface() {
     const translations = new Map([
+      ['الدخول', 'حالة الاتصال'],
       ['1. ارفع ملف Wazuh وحلّله', 'استيراد ملف Wazuh'],
       ['2. نتيجة المعاينة', 'نتيجة المعاينة'],
       ['3. Applicability Assessment', 'تقييم قابلية التطبيق'],
@@ -360,11 +361,28 @@
       // Legacy token storage is optional and intentionally unused by the operator UI.
     }
     document.querySelectorAll('#apiToken').forEach(input => {
-      const section = input.closest('section, .panel');
-      if (section) {
-        section.classList.add('rbvm-legacy-auth');
-        section.setAttribute('aria-hidden', 'true');
+      const label = input.closest('label');
+      if (label) {
+        label.hidden = true;
+        label.setAttribute('aria-hidden', 'true');
+      } else {
+        input.hidden = true;
+        input.setAttribute('aria-hidden', 'true');
       }
+      const section = input.closest('section, .panel');
+      if (!section) return;
+      const saveButton = section.querySelector('#saveToken');
+      if (saveButton) {
+        saveButton.hidden = true;
+        saveButton.setAttribute('aria-hidden', 'true');
+      }
+      section.querySelectorAll('.note').forEach(note => {
+        const text = note.textContent || '';
+        if (text.includes('sessionStorage') || text.includes('مفتاح') || text.includes('token')) {
+          note.hidden = true;
+          note.setAttribute('aria-hidden', 'true');
+        }
+      });
     });
   }
 
