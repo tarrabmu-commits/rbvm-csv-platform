@@ -297,7 +297,7 @@ public final class ManagedAssetApi {
         return actorId.trim();
     }
 
-    private static void requireJsonContentType(String contentType) {
+    static void requireJsonContentType(String contentType) {
         if (contentType == null) {
             throw new ApiProblem(
                     415,
@@ -348,7 +348,7 @@ public final class ManagedAssetApi {
         return new IfMatch(trimmed, revision);
     }
 
-    private static Map<String, Object> readJsonObject(InputStream input) throws IOException {
+    static Map<String, Object> readJsonObject(InputStream input) throws IOException {
         byte[] bytes = input.readNBytes(MAXIMUM_BODY_BYTES + 1);
         if (bytes.length > MAXIMUM_BODY_BYTES) {
             throw new ApiProblem(
