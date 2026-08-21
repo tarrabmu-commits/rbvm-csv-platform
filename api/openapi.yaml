@@ -18,6 +18,21 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /session:
+    get:
+      operationId: getSession
+      summary: Validate the current bearer credential and return its identity
+      responses:
+        '200':
+          description: Current authenticated identity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionIdentity'
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+        '429':
+          $ref: '#/components/responses/RateLimited'
   /health:
     get:
       operationId: getHealth
@@ -1271,6 +1286,23 @@ components:
         enum: [WAZUH_CSV_V1, WAZUH_CSV_V2]
         default: WAZUH_CSV_V1
   schemas:
+    SessionIdentity:
+      type: object
+      additionalProperties: false
+      required: [authenticated, actorId, role, assurance]
+      properties:
+        authenticated:
+          const: true
+        actorId:
+          type: string
+          minLength: 1
+          maxLength: 200
+        role:
+          type: string
+          enum: [VIEWER, OPERATOR, ADMIN]
+        assurance:
+          type: string
+          enum: [API_KEY_SHA256, UNAUTHENTICATED_LOCAL]
     Probe:
       type: object
       required: [status, checkedAt]

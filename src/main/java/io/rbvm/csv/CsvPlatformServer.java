@@ -763,6 +763,17 @@ public final class CsvPlatformServer implements AutoCloseable {
                 sendJson(exchange, 200, healthView());
                 return;
             }
+            if ("/api/v1/session".equals(path)) {
+                requireMethod(exchange, method, "GET");
+                AuthPrincipal principal = authorize(exchange, ApiRole.VIEWER);
+                sendJson(exchange, 200, Map.of(
+                        "authenticated", true,
+                        "actorId", principal.actorId(),
+                        "role", principal.role().name(),
+                        "assurance", principal.assurance()
+                ));
+                return;
+            }
             if ("/api/v1/live".equals(path)) {
                 requireMethod(exchange, method, "GET");
                 sendJson(exchange, 200, Map.of("status", "UP", "startedAt", startedAt.toString()));

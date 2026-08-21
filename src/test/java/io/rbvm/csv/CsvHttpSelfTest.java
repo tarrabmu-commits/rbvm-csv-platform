@@ -391,6 +391,14 @@ public final class CsvHttpSelfTest {
                     client, base.resolve("/api/v1/health"), viewerToken);
             assert protectedHealth.statusCode() == 200 : protectedHealth.body();
 
+            HttpResponse<String> session = authorizedGet(
+                    client, base.resolve("/api/v1/session"), viewerToken);
+            assert session.statusCode() == 200 : session.body();
+            assert session.body().contains("\"authenticated\": true");
+            assert session.body().contains("\"actorId\": \"security-viewer\"");
+            assert session.body().contains("\"role\": \"VIEWER\"");
+            assert session.body().contains("\"assurance\": \"API_KEY_SHA256\"");
+
             HttpResponse<String> allowedRead = authorizedGet(
                     client, base.resolve("/api/v1/cases"), viewerToken);
             assert allowedRead.statusCode() == 200 : allowedRead.body();
