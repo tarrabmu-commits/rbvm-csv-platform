@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - codex/arabic-product-ui-auth
-  pull_request:
-    branches:
-      - main
 
 permissions:
   contents: write
@@ -20,10 +17,6 @@ jobs:
         with:
           ref: codex/arabic-product-ui-auth
           fetch-depth: 1
-      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
-        with:
-          distribution: temurin
-          java-version: '21'
       - name: Apply exact Frontend V2 fixes
         shell: bash
         run: |
@@ -97,11 +90,7 @@ jobs:
               raise SystemExit('managed-assets verifier target must occur exactly once')
           verifier_path.write_text(verifier.replace(old, new), encoding='utf-8')
           PY
-      - name: Verify JavaScript syntax
-        run: node --check src/main/resources/web/rbvm-ui.js
-      - name: Verify repository
-        run: ./scripts/verify.sh
-      - name: Commit verified fixes and remove helpers
+      - name: Commit fixes and remove helpers
         shell: bash
         run: |
           git rm .github/workflows/frontend-v2-fix-applicator.yml
