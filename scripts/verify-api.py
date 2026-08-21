@@ -55,8 +55,8 @@ def main():
 
     if document.get("openapi") != "3.1.2":
         raise AssertionError("OpenAPI document must declare 3.1.2")
-    if document.get("info", {}).get("version") != "0.22.0":
-        raise AssertionError("OpenAPI info.version must match Increment 22")
+    if document.get("info", {}).get("version") != "0.23.0":
+        raise AssertionError("OpenAPI info.version must match Increment 23")
 
     bearer = document.get("components", {}).get("securitySchemes", {}).get("bearerAuth", {})
     if bearer.get("type") != "http" or bearer.get("scheme") != "bearer":
@@ -106,6 +106,9 @@ def main():
         "/managed-assets",
         "/managed-assets/{managedAssetId}",
         "/managed-assets/{managedAssetId}/revisions",
+        "/scanner-assets",
+        "/scanner-assets/{scannerAssetId}/managed-asset-link",
+        "/scanner-assets/{scannerAssetId}/managed-asset-link/revisions",
         "/cases",
         "/cases/{caseId}",
         "/cases/{caseId}/actions",
@@ -171,6 +174,18 @@ def main():
         "readEnabled", "writeEnabled", "historyReadEnabled"
     }:
         raise AssertionError("Managed Asset capability schema is incomplete")
+
+    if "scannerManagedAssetLinks" not in health_required:
+        raise AssertionError("Health schema must expose scanner-managed-asset link capability")
+    link_capability = schemas.get("ScannerManagedAssetLinkCapability", {})
+    if set(link_capability.get("required", [])) != {
+        "readEnabled", "writeEnabled", "historyReadEnabled"
+    }:
+        raise AssertionError("Scanner-managed-asset link capability schema is incomplete")
+
+    link_revision = schemas.get("ScannerManagedAssetLinkRevisionRequest", {})
+    if link_revision.get("additionalProperties") is not False:
+        raise AssertionError("Scanner-managed-asset link revisions must reject unknown JSON fields")
 
     create_managed_asset = schemas.get("CreateManagedAssetRequest", {})
     append_managed_asset = schemas.get("AppendManagedAssetRevisionRequest", {})

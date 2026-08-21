@@ -47,12 +47,27 @@ def main() -> None:
     ):
         require(migration, needle, migration_path.name)
 
+    # These constructs are forbidden everywhere in the link persistence contract.
     for forbidden in (
-        "risk_score", "priority_tier", "sla_days", "cvss", "epss", "known_exploited",
-        "normalized_observed_name", "os_name_raw"
+        "risk_score", "priority_tier", "sla_days", "cvss", "epss", "known_exploited"
     ):
         forbid(migration, forbidden, migration_path.name)
         forbid(store, forbidden, store_path.name)
+
+    # Scanner presentation attributes may be read by V23's list endpoint, but they must remain
+    # absent from the mutation/current/history decision machinery. This preserves V21's
+    # no-inference invariant while allowing operators to identify the scanner row they are
+    # explicitly linking.
+    list_marker = "    public ScannerAssetPage list(int limit, UUID afterId) throws IOException {"
+    schema_marker = "    public int schemaVersion() {"
+    if store.count(list_marker) != 1 or store.count(schema_marker) != 1:
+        raise AssertionError("Could not isolate the read-only V23 scanner list method")
+    before_list, tail = store.split(list_marker, 1)
+    _list_body, after_list = tail.split(schema_marker, 1)
+    decision_surface = before_list + schema_marker + after_list
+    for forbidden in ("normalized_observed_name", "os_name_raw"):
+        forbid(migration, forbidden, migration_path.name)
+        forbid(decision_surface, forbidden, "link mutation/current/history decision surface")
 
     for needle in (
         'new Migration(19, "V19__scanner_managed_asset_link.sql")',

@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
 import io.rbvm.asset.ManagedAssetRegistry;
+import io.rbvm.asset.ScannerManagedAssetLinkRegistry;
 import io.rbvm.domain.CaseActionCommand;
 import io.rbvm.domain.CaseActionType;
 import io.rbvm.domain.CaseNotFoundException;
@@ -93,6 +94,7 @@ public final class CsvPlatformServer implements AutoCloseable {
     private final byte[] networkReachabilityUi;
     private final byte[] businessImpactUi;
     private final byte[] managedAssetsUi;
+    private final byte[] scannerManagedAssetLinksUi;
     private final ApiKeyAuthenticator authenticator;
     private final RequestRateLimiter rateLimiter;
     private final long maximumUploadBytes;
@@ -111,6 +113,7 @@ public final class CsvPlatformServer implements AutoCloseable {
     private final Optional<BusinessImpactImporter> businessImpactImporter;
     private final Optional<BusinessImpactEvidenceReader> businessImpactEvidenceReader;
     private final Optional<ManagedAssetHttpRouter> managedAssetRouter;
+    private Optional<ScannerManagedAssetLinkHttpRouter> scannerManagedAssetLinkRouter;
     private final Instant startedAt = Instant.now();
     private final AtomicLong requestsTotal = new AtomicLong();
     private final AtomicLong problemsTotal = new AtomicLong();
@@ -162,6 +165,7 @@ public final class CsvPlatformServer implements AutoCloseable {
         this.businessImpactImporter = Optional.empty();
         this.businessImpactEvidenceReader = Optional.empty();
         this.managedAssetRouter = Optional.empty();
+        this.scannerManagedAssetLinkRouter = Optional.empty();
         this.webUi = loadResource("/web/index.html");
         this.cvssUi = loadResource("/web/cvss-v31.html");
         this.kevUi = loadResource("/web/cisa-kev.html");
@@ -170,6 +174,7 @@ public final class CsvPlatformServer implements AutoCloseable {
         this.networkReachabilityUi = loadResource("/web/network-reachability.html");
         this.businessImpactUi = loadResource("/web/business-impact.html");
         this.managedAssetsUi = loadResource("/web/assets.html");
+        this.scannerManagedAssetLinksUi = loadResource("/web/asset-links.html");
         this.server = HttpServer.create(new InetSocketAddress(host, port), 32);
         int workers = Math.max(4, Math.min(16, Runtime.getRuntime().availableProcessors()));
         this.executor = Executors.newFixedThreadPool(workers);
@@ -588,6 +593,7 @@ public final class CsvPlatformServer implements AutoCloseable {
                 managedAssetRegistry,
                 "managedAssetRegistry"
         ).map(ManagedAssetApi::new).map(ManagedAssetHttpRouter::new);
+        this.scannerManagedAssetLinkRouter = Optional.empty();
         this.webUi = loadResource("/web/index.html");
         this.cvssUi = loadResource("/web/cvss-v31.html");
         this.kevUi = loadResource("/web/cisa-kev.html");
@@ -596,11 +602,70 @@ public final class CsvPlatformServer implements AutoCloseable {
         this.networkReachabilityUi = loadResource("/web/network-reachability.html");
         this.businessImpactUi = loadResource("/web/business-impact.html");
         this.managedAssetsUi = loadResource("/web/assets.html");
+        this.scannerManagedAssetLinksUi = loadResource("/web/asset-links.html");
         this.server = HttpServer.create(new InetSocketAddress(host, port), 32);
         int workers = Math.max(4, Math.min(16, Runtime.getRuntime().availableProcessors()));
         this.executor = Executors.newFixedThreadPool(workers);
         this.server.setExecutor(executor);
         this.server.createContext("/", this::route);
+    }
+
+    /** Runtime constructor through the V23 scanner-managed-asset link API capability. */
+    public CsvPlatformServer(
+            String host,
+            int port,
+            Path dataDirectory,
+            long maximumUploadBytes,
+            CanonicalProjection canonicalProjection,
+            DomainCatalog readCatalog,
+            Optional<ApplicabilityImporter> applicabilityImporter,
+            Optional<ApplicabilityFindingExporter> applicabilityFindingExporter,
+            Optional<CvssV31Importer> cvssV31Importer,
+            Optional<CvssV31EvidenceReader> cvssV31EvidenceReader,
+            Optional<CisaKevImporter> cisaKevImporter,
+            Optional<CisaKevEvidenceReader> cisaKevEvidenceReader,
+            Optional<EpssImporter> epssImporter,
+            Optional<EpssEvidenceReader> epssEvidenceReader,
+            Optional<AssetContextImporter> assetContextImporter,
+            Optional<AssetContextEvidenceReader> assetContextEvidenceReader,
+            Optional<NetworkReachabilityImporter> networkReachabilityImporter,
+            Optional<NetworkReachabilityEvidenceReader> networkReachabilityEvidenceReader,
+            Optional<BusinessImpactImporter> businessImpactImporter,
+            Optional<BusinessImpactEvidenceReader> businessImpactEvidenceReader,
+            Optional<ManagedAssetRegistry> managedAssetRegistry,
+            Optional<ScannerManagedAssetLinkRegistry> scannerManagedAssetLinkRegistry,
+            ApiKeyAuthenticator authenticator,
+            RequestRateLimiter rateLimiter
+    ) throws IOException {
+        this(
+                host,
+                port,
+                dataDirectory,
+                maximumUploadBytes,
+                canonicalProjection,
+                readCatalog,
+                applicabilityImporter,
+                applicabilityFindingExporter,
+                cvssV31Importer,
+                cvssV31EvidenceReader,
+                cisaKevImporter,
+                cisaKevEvidenceReader,
+                epssImporter,
+                epssEvidenceReader,
+                assetContextImporter,
+                assetContextEvidenceReader,
+                networkReachabilityImporter,
+                networkReachabilityEvidenceReader,
+                businessImpactImporter,
+                businessImpactEvidenceReader,
+                managedAssetRegistry,
+                authenticator,
+                rateLimiter
+        );
+        this.scannerManagedAssetLinkRouter = Objects.requireNonNull(
+                scannerManagedAssetLinkRegistry,
+                "scannerManagedAssetLinkRegistry"
+        ).map(ScannerManagedAssetLinkApi::new).map(ScannerManagedAssetLinkHttpRouter::new);
     }
 
     public void start() {
@@ -671,6 +736,11 @@ public final class CsvPlatformServer implements AutoCloseable {
                 sendBytes(exchange, 200, "text/html; charset=utf-8", managedAssetsUi);
                 return;
             }
+            if ("/asset-links".equals(path) || "/asset-links/".equals(path)) {
+                requireMethod(exchange, method, "GET");
+                sendBytes(exchange, 200, "text/html; charset=utf-8", scannerManagedAssetLinksUi);
+                return;
+            }
             if ("/api/v1/health".equals(path)) {
                 requireMethod(exchange, method, "GET");
                 authorize(exchange, ApiRole.VIEWER);
@@ -721,6 +791,25 @@ public final class CsvPlatformServer implements AutoCloseable {
                                 "Managed asset API requires PostgreSQL schema version 18 or newer"
                         ));
                 managedAssets.routeAuthorized(exchange, method, principal);
+                return;
+            }
+            if (ScannerManagedAssetLinkHttpRouter.inNamespace(path)) {
+                if (!ScannerManagedAssetLinkHttpRouter.handles(path)) {
+                    throw new HttpProblem(
+                            404,
+                            "NOT_FOUND",
+                            "The requested scanner-managed-asset link route does not exist"
+                    );
+                }
+                ApiRole requiredRole = ScannerManagedAssetLinkHttpRouter.requiredRole(exchange, method);
+                AuthPrincipal principal = authorize(exchange, requiredRole);
+                ScannerManagedAssetLinkHttpRouter links = scannerManagedAssetLinkRouter.orElseThrow(() ->
+                        new HttpProblem(
+                                503,
+                                "SCANNER_MANAGED_ASSET_LINK_PERSISTENCE_UNAVAILABLE",
+                                "Scanner-managed-asset link API requires PostgreSQL schema version 19 or newer"
+                        ));
+                links.routeAuthorized(exchange, method, principal);
                 return;
             }
             if ("/api/v1/cases".equals(path)) {
@@ -935,6 +1024,11 @@ public final class CsvPlatformServer implements AutoCloseable {
                 "readEnabled", managedAssetRouter.isPresent(),
                 "writeEnabled", managedAssetRouter.isPresent(),
                 "historyReadEnabled", managedAssetRouter.isPresent()
+        ));
+        health.put("scannerManagedAssetLinks", Map.of(
+                "readEnabled", scannerManagedAssetLinkRouter.isPresent(),
+                "writeEnabled", scannerManagedAssetLinkRouter.isPresent(),
+                "historyReadEnabled", scannerManagedAssetLinkRouter.isPresent()
         ));
         return health;
     }
@@ -1822,6 +1916,9 @@ public final class CsvPlatformServer implements AutoCloseable {
                 + "rbvm_business_impact_evidence_read_enabled " + (businessImpactEvidenceReader.isPresent() ? 1 : 0) + "\n"
                 + "# TYPE rbvm_managed_asset_api_enabled gauge\n"
                 + "rbvm_managed_asset_api_enabled " + (managedAssetRouter.isPresent() ? 1 : 0) + "\n"
+                + "# TYPE rbvm_scanner_managed_asset_link_api_enabled gauge\n"
+                + "rbvm_scanner_managed_asset_link_api_enabled "
+                + (scannerManagedAssetLinkRouter.isPresent() ? 1 : 0) + "\n"
                 + "# TYPE rbvm_process_uptime_seconds gauge\n"
                 + "rbvm_process_uptime_seconds " + uptime + "\n"
                 + "# TYPE rbvm_imports_stored gauge\n"
@@ -1886,6 +1983,7 @@ public final class CsvPlatformServer implements AutoCloseable {
                 runtime.businessImpactImporter(),
                 runtime.businessImpactEvidenceReader(),
                 runtime.managedAssetRegistry(),
+                runtime.scannerManagedAssetLinkRegistry(),
                 authenticator,
                 rateLimiter
         );
@@ -1898,6 +1996,8 @@ public final class CsvPlatformServer implements AutoCloseable {
         System.out.println("Asset Context operator UI: " + application.baseUri().resolve("/asset-context"));
         System.out.println("Network Reachability operator UI: " + application.baseUri().resolve("/reachability"));
         System.out.println("Business Impact operator UI: " + application.baseUri().resolve("/business-impact"));
+        System.out.println("Managed Assets operator UI: " + application.baseUri().resolve("/assets"));
+        System.out.println("Scanner↔Managed Asset Link operator UI: " + application.baseUri().resolve("/asset-links"));
         System.out.println("Data directory: " + configuration.dataDirectory().toAbsolutePath().normalize());
         System.out.println("Canonical projection: "
                 + canonicalProjection.health().get("backend"));
@@ -1917,6 +2017,8 @@ public final class CsvPlatformServer implements AutoCloseable {
                 + (runtime.businessImpactImporter().isPresent() ? "ENABLED" : "DISABLED"));
         System.out.println("Managed Asset API: "
                 + (runtime.managedAssetRegistry().isPresent() ? "ENABLED" : "DISABLED"));
+        System.out.println("Scanner↔Managed Asset Link API: "
+                + (runtime.scannerManagedAssetLinkRegistry().isPresent() ? "ENABLED" : "DISABLED"));
         System.out.println("API authentication: "
                 + (authenticator.enabled() ? "API_KEY" : "DISABLED"));
         new CountDownLatch(1).await();

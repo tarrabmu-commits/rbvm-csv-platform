@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: RBVM CSV Import API
-  version: 0.22.0
+  version: 0.23.0
   description: >-
     Synchronous upload, validation, preview, and canonical-domain materialization
     API for WAZUH_CSV_V1 positive observations and opt-in WAZUH_CSV_V2 explicit
@@ -10,7 +10,8 @@ info:
     threat evidence, independent FIRST EPSS exploitation-probability evidence,
     independent asset-scoped organizational context evidence, independent scoped
     network reachability evidence, independent qualitative Business/Mission Impact
-    evidence, explicit case decisions, an append-only workflow audit trail, and optional
+    evidence, customer-managed asset inventory, explicit customer-confirmed scanner-to-managed-asset
+    link decisions, explicit case decisions, an append-only workflow audit trail, and optional
     PostgreSQL canonical persistence.
 servers:
   - url: http://127.0.0.1:8080/api/v1
@@ -1095,6 +1096,117 @@ paths:
         '428': { $ref: '#/components/responses/Problem' }
         '429': { $ref: '#/components/responses/RateLimited' }
         '503': { $ref: '#/components/responses/Problem' }
+  /scanner-assets:
+    get:
+      operationId: listScannerAssetsForManagedAssetLinks
+      summary: List scanner assets with current explicit managed-asset link state
+      description: >-
+        Lists tenant-scoped canonical scanner identities and the latest explicit link decision, if any.
+        Missing currentLink means never assessed and is distinct from an explicit UNLINKED decision.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+        - name: afterId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Scanner-asset page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScannerAssetPage' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Problem' }
+
+  /scanner-assets/{scannerAssetId}/managed-asset-link:
+    parameters:
+      - $ref: '#/components/parameters/ScannerAssetId'
+    get:
+      operationId: getScannerManagedAssetLink
+      summary: Read the current explicit scanner-to-managed-asset link decision
+      description: >-
+        Returns currentLink null with a deterministic strong revision-0 ETag when the scanner asset
+        exists but has never had a link decision. An explicit UNLINKED revision is returned as evidence.
+      responses:
+        '200':
+          description: Current explicit link state
+          headers:
+            ETag:
+              description: Strong validator for current link state, including never-assessed revision 0
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScannerManagedAssetLinkCurrent' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Problem' }
+
+  /scanner-assets/{scannerAssetId}/managed-asset-link/revisions:
+    parameters:
+      - $ref: '#/components/parameters/ScannerAssetId'
+    get:
+      operationId: listScannerManagedAssetLinkRevisions
+      summary: Read immutable explicit link-decision history
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+        - name: beforeRevision
+          in: query
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: Link-decision history page, newest first
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScannerManagedAssetLinkHistoryPage' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Problem' }
+    post:
+      operationId: appendScannerManagedAssetLinkRevision
+      summary: Append one explicit customer-confirmed link decision
+      description: >-
+        Requires exactly one strong If-Match validator from the current-state endpoint. The body is
+        complete link state. There is no inferred matching, partial PATCH, DELETE, or automatic merge.
+      parameters:
+        - name: If-Match
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScannerManagedAssetLinkRevisionRequest' }
+      responses:
+        '200':
+          description: Link decision appended or exact request replayed
+          headers:
+            ETag:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScannerManagedAssetLinkCurrent' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/InsufficientRole' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '412': { $ref: '#/components/responses/Problem' }
+        '413': { $ref: '#/components/responses/Problem' }
+        '415': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+        '428': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Problem' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1105,6 +1217,13 @@ components:
         API key supplied as an opaque bearer token; only its SHA-256 digest is stored.
         Registry entries may include an optional ISO-8601 expiration timestamp.
   parameters:
+    ScannerAssetId:
+      name: scannerAssetId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     ManagedAssetId:
       name: managedAssetId
       in: path
@@ -1179,6 +1298,7 @@ components:
         - networkReachability
         - businessImpact
         - managedAssets
+        - scannerManagedAssetLinks
         - storedImports
         - recoveryWarningCount
         - maximumUploadBytes
@@ -1216,6 +1336,8 @@ components:
           $ref: '#/components/schemas/BusinessImpactCapability'
         managedAssets:
           $ref: '#/components/schemas/ManagedAssetCapability'
+        scannerManagedAssetLinks:
+          $ref: '#/components/schemas/ScannerManagedAssetLinkCapability'
         storedImports:
           type: integer
           minimum: 0
@@ -1302,6 +1424,108 @@ components:
         readEnabled: { type: boolean }
         writeEnabled: { type: boolean }
         historyReadEnabled: { type: boolean }
+
+    ScannerManagedAssetLinkCapability:
+      type: object
+      additionalProperties: false
+      required: [readEnabled, writeEnabled, historyReadEnabled]
+      properties:
+        readEnabled: { type: boolean }
+        writeEnabled: { type: boolean }
+        historyReadEnabled: { type: boolean }
+
+    ScannerManagedAssetLinkStatus:
+      type: string
+      enum: [LINKED, UNLINKED]
+
+    ScannerManagedAssetLinkEvent:
+      type: object
+      additionalProperties: false
+      required: [eventId, scannerAssetId, revision, linkStatus, managedAssetId, linkMethod, evidenceSha256, changedBy, changeNote, recordedAt]
+      properties:
+        eventId: { type: string, format: uuid }
+        scannerAssetId: { type: string, format: uuid }
+        revision: { type: integer, minimum: 1 }
+        linkStatus: { $ref: '#/components/schemas/ScannerManagedAssetLinkStatus' }
+        managedAssetId: { type: [string, 'null'], format: uuid }
+        linkMethod: { const: CUSTOMER_CONFIRMED }
+        evidenceSha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+        changedBy: { type: string, minLength: 1 }
+        changeNote: { type: string }
+        recordedAt: { type: string, format: date-time }
+
+    ScannerAssetSummary:
+      type: object
+      additionalProperties: false
+      required: [id, observedName, osNameRaw, sourceProfileKey, identityBasis, identityConfidence, firstObservedAt, lastObservedAt, currentLink]
+      properties:
+        id: { type: string, format: uuid }
+        observedName: { type: string, minLength: 1 }
+        osNameRaw: { type: string }
+        sourceProfileKey: { type: string, minLength: 1 }
+        identityBasis: { const: SOURCE_NAME_ONLY }
+        identityConfidence: { const: LOW }
+        firstObservedAt: { type: string, format: date-time }
+        lastObservedAt: { type: string, format: date-time }
+        currentLink:
+          oneOf:
+            - $ref: '#/components/schemas/ScannerManagedAssetLinkEvent'
+            - type: 'null'
+
+    ScannerAssetPage:
+      type: object
+      additionalProperties: false
+      required: [assets, nextAfterId]
+      properties:
+        assets:
+          type: array
+          items: { $ref: '#/components/schemas/ScannerAssetSummary' }
+        nextAfterId: { type: [string, 'null'], format: uuid }
+
+    ScannerManagedAssetLinkCurrent:
+      type: object
+      additionalProperties: false
+      required: [scannerAssetId, currentLink]
+      properties:
+        scannerAssetId: { type: string, format: uuid }
+        currentLink:
+          oneOf:
+            - $ref: '#/components/schemas/ScannerManagedAssetLinkEvent'
+            - type: 'null'
+
+    ScannerManagedAssetLinkHistoryPage:
+      type: object
+      additionalProperties: false
+      required: [scannerAssetId, events, nextBeforeRevision]
+      properties:
+        scannerAssetId: { type: string, format: uuid }
+        events:
+          type: array
+          items: { $ref: '#/components/schemas/ScannerManagedAssetLinkEvent' }
+        nextBeforeRevision: { type: [integer, 'null'], minimum: 1 }
+
+    ScannerManagedAssetLinkRevisionRequest:
+      type: object
+      additionalProperties: false
+      required: [linkStatus]
+      allOf:
+        - if:
+            properties: { linkStatus: { const: LINKED } }
+            required: [linkStatus]
+          then:
+            required: [managedAssetId]
+            properties:
+              managedAssetId: { type: string, format: uuid }
+        - if:
+            properties: { linkStatus: { const: UNLINKED } }
+            required: [linkStatus]
+          then:
+            properties:
+              managedAssetId: { type: 'null' }
+      properties:
+        linkStatus: { $ref: '#/components/schemas/ScannerManagedAssetLinkStatus' }
+        managedAssetId: { type: [string, 'null'], format: uuid }
+        changeNote: { type: [string, 'null'] }
 
     ManagedAssetEnvironment:
       type: string
