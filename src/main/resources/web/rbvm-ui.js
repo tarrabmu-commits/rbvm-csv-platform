@@ -4,15 +4,15 @@
   const FRONTEND_CONTRACT = 'RBVM_FRONTEND_SYSTEM_V1';
   const THEME_KEY = 'rbvm.ui.theme';
   const pages = [
-    ['/', 'Overview'],
+    ['/', 'Home'],
     ['/cvss', 'CVSS'],
     ['/kev', 'KEV'],
     ['/epss', 'EPSS'],
-    ['/asset-context', 'Asset Context'],
+    ['/asset-context', 'Context'],
     ['/reachability', 'Reachability'],
-    ['/business-impact', 'Business Impact'],
-    ['/assets', 'Managed Assets'],
-    ['/asset-links', 'Asset Links']
+    ['/business-impact', 'Impact'],
+    ['/assets', 'Assets'],
+    ['/asset-links', 'Links']
   ];
 
   function currentPath() {
@@ -75,6 +75,34 @@
     return nav;
   }
 
+  function createMobileNav() {
+    const disclosure = document.createElement('details');
+    disclosure.className = 'rbvm-mobile-nav';
+
+    const summary = document.createElement('summary');
+    summary.textContent = 'التنقل';
+    summary.setAttribute('aria-label', 'فتح قائمة التنقل');
+
+    const nav = document.createElement('nav');
+    nav.setAttribute('aria-label', 'التنقل الرئيسي للموبايل');
+    const list = document.createElement('ul');
+    const activePath = currentPath();
+
+    for (const [href, label] of pages) {
+      const item = document.createElement('li');
+      const link = document.createElement('a');
+      link.href = href;
+      link.textContent = label;
+      if (activePath === href) link.setAttribute('aria-current', 'page');
+      item.append(link);
+      list.append(item);
+    }
+
+    nav.append(list);
+    disclosure.append(summary, nav);
+    return disclosure;
+  }
+
   function createShell() {
     if (document.querySelector('.rbvm-shell')) return;
 
@@ -119,7 +147,7 @@
     });
 
     tools.append(themeButton);
-    inner.append(brand, createNav(), tools);
+    inner.append(brand, createNav(), createMobileNav(), tools);
     shell.append(inner);
 
     document.body.prepend(shell);
