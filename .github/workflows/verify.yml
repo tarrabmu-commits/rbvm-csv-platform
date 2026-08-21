@@ -25,8 +25,8 @@ jobs:
           python-version: '3.12'
       - name: Install OpenAPI verifier dependency
         run: python -m pip install --require-hashes -r scripts/verification-requirements.txt
-      - name: Verify 0.23.0 release contract
-        run: ./scripts/verify-release-version.sh v0.23.0
+      - name: Verify 0.23.1 release contract
+        run: ./scripts/verify-release-version.sh v0.23.1
       - name: Verify code, API, SQL, web, and scripts
         run: ./scripts/verify.sh
       - name: Verify reproducible distribution
@@ -34,20 +34,20 @@ jobs:
       - name: Upload verified distribution
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: rbvm-csv-platform-0.23.0
+          name: rbvm-csv-platform-0.23.1
           path: |
-            dist/rbvm-csv-platform-0.23.0.jar
-            dist/rbvm-csv-platform-0.23.0.jar.sha256
-            dist/rbvm-csv-platform-0.23.0.spdx.json
+            dist/rbvm-csv-platform-0.23.1.jar
+            dist/rbvm-csv-platform-0.23.1.jar.sha256
+            dist/rbvm-csv-platform-0.23.1.spdx.json
           if-no-files-found: error
       - name: Attest build provenance
         if: github.event_name == 'push'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
-          subject-path: dist/rbvm-csv-platform-0.23.0.jar
+          subject-path: dist/rbvm-csv-platform-0.23.1.jar
       - name: Attest SPDX SBOM
         if: github.event_name == 'push'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
-          subject-path: dist/rbvm-csv-platform-0.23.0.jar
-          sbom-path: dist/rbvm-csv-platform-0.23.0.spdx.json
+          subject-path: dist/rbvm-csv-platform-0.23.1.jar
+          sbom-path: dist/rbvm-csv-platform-0.23.1.spdx.json

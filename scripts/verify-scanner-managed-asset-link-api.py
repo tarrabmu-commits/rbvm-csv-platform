@@ -72,7 +72,7 @@ for needle in [
     'ScannerManagedAssetLinkCapability:',
     'ScannerAssetPage:',
     'ScannerManagedAssetLinkRevisionRequest:',
-    'version: 0.23.0',
+    'version: 0.23.1',
 ]:
     if needle not in openapi:
         raise AssertionError(f"OpenAPI V23 missing {needle!r}")

@@ -70,6 +70,7 @@
     .row-actions button { min-height:36px; padding:7px 11px; font-size:.8rem; }
     .pager { display:flex; gap:10px; align-items:center; justify-content:flex-end; margin-top:16px; flex-wrap:wrap; }
     .hidden { display:none !important; }
+    .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 
     dialog { width:min(820px,calc(100% - 28px)); max-height:calc(100vh - 32px); overflow:auto; border:1px solid var(--border); border-radius:20px; padding:0; background:#111d2c; color:var(--text); box-shadow:0 28px 100px rgba(0,0,0,.55); }
     dialog::backdrop { background:rgba(0,0,0,.68); backdrop-filter:blur(3px); }
@@ -148,7 +149,7 @@
 
     <div class="scroll">
       <table>
-        <caption class="hidden">Managed asset current-state list</caption>
+        <caption class="sr-only">Managed asset current-state list</caption>
         <thead><tr>
           <th>Display Name</th><th>Customer Key</th><th>Lifecycle</th><th>Environment</th><th>Business Service</th><th>Business Owner</th><th>Criticality</th><th>Revision</th><th>Recorded At</th><th>Actions</th>
         </tr></thead>
@@ -172,29 +173,32 @@
     <form id="createForm">
       <div class="form-grid">
         <label>Customer Asset Key (اختياري)
-          <input name="customerAssetKey" maxlength="256" autocomplete="off">
+          <input name="customerAssetKey" autocomplete="off">
         </label>
         <label>Display Name
-          <input name="displayName" required maxlength="256">
+          <input name="displayName" required>
         </label>
         <label>Environment
           <select name="environment" required>
+            <option value="" selected disabled>اختر Environment صراحةً</option>
             <option>PRODUCTION</option><option>PRE_PRODUCTION</option><option>DEVELOPMENT</option><option>TEST</option><option>SANDBOX</option><option>DISASTER_RECOVERY</option><option>UNKNOWN</option>
           </select>
         </label>
         <label>Business Criticality
           <select name="businessCriticality" required>
+            <option value="" selected disabled>اختر Business Criticality صراحةً</option>
             <option>MISSION_CRITICAL</option><option>HIGH</option><option>MODERATE</option><option>LOW</option><option>UNKNOWN</option>
           </select>
         </label>
         <label>Business Service
-          <input name="businessService" required maxlength="256">
+          <input name="businessService" required>
         </label>
         <label>Business Owner
-          <input name="businessOwner" required maxlength="256">
+          <input name="businessOwner" required>
         </label>
         <label>Classification Method
           <select name="classificationMethod" class="classificationMethod" required>
+            <option value="" selected disabled>اختر Classification Method صراحةً</option>
             <option value="CUSTOMER_DIRECT">CUSTOMER_DIRECT</option>
             <option value="GUIDED">GUIDED</option>
           </select>
@@ -202,15 +206,15 @@
         <div class="guideFields hidden">
           <div class="form-grid">
             <label>Guide Contract ID
-              <input name="guideContractId" value="ASSET_CLASSIFICATION_GUIDE_V1" maxlength="128">
+              <input name="guideContractId" value="ASSET_CLASSIFICATION_GUIDE_V1">
             </label>
             <label>Guide Revision
-              <input name="guideRevision" type="number" min="1" value="1">
+              <input name="guideRevision" type="number" min="1" step="1" value="1">
             </label>
           </div>
         </div>
         <label class="wide">Change Note (اختياري)
-          <textarea name="changeNote" maxlength="2000"></textarea>
+          <textarea name="changeNote"></textarea>
         </label>
       </div>
       <div id="createMessage" class="status" role="status" aria-live="polite"></div>
@@ -256,7 +260,7 @@
           <select name="lifecycleStatus" required><option>ACTIVE</option><option>RETIRED</option></select>
         </label>
         <label>Display Name
-          <input name="displayName" required maxlength="256">
+          <input name="displayName" required>
         </label>
         <label>Environment
           <select name="environment" required>
@@ -269,10 +273,10 @@
           </select>
         </label>
         <label>Business Service
-          <input name="businessService" required maxlength="256">
+          <input name="businessService" required>
         </label>
         <label>Business Owner
-          <input name="businessOwner" required maxlength="256">
+          <input name="businessOwner" required>
         </label>
         <label>Classification Method
           <select name="classificationMethod" class="classificationMethod" required>
@@ -283,15 +287,15 @@
         <div class="guideFields hidden">
           <div class="form-grid">
             <label>Guide Contract ID
-              <input name="guideContractId" maxlength="128">
+              <input name="guideContractId">
             </label>
             <label>Guide Revision
-              <input name="guideRevision" type="number" min="1">
+              <input name="guideRevision" type="number" min="1" step="1">
             </label>
           </div>
         </div>
         <label class="wide">Change Note (اختياري)
-          <textarea name="changeNote" maxlength="2000"></textarea>
+          <textarea name="changeNote"></textarea>
         </label>
       </div>
       <div id="reviseMessage" class="status" role="status" aria-live="polite"></div>
@@ -315,6 +319,7 @@
   let selectedAsset = null;
   let selectedEtag = null;
   let nextBeforeRevision = null;
+  let reopenDetailAfterRevise = false;
 
   function apiFetch(resource, options = {}) {
     const headers = new Headers(options.headers || {});
@@ -648,6 +653,10 @@
 
   function openReviseDialog() {
     if (!selectedAsset || !selectedEtag || !writeEnabled) return;
+    if (byId('detailDialog').open) {
+      byId('detailDialog').close();
+      reopenDetailAfterRevise = true;
+    }
     const revision = selectedAsset.currentRevision;
     const form = byId('reviseForm');
     form.elements.lifecycleStatus.value = revision.lifecycleStatus;
@@ -690,13 +699,12 @@
       if (!etag) throw new Error('Managed asset revision response is missing ETag.');
       selectedAsset = asset;
       selectedEtag = etag;
-      renderDetail(asset);
+      const detailId = selectedAssetId;
       setStatus('reviseMessage', `تم اعتماد revision ${asset.currentRevision.revision}.`, false, true);
+      reopenDetailAfterRevise = false;
       byId('reviseDialog').close();
-      nextBeforeRevision = null;
-      await loadHistory(false);
       await loadAssets();
-      setStatus('detailMessage', `Current revision ${asset.currentRevision.revision}.`, false, true);
+      await openDetail(detailId);
     } catch (error) {
       setStatus('reviseMessage', error.message || 'تعذر حفظ managed asset revision.', true);
     } finally {
@@ -752,6 +760,13 @@
   byId('openRevise').addEventListener('click', openReviseDialog);
   byId('reviseForm').addEventListener('submit', reviseAsset);
   byId('olderHistory').addEventListener('click', () => loadHistory(true));
+  byId('reviseDialog').addEventListener('close', () => {
+    if (!reopenDetailAfterRevise || !selectedAssetId) return;
+    const detailId = selectedAssetId;
+    reopenDetailAfterRevise = false;
+    openDetail(detailId).catch(error =>
+      setStatus('healthMessage', error.message || 'تعذر إعادة فتح تفاصيل managed asset.', true));
+  });
 
   if (apiToken) {
     loadHealth().then(loadAssets);

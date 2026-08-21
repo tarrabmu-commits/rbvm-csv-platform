@@ -57,6 +57,13 @@ def main():
         'nextAfterId',
         'nextBeforeRevision',
         'textContent',
+        '<caption class="sr-only">Managed asset current-state list</caption>',
+        '<option value="" selected disabled>اختر Environment صراحةً</option>',
+        '<option value="" selected disabled>اختر Business Criticality صراحةً</option>',
+        '<option value="" selected disabled>اختر Classification Method صراحةً</option>',
+        'type="number" min="1" step="1"',
+        "byId('detailDialog').close();",
+        'reopenDetailAfterRevise',
     ):
         require(text,needle)
     for needle in (
@@ -65,6 +72,8 @@ def main():
         'method:"DELETE"',
         'PATCH',
         'document.write',
+        '<caption class="hidden">Managed asset current-state list</caption>',
+        'maxlength=',
     ):
         forbid(text,needle)
     # The only mention of localStorage is explanatory prose; forbid JS APIs specifically.

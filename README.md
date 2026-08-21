@@ -58,12 +58,13 @@
 - JAR reproducible مع SHA-256 وSPDX 2.3 SBOM وGitHub artifact attestations.
 - كل GitHub Action مثبت على commit SHA كامل، مع CodeQL وجدول release موثّق.
 - GitHub Actions للتحقق والبناء، واختبار تعافي حي بعد إعادة تشغيل PostgreSQL.
-- OpenAPI 0.23.0 موحّد مع runtime Applicability/CVSS/CISA KEV/EPSS/Asset Context/Network Reachability/Business Impact وManaged Assets، إضافة إلى migrations واختبارات contract/domain/HTTP.
+- OpenAPI 0.23.1 موحّد مع runtime Applicability/CVSS/CISA KEV/EPSS/Asset Context/Network Reachability/Business Impact وManaged Assets، إضافة إلى migrations واختبارات contract/domain/HTTP.
 
 ## التشغيل المحلي
 
-تشغيل الخادم يحتاج JDK 17 أوأحدث فقط ولا توجد مكتبات runtime خارجية. حزمة التحقق
-للمطور تحتاج أيضاً Python 3 وPyYAML لتدقيق OpenAPI وSQL.
+الوضع المحلي من الـJAR يحتاج JDK 17 أوأحدث فقط. عند تفعيل PostgreSQL يحتاج التشغيل أيضاً
+pgJDBC خارج حزمة التطبيق على الـclasspath؛ حزمة التحقق للمطور تحتاج Python 3 وPyYAML
+لتدقيق OpenAPI وSQL.
 
 ```bash
 ./scripts/verify.sh
@@ -128,7 +129,7 @@ http://127.0.0.1:8080/asset-links
 
 ```bash
 ./scripts/build-distribution.sh
-java -jar dist/rbvm-csv-platform-0.23.0.jar
+java -jar dist/rbvm-csv-platform-0.23.1.jar
 ```
 
 ولتشغيل الاختبارات ثم تحليل ملف من CLI:
@@ -141,10 +142,10 @@ java -jar dist/rbvm-csv-platform-0.23.0.jar
 
 ```bash
 ./scripts/verify-reproducible-build.sh
-sha256sum --check dist/rbvm-csv-platform-0.23.0.jar.sha256
+sha256sum --check dist/rbvm-csv-platform-0.23.1.jar.sha256
 ```
 
-ينشر tag مطابق مثل `v0.23.0` Release يحتوي JAR وchecksum وSPDX SBOM، ويولد
+ينشر tag مطابق مثل `v0.23.1` Release يحتوي JAR وchecksum وSPDX SBOM، ويولد
 GitHub build-provenance وSBOM attestations. يتحقق workflow من تطابق tag مع
 Gradle وOpenAPI واسم الحزمة قبل النشر.
 
@@ -421,6 +422,11 @@ data/
 - [`db/migration/V13__asset_context_persistence.sql`](db/migration/V13__asset_context_persistence.sql)
 - [`db/migration/V14__network_reachability_persistence.sql`](db/migration/V14__network_reachability_persistence.sql)
 - [`db/migration/V15__business_impact_persistence.sql`](db/migration/V15__business_impact_persistence.sql)
+- [`db/migration/V16__decision_methodology_policy_persistence.sql`](db/migration/V16__decision_methodology_policy_persistence.sql)
+- [`db/migration/V17__decision_input_snapshot_persistence.sql`](db/migration/V17__decision_input_snapshot_persistence.sql)
+- [`db/migration/V18__managed_asset_registry.sql`](db/migration/V18__managed_asset_registry.sql)
+- [`db/migration/V19__scanner_managed_asset_link.sql`](db/migration/V19__scanner_managed_asset_link.sql)
+- [`db/migration/V20__decision_input_v2_managed_asset_context.sql`](db/migration/V20__decision_input_v2_managed_asset_context.sql)
 
 لتفعيل الإسقاط، ضع pgJDBC على الـclasspath من دون تضمينه داخل حزمة التطبيق:
 
@@ -473,25 +479,22 @@ append-only؛ CVSS/KEV/EPSS current views تبقى per-source من دون source
 - عند `RBVM_AUTH_MODE=DISABLED` يبقى الفاعل `local-operator` غير موثّق؛ وضع الإنتاج هو `API_KEY`.
 - الـlegacy combined intelligence اختيارية وتحتاج snapshot حديثاً؛ لا يدعي النظام freshness بعد وقت `Intel_Observed_At`.
 - CVSS v3.1 وCISA KEV وFIRST EPSS المستقلة تحفظ evidence per source ولا تطبق source precedence أوformula مشتركة بينها.
-- CVSS وCISA KEV لديهما مسارات collection/handoff مجدولة مستقلة؛ FIRST EPSS يملك source adapter وCSV contract وV12/API/UI، لكن safe handoff المجدول ما يزال increment لاحقاً.
+- CVSS وCISA KEV وFIRST EPSS لديها مسارات source/handoff أوrefresh متحققة بشكل مستقل؛ يبقى كل مصدر مستقلاً ولا يخلق أي منها Risk أوsource precedence بمفرده.
 - مؤقت legacy enrichment ينتج لقطة جاهزة ومدققة لكنه لا يعتمدها تلقائياً، حفاظاً على دلالة lifecycle الصريحة.
 - V1 لا يحمل package version ولا يثبت remediation؛ V2 يثبتها فقط من الحقول الصريحة.
 - لا يوجد إغلاق من الغياب؛ `SOURCE_RESOLVED` يحتاج صف V2 صريحاً ومطابقاً.
 - تعافي single-node بعد restart مختبر، لكن لا يوجد HA أوMulti-writer؛ مسار الكتابة يستخدم advisory lock واحداً عن قصد.
 - TLS المحلي وBackup/Restore مختبران، لكن إدارة الشهادات وRPO/RTO الإنتاجية تعتمد بيئة النشر.
 
-## حد Asset Context الحالي
+## حد Evidence / Decision Foundation الحالي
 
-Asset Context أصبحت evidence كاملة من العقد حتى V13 وAPI/UI، لكن **ليست RBVM score**.
-لا يوجد في 0.18.0 source arbitration بين أنظمة السياق، ولا internet exposure/reachability،
-ولا numeric criticality multiplier، ولا CVSS+KEV+EPSS+asset formula، ولا remediation SLA مشتق.
-المرحلة التالية هي Exposure/Reachability evidence مستقلة مع provenance، ثم Business/Mission
-Impact، وبعدها فقط يمكن تثبيت methodology القرار بشكل صريح وقابل للتدقيق.
-## حد Evidence Foundation الحالي
+حتى 0.23.1 أصبحت Applicability وCVSS وKEV وEPSS وAsset Context وNetwork Reachability وBusiness/Mission Impact
+أدلة مستقلة، وأصبحت `RBVM_DECISION_METHODOLOGY_V1` وDecision Input Snapshot V2 تثبت اختيار الأدلة
+و`PRESENT|MISSING|AMBIGUOUS|STALE` مع provenance تاريخي دقيق. Managed Asset context لا يدخل إلا عبر
+scanner↔managed-asset link صريح customer-confirmed، ولا يوجد source winner مخفي.
 
-Network Reachability وBusiness/Mission Impact أصبحتا evidence مستقلتين كاملتين من العقد حتى PostgreSQL وAPI/UI،
-لكن **لا توجد بعد RBVM decision formula**. `NOT_REACHABLE` تبقى scoped negative evidence فقط، وغياب reachability
-أوimpact row يبقى absence. `Impact_Level` يبقى source-reported qualitative classification ولا يتحول إلى multiplier.
-لا يوجد في 0.18.0 source arbitration أوasset-wide `internetExposed` verdict أوaggregate impact score أوattack-path score
-أوCVSS+KEV+EPSS+Applicability+Asset Context+Reachability+Business Impact formula. المنهجية والTreatment/SLA طبقة لاحقة صريحة.
+**لا توجد بعد RBVM decision formula**. `NOT_REACHABLE` تبقى scoped negative evidence، وغياب أي evidence يبقى
+absence، وBusiness Criticality/Impact تبقى qualitative classifications بلا multiplier. لا يوجد asset-wide
+`internetExposed` verdict أوaggregate impact/attack-path score أوRisk/Priority/SLA مشتق. Formula V1 هي المرحلة
+التالية فقط بعد إغلاق pre-V24 live-integration hardening.
 
