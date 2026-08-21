@@ -12,10 +12,17 @@ OFFLINE_INPUT="${RBVM_EPSS_OFFLINE_INPUT:-}"
   echo "RBVM_EPSS_KEEP must be an integer of at least 2" >&2
   exit 64
 }
-[[ -n "${RBVM_EPSS_API_KEY:-}" ]] || {
-  echo "RBVM_EPSS_API_KEY is required" >&2
-  exit 64
-}
+if [[ -z "${RBVM_EPSS_API_KEY:-}" ]]; then
+  case "$API_BASE" in
+    http://127.0.0.1|http://127.0.0.1:*|http://localhost|http://localhost:*|https://127.0.0.1|https://127.0.0.1:*|https://localhost|https://localhost:*)
+      RBVM_EPSS_API_KEY="local-auth-disabled"
+      ;;
+    *)
+      echo "RBVM_EPSS_API_KEY is required for non-local or authenticated API deployments" >&2
+      exit 64
+      ;;
+  esac
+fi
 [[ -f "$INPUT" && ! -L "$INPUT" ]] || {
   echo "RBVM_EPSS_INPUT must be a regular non-symlink file" >&2
   exit 66
@@ -77,8 +84,9 @@ python3 "$ROOT_DIR/scripts/build-first-epss-csv.py" \
 (cd "$staging" && sha256sum evidence.csv > evidence.csv.sha256)
 
 # Acquisition/build never write PostgreSQL. The exact generated EPSS_CSV_V1 is handed to the
-# authenticated HTTP API so canonical validation, tenant/CVE resolution, replay/conflict semantics,
-# and the transactional PostgreSQL V12 importer remain the only persistence route.
+# canonical HTTP API so validation, tenant/CVE resolution, replay/conflict semantics, and the
+# transactional PostgreSQL importer remain the only persistence route. Local auth-disabled
+# deployments require no operator-managed token; hardened remote deployments still require one.
 RBVM_EPSS_API_KEY="$RBVM_EPSS_API_KEY" \
   python3 "$ROOT_DIR/scripts/import-epss.py" "$evidence" \
     --api-base "$API_BASE" \
