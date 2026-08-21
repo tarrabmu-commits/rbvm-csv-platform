@@ -35,7 +35,7 @@ jobs:
         run: ./scripts/verify.sh
       - name: Verify reproducible distribution
         run: ./scripts/verify-reproducible-build.sh
-      - name: Commit verified V22 release alignment
+      - name: Commit verified V22 non-workflow release alignment
         run: |
           git config user.name 'rbvm-v22-bot'
           git config user.email 'actions@users.noreply.github.com'
@@ -44,12 +44,10 @@ jobs:
             api/openapi.yaml \
             scripts/build-distribution.sh \
             scripts/verify-reproducible-build.sh \
-            scripts/verify-api.py \
-            .github/workflows/verify.yml \
-            .github/workflows/release.yml
+            scripts/verify-api.py
           git diff --cached --check
           if git diff --cached --quiet; then
-            echo 'No V22 release changes to commit'
+            echo 'No V22 non-workflow release changes to commit'
             exit 0
           fi
           git commit -m 'Align V22 release contract at 0.22.0 [v22-finalized]'
