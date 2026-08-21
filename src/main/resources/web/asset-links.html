@@ -39,6 +39,7 @@
     .card strong { display: block; margin-top: 4px; }
     .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
   </style>
+  <link rel="stylesheet" href="/ui/rbvm-ui.css">
 </head>
 <body>
 <header>
@@ -386,5 +387,6 @@
   loadList(null).catch(error => setStatus(status, error.message, 'error'));
 })();
 </script>
+<script src="/ui/rbvm-ui.js" defer></script>
 </body>
 </html>

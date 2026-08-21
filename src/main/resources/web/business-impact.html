@@ -33,6 +33,7 @@
     code { direction:ltr; unicode-bidi:embed; }
     @media(max-width:900px){ .grid,.auth,.cards{grid-template-columns:1fr;} }
   </style>
+  <link rel="stylesheet" href="/ui/rbvm-ui.css">
 </head>
 <body>
 <main>
@@ -169,5 +170,6 @@ async function loadEvidence() {
 }
 byId('loadEvidence').addEventListener('click', loadEvidence);
 </script>
+<script src="/ui/rbvm-ui.js" defer></script>
 </body>
 </html>

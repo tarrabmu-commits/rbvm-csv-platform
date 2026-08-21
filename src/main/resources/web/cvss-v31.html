@@ -41,6 +41,7 @@
     @media (max-width:800px) { header{display:block}.badge{display:inline-block;margin-top:16px}.grid,.triple{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)} }
     @media (max-width:480px) { .cards{grid-template-columns:1fr} }
   </style>
+  <link rel="stylesheet" href="/ui/rbvm-ui.css">
 </head>
 <body>
 <main>
@@ -249,5 +250,6 @@
   if (apiToken) setStatus('healthMessage', 'مفتاح وصول مفعّل لهذه النافذة.');
   loadHealth().then(loadEvidence);
 </script>
+<script src="/ui/rbvm-ui.js" defer></script>
 </body>
 </html>
