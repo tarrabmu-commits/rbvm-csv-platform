@@ -58,11 +58,15 @@ public final class CsvHttpSelfTest {
 
                 HttpResponse<String> page = get(client, base.resolve("/"));
                 assert page.statusCode() == 200;
-                assert page.body().contains("RBVM CSV");
+                assert page.body().contains("<html lang=\"en\" dir=\"ltr\">");
+                assert page.body().contains("id=\"rbvm-app\"");
+                assert page.body().contains("/ui/rbvm-ui.js");
 
                 HttpResponse<String> assetsPage = get(client, base.resolve("/assets"));
                 assert assetsPage.statusCode() == 200;
-                assert assetsPage.body().contains("Managed Assets");
+                assert assetsPage.body().contains("<html lang=\"en\" dir=\"ltr\">");
+                assert assetsPage.body().contains("id=\"rbvm-app\"");
+                assert assetsPage.body().contains("/ui/rbvm-ui.js");
 
                 HttpResponse<String> health = get(client, base.resolve("/api/v1/health"));
                 assert health.statusCode() == 200;
