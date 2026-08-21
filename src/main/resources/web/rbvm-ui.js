@@ -81,7 +81,16 @@
 
     const summary = document.createElement('summary');
     summary.textContent = 'التنقل';
-    summary.setAttribute('aria-label', 'فتح قائمة التنقل');
+
+    function refreshDisclosureLabel() {
+      summary.setAttribute(
+        'aria-label',
+        disclosure.open ? 'إغلاق قائمة التنقل' : 'فتح قائمة التنقل'
+      );
+    }
+
+    disclosure.addEventListener('toggle', refreshDisclosureLabel);
+    refreshDisclosureLabel();
 
     const nav = document.createElement('nav');
     nav.setAttribute('aria-label', 'التنقل الرئيسي للموبايل');
@@ -130,13 +139,20 @@
     const themeButton = document.createElement('button');
     themeButton.className = 'rbvm-icon-button';
     themeButton.type = 'button';
-    themeButton.setAttribute('aria-label', 'تبديل المظهر بين الفاتح والداكن');
-    themeButton.setAttribute('title', 'تبديل المظهر');
 
     function refreshThemeButton() {
       const theme = effectiveTheme();
-      themeButton.textContent = theme === 'dark' ? '☀' : '☾';
-      themeButton.setAttribute('aria-pressed', document.documentElement.dataset.rbvmTheme ? 'true' : 'false');
+      const dark = theme === 'dark';
+      themeButton.textContent = dark ? '☀' : '☾';
+      themeButton.setAttribute('aria-pressed', dark ? 'true' : 'false');
+      themeButton.setAttribute(
+        'aria-label',
+        dark ? 'التبديل إلى الوضع الفاتح' : 'التبديل إلى الوضع الداكن'
+      );
+      themeButton.setAttribute(
+        'title',
+        dark ? 'الوضع الفاتح' : 'الوضع الداكن'
+      );
     }
 
     themeButton.addEventListener('click', () => {
@@ -160,6 +176,8 @@
     if (!main) return;
     if (!main.id) main.id = 'rbvm-main';
     if (!main.hasAttribute('tabindex')) main.tabIndex = -1;
+    const skip = document.querySelector('.rbvm-skip-link');
+    if (skip) skip.href = `#${main.id}`;
   }
 
   function normalizeTables() {
