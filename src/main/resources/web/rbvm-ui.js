@@ -143,6 +143,14 @@
     const shell = document.createElement('header');
     shell.className = 'rbvm-shell';
     shell.setAttribute('data-contract', FRONTEND_CONTRACT);
+    // Legacy pages predate the shared shell and contain broad `header` rules.
+    // Contain those rules here so the global application chrome stays full-width and predictable.
+    shell.style.setProperty('display', 'block', 'important');
+    shell.style.setProperty('width', '100%', 'important');
+    shell.style.setProperty('max-width', 'none', 'important');
+    shell.style.setProperty('margin', '0', 'important');
+    shell.style.setProperty('padding', '0', 'important');
+    shell.style.setProperty('gap', '0', 'important');
 
     const inner = document.createElement('div');
     inner.className = 'rbvm-shell__inner';
@@ -216,6 +224,13 @@
     return main;
   }
 
+  function normalizeLegacyHero(main) {
+    if (!main || (main.firstElementChild && main.firstElementChild.tagName === 'HEADER')) return;
+    const legacyHeader = main.previousElementSibling;
+    if (!legacyHeader || legacyHeader.tagName !== 'HEADER' || legacyHeader.classList.contains('rbvm-shell')) return;
+    main.prepend(legacyHeader);
+  }
+
   function enhanceHero(main) {
     if (!main) return;
     const hero = main.firstElementChild;
@@ -235,6 +250,8 @@
 
     const contract = hero.querySelector('.badge, .pill, .tag, .chip');
     if (contract) contract.classList.add('rbvm-page-contract');
+    const localNav = hero.querySelector(':scope > nav');
+    if (localNav) localNav.classList.add('rbvm-page-links');
   }
 
   function normalizeModules(main) {
@@ -246,16 +263,16 @@
       module.style.setProperty('--rbvm-module-order', String(index));
     });
 
-    main.querySelectorAll('.cards').forEach(collection => collection.classList.add('rbvm-metrics'));
-    main.querySelectorAll('.card, .metric, .stat, .summary, .result-card').forEach(card => {
+    document.querySelectorAll('.cards').forEach(collection => collection.classList.add('rbvm-metrics'));
+    document.querySelectorAll('.card, .metric, .stat, .summary, .result-card').forEach(card => {
       card.classList.add('rbvm-metric-card');
     });
-    main.querySelectorAll('.detail').forEach(card => card.classList.add('rbvm-detail-card'));
-    main.querySelectorAll('.history-item').forEach(item => item.classList.add('rbvm-history-item'));
-    main.querySelectorAll('.note').forEach(note => note.classList.add('rbvm-callout'));
-    main.querySelectorAll('.scroll, .table-wrap, .table-scroll').forEach(frame => frame.classList.add('rbvm-table-frame'));
-    main.querySelectorAll('.badge, .pill, .tag, .chip').forEach(chip => chip.classList.add('rbvm-chip'));
-    main.querySelectorAll('.status, [role="status"]').forEach(status => status.classList.add('rbvm-status'));
+    document.querySelectorAll('.detail').forEach(card => card.classList.add('rbvm-detail-card'));
+    document.querySelectorAll('.history-item').forEach(item => item.classList.add('rbvm-history-item'));
+    document.querySelectorAll('.note').forEach(note => note.classList.add('rbvm-callout'));
+    document.querySelectorAll('.scroll, .table-wrap, .table-scroll').forEach(frame => frame.classList.add('rbvm-table-frame'));
+    document.querySelectorAll('.badge, .pill, .tag, .chip, .status-pill').forEach(chip => chip.classList.add('rbvm-chip'));
+    document.querySelectorAll('.status, [role="status"]').forEach(status => status.classList.add('rbvm-status'));
   }
 
   function normalizeTables() {
@@ -292,24 +309,23 @@
       ['LINKED', 'linked'],
       ['UNLINKED', 'unlinked']
     ]);
-    const candidates = document.querySelectorAll('.badge, .pill, .tag, .chip, td');
+    const candidates = document.querySelectorAll('.badge, .pill, .tag, .chip, .status-pill, td');
     candidates.forEach(node => {
       const state = stateMap.get(node.textContent.trim().toUpperCase());
       if (state) node.dataset.rbvmState = state;
     });
-    document.querySelectorAll('.status.error, [data-state="error"]').forEach(node => {
+    document.querySelectorAll('.status.error, [role="status"].error, [data-state="error"]').forEach(node => {
       node.dataset.rbvmState = 'error';
     });
-    document.querySelectorAll('.status.success, [data-state="success"]').forEach(node => {
+    document.querySelectorAll('.status.success, [role="status"].success, [role="status"].ok, [data-state="success"]').forEach(node => {
       node.dataset.rbvmState = 'success';
     });
   }
 
   function observeSemanticStates() {
-    const main = document.querySelector('main');
-    if (!main || typeof MutationObserver !== 'function') return;
+    if (!document.body || typeof MutationObserver !== 'function') return;
     const observer = new MutationObserver(() => normalizeSemanticStates());
-    observer.observe(main, {subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class', 'data-state']});
+    observer.observe(document.body, {subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class', 'data-state']});
   }
 
   function normalizeDialogs() {
@@ -349,6 +365,7 @@
     markPageIdentity();
     createShell();
     const main = normalizeMain();
+    normalizeLegacyHero(main);
     enhanceHero(main);
     normalizeModules(main);
     normalizeTables();
