@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+WEB = ROOT / "src/main/resources/web"
+HTML_PAGES = (
+    "index.html",
+    "cvss-v31.html",
+    "cisa-kev.html",
+    "epss.html",
+    "asset-context.html",
+    "network-reachability.html",
+    "business-impact.html",
+    "assets.html",
+    "asset-links.html",
+)
+
+CSS_LINK = '<link rel="stylesheet" href="/ui/rbvm-ui.css">'
+JS_LINK = '<script src="/ui/rbvm-ui.js" defer></script>'
+
+
+def text(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+for page in HTML_PAGES:
+    value = text(WEB / page)
+    if value.count(CSS_LINK) != 1:
+        raise AssertionError(f"{page}: shared CSS link must appear exactly once")
+    if value.count(JS_LINK) != 1:
+        raise AssertionError(f"{page}: shared JS link must appear exactly once")
+    if "<main" not in value:
+        raise AssertionError(f"{page}: semantic main landmark is required")
+    if 'http://fonts.' in value or 'https://fonts.' in value:
+        raise AssertionError(f"{page}: remote font dependency is forbidden")
+
+css = text(WEB / "rbvm-ui.css")
+for needle in (
+    "--rbvm-control-min: 44px",
+    ":focus-visible",
+    "@media (prefers-reduced-motion: reduce)",
+    "@media (forced-colors: active)",
+    ".rbvm-skip-link",
+    ".rbvm-shell",
+    ".rbvm-nav",
+    "dialog::backdrop",
+):
+    if needle not in css:
+        raise AssertionError(f"shared CSS missing {needle!r}")
+
+javascript = text(WEB / "rbvm-ui.js")
+for needle in (
+    "RBVM_FRONTEND_SYSTEM_V1",
+    "aria-current",
+    "تجاوز إلى المحتوى الرئيسي",
+    "prefers-color-scheme: light",
+    "normalizeTables",
+    "normalizeDialogs",
+    "aria-modal",
+):
+    if needle not in javascript:
+        raise AssertionError(f"shared frontend JavaScript missing {needle!r}")
+
+# localStorage is allowed only for the non-sensitive theme preference in this shared layer.
+if javascript.count("localStorage") != 3 or "rbvm.ui.theme" not in javascript:
+    raise AssertionError("shared frontend localStorage use must remain theme-preference-only")
+
+server = text(ROOT / "src/main/java/io/rbvm/csv/CsvPlatformServer.java")
+for needle in (
+    'loadResource("/web/rbvm-ui.css")',
+    'loadResource("/web/rbvm-ui.js")',
+    '"/ui/rbvm-ui.css"',
+    '"text/css; charset=utf-8"',
+    '"/ui/rbvm-ui.js"',
+    '"text/javascript; charset=utf-8"',
+    "object-src 'none'",
+    "base-uri 'none'",
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+):
+    if needle not in server:
+        raise AssertionError(f"server frontend wiring missing {needle!r}")
+
+verify = text(ROOT / "scripts/verify.sh")
+if "verify-frontend-system.py" not in verify:
+    raise AssertionError("verify.sh must invoke the frontend system verifier")
+
+doc = text(ROOT / "docs/FRONTEND_SYSTEM_V1.md")
+for needle in (
+    "RBVM_FRONTEND_SYSTEM_V1",
+    "WCAG 2.2 Level AA",
+    "WAI-ARIA",
+    "RBVM_POLICY",
+    "unsafe-inline",
+):
+    if needle not in doc:
+        raise AssertionError(f"frontend contract documentation missing {needle!r}")
+
+print("RBVM frontend system structural checks: PASS")
