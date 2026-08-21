@@ -43,6 +43,9 @@ for needle in (
     ".rbvm-skip-link",
     ".rbvm-shell",
     ".rbvm-nav",
+    ".rbvm-mobile-nav",
+    ".rbvm-mobile-nav summary",
+    ".rbvm-mobile-nav a[aria-current=\"page\"]",
     "dialog::backdrop",
 ):
     if needle not in css:
@@ -54,6 +57,8 @@ for needle in (
     "aria-current",
     "تجاوز إلى المحتوى الرئيسي",
     "prefers-color-scheme: light",
+    "createMobileNav",
+    "التنقل الرئيسي للموبايل",
     "normalizeTables",
     "normalizeDialogs",
     "aria-modal",
