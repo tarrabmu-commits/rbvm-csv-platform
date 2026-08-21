@@ -1,7 +1,7 @@
 openapi: 3.1.2
 info:
   title: RBVM CSV Import API
-  version: 0.23.0
+  version: 0.23.1
   description: >-
     Synchronous upload, validation, preview, and canonical-domain materialization
     API for WAZUH_CSV_V1 positive observations and opt-in WAZUH_CSV_V2 explicit

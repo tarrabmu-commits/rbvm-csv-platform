@@ -4,11 +4,11 @@ plugins {
 }
 
 group = "io.rbvm"
-version = "0.23.0-SNAPSHOT"
+version = "0.23.1-SNAPSHOT"
 
 java {
     toolchain {
-        languageVersion.set(JavaLanguageVersion.of(25))
+        languageVersion.set(JavaLanguageVersion.of(17))
     }
 }
 
