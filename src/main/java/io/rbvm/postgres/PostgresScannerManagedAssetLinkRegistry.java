@@ -9,6 +9,8 @@ import io.rbvm.asset.ScannerManagedAssetLinkRegistry.CurrentLookup;
 import io.rbvm.asset.ScannerManagedAssetLinkRegistry.HistoryPage;
 import io.rbvm.asset.ScannerManagedAssetLinkRegistry.MutationResult;
 import io.rbvm.asset.ScannerManagedAssetLinkRegistry.MutationStatus;
+import io.rbvm.asset.ScannerManagedAssetLinkRegistry.ScannerAssetPage;
+import io.rbvm.asset.ScannerManagedAssetLinkRegistry.ScannerAssetSummary;
 
 import java.io.IOException;
 import java.sql.Connection;
@@ -202,6 +204,65 @@ public final class PostgresScannerManagedAssetLinkRegistry implements ScannerMan
         }
     }
 
+    @Override
+    public ScannerAssetPage list(int limit, UUID afterId) throws IOException {
+        requireListPage(limit);
+        try (Connection connection = connections.open()) {
+            UUID tenantId = requireTenant(connection);
+            List<ScannerAssetSummary> assets = new ArrayList<>();
+            String sql = """
+                    SELECT a.id, a.observed_name, a.os_name_raw, sp.external_key,
+                           a.identity_basis, a.identity_confidence,
+                           a.first_observed_at, a.last_observed_at,
+                           l.link_event_id, l.scanner_asset_id, l.revision, l.link_status,
+                           l.managed_asset_id, l.link_method, l.evidence_sha256,
+                           l.changed_by, l.change_note, l.recorded_at
+                    FROM rbvm.asset a
+                    JOIN rbvm.source_profile sp
+                      ON sp.tenant_id = a.tenant_id AND sp.id = a.source_profile_id
+                    LEFT JOIN rbvm.current_scanner_managed_asset_link l
+                      ON l.tenant_id = a.tenant_id AND l.scanner_asset_id = a.id
+                    WHERE a.tenant_id = ?
+                    """ + (afterId == null ? "" : " AND a.id > ?")
+                    + " ORDER BY a.id ASC LIMIT ?";
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                int index = 1;
+                statement.setObject(index++, tenantId);
+                if (afterId != null) statement.setObject(index++, afterId);
+                statement.setInt(index, limit + 1);
+                try (ResultSet rows = statement.executeQuery()) {
+                    while (rows.next()) {
+                        UUID scannerAssetId = rows.getObject(1, UUID.class);
+                        UUID eventId = rows.getObject(9, UUID.class);
+                        ScannerManagedAssetLink current = eventId == null ? null : map(rows, 9);
+                        assets.add(new ScannerAssetSummary(
+                                scannerAssetId,
+                                rows.getString(2),
+                                rows.getString(3),
+                                rows.getString(4),
+                                rows.getString(5),
+                                rows.getString(6),
+                                rows.getTimestamp(7).toInstant(),
+                                rows.getTimestamp(8).toInstant(),
+                                current
+                        ));
+                    }
+                }
+            }
+            UUID next = null;
+            if (assets.size() > limit) {
+                assets = new ArrayList<>(assets.subList(0, limit));
+                next = assets.get(assets.size() - 1).scannerAssetId();
+            }
+            return new ScannerAssetPage(assets, next);
+        } catch (SQLException exception) {
+            throw PostgresErrors.sanitized(
+                    "Could not list PostgreSQL scanner assets for managed-asset linking",
+                    exception
+            );
+        }
+    }
+
     public int schemaVersion() {
         return schemaVersion;
     }
@@ -278,17 +339,21 @@ public final class PostgresScannerManagedAssetLinkRegistry implements ScannerMan
     }
 
     private static ScannerManagedAssetLink map(ResultSet rows) throws SQLException {
+        return map(rows, 1);
+    }
+
+    private static ScannerManagedAssetLink map(ResultSet rows, int offset) throws SQLException {
         return new ScannerManagedAssetLink(
-                rows.getObject(1, UUID.class),
-                rows.getObject(2, UUID.class),
-                rows.getInt(3),
-                LinkStatus.valueOf(rows.getString(4)),
-                rows.getObject(5, UUID.class),
-                LinkMethod.valueOf(rows.getString(6)),
-                rows.getString(7).trim(),
-                rows.getString(8),
-                rows.getString(9),
-                rows.getTimestamp(10).toInstant()
+                rows.getObject(offset, UUID.class),
+                rows.getObject(offset + 1, UUID.class),
+                rows.getInt(offset + 2),
+                LinkStatus.valueOf(rows.getString(offset + 3)),
+                rows.getObject(offset + 4, UUID.class),
+                LinkMethod.valueOf(rows.getString(offset + 5)),
+                rows.getString(offset + 6).trim(),
+                rows.getString(offset + 7),
+                rows.getString(offset + 8),
+                rows.getTimestamp(offset + 9).toInstant()
         );
     }
 
@@ -359,11 +424,15 @@ public final class PostgresScannerManagedAssetLinkRegistry implements ScannerMan
     }
 
     private static void requirePage(int limit, Integer beforeRevision) {
-        if (limit < 1 || limit > MAX_PAGE_SIZE) {
-            throw new IllegalArgumentException("limit must be between 1 and " + MAX_PAGE_SIZE);
-        }
+        requireListPage(limit);
         if (beforeRevision != null && beforeRevision < 1) {
             throw new IllegalArgumentException("beforeRevision must be positive");
+        }
+    }
+
+    private static void requireListPage(int limit) {
+        if (limit < 1 || limit > MAX_PAGE_SIZE) {
+            throw new IllegalArgumentException("limit must be between 1 and " + MAX_PAGE_SIZE);
         }
     }
 
