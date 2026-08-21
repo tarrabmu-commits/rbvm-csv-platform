@@ -76,9 +76,11 @@ for selector in (
 javascript = text(WEB / "rbvm-ui.js")
 for needle in (
     "RBVM_FRONTEND_SYSTEM_V1",
+    "dialogOpeners = new WeakMap()",
     "aria-current",
     "تجاوز إلى المحتوى الرئيسي",
     "prefers-color-scheme: light",
+    "systemTheme.addEventListener('change'",
     "createMobileNav",
     "التنقل الرئيسي للموبايل",
     "disclosure.open ? 'إغلاق قائمة التنقل' : 'فتح قائمة التنقل'",
@@ -86,10 +88,15 @@ for needle in (
     "skip.href = `#${main.id}`",
     "normalizeTables",
     "normalizeDialogs",
+    "dialogOpeners.set(dialog, trigger)",
+    "dialogOpeners.delete(dialog)",
     "aria-modal",
 ):
     if needle not in javascript:
         raise AssertionError(f"shared frontend JavaScript missing {needle!r}")
+
+if "trigger.id" in javascript or "rbvmOpenerId" in javascript:
+    raise AssertionError("dialog focus restoration must not depend on opener IDs")
 
 # localStorage is allowed only for the non-sensitive theme preference in this shared layer.
 if javascript.count("localStorage") != 3 or "rbvm.ui.theme" not in javascript:
