@@ -100,20 +100,28 @@ for path in pages:
         raise AssertionError(f"{path}: expected packaged HTTP 200, got {status}")
     if css_link not in body or js_link not in body:
         raise AssertionError(f"{path}: packaged page is missing shared frontend resources")
+    if '<html lang="en" dir="ltr">' not in body or 'id="rbvm-app"' not in body:
+        raise AssertionError(f"{path}: packaged page is not the English Frontend System V2 host")
     if headers.get("Cache-Control") != "no-store":
         raise AssertionError(f"{path}: packaged page must remain no-store")
 
 status, css_headers, css = fetch("/ui/rbvm-ui.css")
 if status != 200 or not css_headers.get("Content-Type", "").startswith("text/css"):
     raise AssertionError("packaged shared CSS route must return text/css HTTP 200")
-if "--rbvm-control-min: 44px" not in css or "system-ui" not in css:
-    raise AssertionError("packaged shared CSS does not match the frontend-system contract")
+if "--rbvm-control-min: 44px" not in css or "system-ui" not in css or ".report-sheet" not in css:
+    raise AssertionError("packaged shared CSS does not match Frontend System V2")
 
 status, js_headers, javascript = fetch("/ui/rbvm-ui.js")
 if status != 200 or not js_headers.get("Content-Type", "").startswith("text/javascript"):
     raise AssertionError("packaged shared JavaScript route must return text/javascript HTTP 200")
-if "RBVM_FRONTEND_SYSTEM_V1" not in javascript:
-    raise AssertionError("packaged shared JavaScript contract marker is missing")
+if "RBVM_FRONTEND_SYSTEM_V2" not in javascript:
+    raise AssertionError("packaged Frontend System V2 marker is missing")
+for required in ("Analytics", "Reports", "Generate report", "Decision Readiness", "Findings", "Assets"):
+    if required not in javascript:
+        raise AssertionError(f"packaged Frontend System V2 is missing {required!r}")
+for forbidden in ("rbvmApiToken", "sessionStorage", "saveToken"):
+    if forbidden in javascript:
+        raise AssertionError(f"packaged Frontend System V2 contains legacy auth state {forbidden!r}")
 
 for headers in (css_headers, js_headers):
     if headers.get("Cache-Control") != "no-store":
@@ -130,7 +138,7 @@ for headers in (css_headers, js_headers):
         if directive not in csp:
             raise AssertionError(f"packaged frontend CSP missing {directive!r}")
 
-print("packaged_frontend_smoke=PASS")
+print("packaged_frontend_v2_smoke=PASS")
 PY
 then
   echo "Packaged frontend smoke failed; server log follows:" >&2

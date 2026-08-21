@@ -1,213 +1,45 @@
 #!/usr/bin/env python3
-import re
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / "src/main/resources/web"
-HTML_PAGES = (
-    "index.html",
-    "cvss-v31.html",
-    "cisa-kev.html",
-    "epss.html",
-    "asset-context.html",
-    "network-reachability.html",
-    "business-impact.html",
-    "assets.html",
-    "asset-links.html",
-)
+HOSTS = ("index.html","cvss-v31.html","cisa-kev.html","epss.html","asset-context.html","network-reachability.html","business-impact.html","assets.html","asset-links.html")
+host = (WEB / "index.html").read_text(encoding="utf-8")
+for name in HOSTS:
+    text = (WEB / name).read_text(encoding="utf-8")
+    if text != host:
+        raise AssertionError(f"{name}: every legacy UI route must use the same V2 SPA host")
+    for needle in ('<html lang="en" dir="ltr">','<main id="rbvm-main" tabindex="-1">','<div id="rbvm-app" aria-live="polite"></div>','<link rel="stylesheet" href="/ui/rbvm-ui.css">','<script src="/ui/rbvm-ui.js" defer></script>','Skip to main content'):
+        if needle not in text:
+            raise AssertionError(f"{name}: missing {needle!r}")
+    if re.search(r"[\u0600-\u06ff]", text):
+        raise AssertionError(f"{name}: operator UI host must remain English-only")
+    if 'http://fonts.' in text or 'https://fonts.' in text:
+        raise AssertionError(f"{name}: remote font dependency is forbidden")
 
-CSS_LINK = '<link rel="stylesheet" href="/ui/rbvm-ui.css">'
-JS_LINK = '<script src="/ui/rbvm-ui.js" defer></script>'
-
-
-def text(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
-
-
-def css_rule_body(stylesheet: str, selector: str) -> str:
-    match = re.search(rf"(?m)^{re.escape(selector)}\s*\{{([^}}]*)\}}", stylesheet)
-    if not match:
-        raise AssertionError(f"shared CSS missing rule for {selector!r}")
-    return match.group(1)
-
-
-for page in HTML_PAGES:
-    value = text(WEB / page)
-    if value.count(CSS_LINK) != 1:
-        raise AssertionError(f"{page}: shared CSS link must appear exactly once")
-    if value.count(JS_LINK) != 1:
-        raise AssertionError(f"{page}: shared JS link must appear exactly once")
-    if "<main" not in value:
-        raise AssertionError(f"{page}: semantic main landmark is required")
-    if 'http://fonts.' in value or 'https://fonts.' in value:
-        raise AssertionError(f"{page}: remote font dependency is forbidden")
-
-css = text(WEB / "rbvm-ui.css")
-for needle in (
-    "--rbvm-control-min: 44px",
-    "--rbvm-font-sans: ui-sans-serif, system-ui",
-    "--rbvm-page-accent:",
-    'html[data-rbvm-page="cvss"]',
-    'html[data-rbvm-page="kev"]',
-    'html[data-rbvm-page="epss"]',
-    'html[data-rbvm-page="context"]',
-    'html[data-rbvm-page="reachability"]',
-    'html[data-rbvm-page="impact"]',
-    'html[data-rbvm-page="assets"]',
-    'html[data-rbvm-page="links"]',
-    ":focus-visible",
-    "@media (prefers-reduced-motion: reduce)",
-    "@media (forced-colors: active)",
-    "@keyframes rbvm-module-enter",
-    ".rbvm-skip-link",
-    ".rbvm-shell",
-    ".rbvm-nav",
-    ".rbvm-mobile-nav",
-    ".rbvm-mobile-nav summary",
-    ".rbvm-mobile-nav a[aria-current=\"page\"]",
-    ".rbvm-page-hero",
-    ".rbvm-page-eyebrow",
-    ".rbvm-module",
-    ".rbvm-metric-card",
-    ".rbvm-table-frame",
-    ".rbvm-callout",
-    ".rbvm-status",
-    '[data-rbvm-state="ambiguous"]',
-    '[data-rbvm-state="stale"]',
-    '[data-rbvm-state="unknown"]',
-    "dialog::backdrop",
-):
+js = (WEB / "rbvm-ui.js").read_text(encoding="utf-8")
+css = (WEB / "rbvm-ui.css").read_text(encoding="utf-8")
+doc = (ROOT / "docs/FRONTEND_SYSTEM_V2.md").read_text(encoding="utf-8")
+for needle in ("RBVM_FRONTEND_SYSTEM_V2","Overview","Findings","Assets","Analytics","Reports","Evidence","Imports","Settings","Decision Readiness","Generate report","Print / Save PDF","Export report data CSV","The current API does not expose historical aggregate snapshots","no hidden RBVM risk score or priority","RBVM will not fabricate trend values","Frontend System V2 contains no in-app sign-in or access-token controls","/api/v1/cases","/api/v1/managed-assets","/api/v1/scanner-assets","/api/v1/cvss-v31-evidence","/api/v1/cisa-kev-evidence","/api/v1/epss-evidence","/api/v1/asset-context-evidence","/api/v1/network-reachability-evidence","/api/v1/business-impact-evidence"):
+    if needle not in js:
+        raise AssertionError(f"V2 JavaScript missing {needle!r}")
+for forbidden in ("sessionStorage","rbvmApiToken","saveToken","apiToken","document.write","innerHTML"):
+    if forbidden in js:
+        raise AssertionError(f"V2 JavaScript contains forbidden browser/auth construct {forbidden!r}")
+if re.search(r"[\u0600-\u06ff]", js):
+    raise AssertionError("V2 operator JavaScript must remain English-only")
+for needle in ("--rbvm-control-min: 44px","--sidebar-width:","ui-sans-serif, system-ui",".app-shell",".topbar",".sidebar",".nav-link[aria-current=\"page\"]",".metrics",".table-frame",".drawer",".modal",".bar-list",".report-sheet","@media (max-width: 767px)","@media (prefers-reduced-motion: reduce)","@media (forced-colors: active)","@media print",":focus-visible"):
     if needle not in css:
-        raise AssertionError(f"shared CSS missing {needle!r}")
-
-if "Inter," in css:
-    raise AssertionError("shared frontend typography must remain system-font-only")
-
-for selector in (
-    ".rbvm-brand",
-    ".rbvm-nav a",
-    ".rbvm-icon-button",
-    "button, .button-link",
-    "input, select, textarea",
-):
-    if "min-height: var(--rbvm-control-min)" not in css_rule_body(css, selector):
-        raise AssertionError(f"{selector}: shared 44px control floor must be applied")
-
-javascript = text(WEB / "rbvm-ui.js")
-for needle in (
-    "RBVM_FRONTEND_SYSTEM_V1",
-    "const PAGE_META = new Map([",
-    "dialogOpeners = new WeakMap()",
-    "document.documentElement.dataset.rbvmPage = meta.id",
-    "document.documentElement.dataset.rbvmPageGroup",
-    "containGeneratedNav",
-    "nav.style.setProperty('display', 'block', 'important')",
-    "shell.style.setProperty('max-width', 'none', 'important')",
-    "shell.style.setProperty('padding', '0', 'important')",
-    "main.style.setProperty('max-width', 'none', 'important')",
-    "aria-current",
-    "تجاوز إلى المحتوى الرئيسي",
-    "prefers-color-scheme: light",
-    "systemTheme.addEventListener('change'",
-    "createMobileNav",
-    "التنقل الرئيسي للموبايل",
-    "disclosure.open ? 'إغلاق قائمة التنقل' : 'فتح قائمة التنقل'",
-    "dark ? 'true' : 'false'",
-    "skip.href = `#${main.id}`",
-    "normalizeLegacyHero",
-    "main.prepend(legacyHeader)",
-    "enhanceHero",
-    "rbvm-page-eyebrow",
-    "rbvm-page-links",
-    "normalizeModules",
-    "rbvm-module",
-    "rbvm-metric-card",
-    "rbvm-table-frame",
-    ".status-pill",
-    "normalizeTables",
-    "rbvm-data-table",
-    "normalizeGuideTabs",
-    "document.querySelectorAll('.guide-tab')",
-    "tab.classList.toggle('secondary', !active)",
-    "tab.dataset.rbvmTabState = active ? 'active' : 'inactive'",
-    "tab.setAttribute('aria-pressed', active ? 'true' : 'false')",
-    "normalizeSemanticStates",
-    "dataset.rbvmState",
-    "[role=\"status\"].ok",
-    "MutationObserver",
-    "normalizeSemanticStates();\n      normalizeGuideTabs();",
-    "observer.observe(document.body",
-    "normalizeDialogs",
-    "dialogOpeners.set(dialog, trigger)",
-    "dialogOpeners.delete(dialog)",
-    "aria-modal",
-):
-    if needle not in javascript:
-        raise AssertionError(f"shared frontend JavaScript missing {needle!r}")
-
-for path, page_id in (
-    ("/", "overview"),
-    ("/cvss", "cvss"),
-    ("/kev", "kev"),
-    ("/epss", "epss"),
-    ("/asset-context", "context"),
-    ("/reachability", "reachability"),
-    ("/business-impact", "impact"),
-    ("/assets", "assets"),
-    ("/asset-links", "links"),
-):
-    if f"['{path}', {{id: '{page_id}'" not in javascript:
-        raise AssertionError(f"shared frontend page identity missing {path} -> {page_id}")
-
-if "trigger.id" in javascript or "rbvmOpenerId" in javascript:
-    raise AssertionError("dialog focus restoration must not depend on opener IDs")
-
-# localStorage is allowed only for the non-sensitive theme preference in this shared layer.
-if javascript.count("localStorage") != 3 or "rbvm.ui.theme" not in javascript:
-    raise AssertionError("shared frontend localStorage use must remain theme-preference-only")
-
-server = text(ROOT / "src/main/java/io/rbvm/csv/CsvPlatformServer.java")
-for needle in (
-    'loadResource("/web/rbvm-ui.css")',
-    'loadResource("/web/rbvm-ui.js")',
-    '"/ui/rbvm-ui.css"',
-    '"text/css; charset=utf-8"',
-    '"/ui/rbvm-ui.js"',
-    '"text/javascript; charset=utf-8"',
-    "object-src 'none'",
-    "base-uri 'none'",
-    "frame-ancestors 'none'",
-    "form-action 'self'",
-):
+        raise AssertionError(f"V2 CSS missing {needle!r}")
+for forbidden in ("linear-gradient(135deg","https://fonts.","http://fonts."):
+    if forbidden in css:
+        raise AssertionError(f"V2 CSS contains forbidden design dependency {forbidden!r}")
+for needle in ("RBVM_FRONTEND_SYSTEM_V2","English","progressive disclosure","recognition","Overview","Findings","Assets","Analytics","Reports","Evidence","Imports","Settings","risk score","historical","browser","accessibility"):
+    if needle.lower() not in doc.lower():
+        raise AssertionError(f"V2 frontend contract documentation missing {needle!r}")
+server = (ROOT / "src/main/java/io/rbvm/csv/CsvPlatformServer.java").read_text(encoding="utf-8")
+for needle in ('loadResource("/web/rbvm-ui.css")','loadResource("/web/rbvm-ui.js")','"/ui/rbvm-ui.css"','"/ui/rbvm-ui.js"',"object-src 'none'","frame-ancestors 'none'"):
     if needle not in server:
         raise AssertionError(f"server frontend wiring missing {needle!r}")
-
-verify = text(ROOT / "scripts/verify.sh")
-if "verify-frontend-system.py" not in verify:
-    raise AssertionError("verify.sh must invoke the frontend system verifier")
-
-reproducible = text(ROOT / "scripts/verify-reproducible-build.sh")
-for needle in (
-    "/ui/rbvm-ui.css",
-    "/ui/rbvm-ui.js",
-    "RBVM_FRONTEND_SYSTEM_V1",
-    "Content-Security-Policy",
-):
-    if needle not in reproducible:
-        raise AssertionError(f"packaged frontend smoke missing {needle!r}")
-
-doc = text(ROOT / "docs/FRONTEND_SYSTEM_V1.md")
-for needle in (
-    "RBVM_FRONTEND_SYSTEM_V1",
-    "WCAG 2.2 Level AA",
-    "WAI-ARIA",
-    "RBVM_POLICY",
-    "Modular composition",
-    "Page identity",
-    "PRESENT|MISSING|UNKNOWN|STALE|AMBIGUOUS",
-    "unsafe-inline",
-):
-    if needle not in doc:
-        raise AssertionError(f"frontend contract documentation missing {needle!r}")
-
-print("RBVM frontend system structural checks: PASS")
+print("RBVM Frontend System V2 structural checks: PASS")
