@@ -3,6 +3,7 @@
 
   const FRONTEND_CONTRACT = 'RBVM_FRONTEND_SYSTEM_V1';
   const THEME_KEY = 'rbvm.ui.theme';
+  const dialogOpeners = new WeakMap();
   const pages = [
     ['/', 'Home'],
     ['/cvss', 'CVSS'],
@@ -162,6 +163,15 @@
       refreshThemeButton();
     });
 
+    if (window.matchMedia) {
+      const systemTheme = window.matchMedia('(prefers-color-scheme: light)');
+      if (typeof systemTheme.addEventListener === 'function') {
+        systemTheme.addEventListener('change', () => {
+          if (!document.documentElement.dataset.rbvmTheme) refreshThemeButton();
+        });
+      }
+    }
+
     tools.append(themeButton);
     inner.append(brand, createNav(), createMobileNav(), tools);
     shell.append(inner);
@@ -205,20 +215,19 @@
     document.querySelectorAll('dialog').forEach(dialog => {
       dialog.setAttribute('aria-modal', 'true');
       dialog.addEventListener('close', () => {
-        const openerId = dialog.dataset.rbvmOpenerId;
-        if (!openerId) return;
-        const opener = document.getElementById(openerId);
-        if (opener && typeof opener.focus === 'function') opener.focus();
-        delete dialog.dataset.rbvmOpenerId;
+        const opener = dialogOpeners.get(dialog);
+        if (opener && opener.isConnected && typeof opener.focus === 'function') opener.focus();
+        dialogOpeners.delete(dialog);
       });
     });
 
     document.addEventListener('click', event => {
+      if (!(event.target instanceof Element)) return;
       const trigger = event.target.closest('button, a');
-      if (!trigger || !trigger.id) return;
+      if (!trigger) return;
       queueMicrotask(() => {
         document.querySelectorAll('dialog[open]').forEach(dialog => {
-          if (!dialog.dataset.rbvmOpenerId) dialog.dataset.rbvmOpenerId = trigger.id;
+          if (!dialogOpeners.has(dialog)) dialogOpeners.set(dialog, trigger);
         });
       });
     }, true);
