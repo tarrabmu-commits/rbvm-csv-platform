@@ -31,7 +31,7 @@ jobs:
           if grep -q 'ScannerManagedAssetLinkHttpRouter.inNamespace' src/main/java/io/rbvm/csv/CsvPlatformServer.java; then
             echo 'V23 source patch already present'
           else
-            python3 .rbvm-v23/apply.py
+            python3 .rbvm-v23/run.py
           fi
       - name: Verify repository
         run: ./scripts/verify.sh
