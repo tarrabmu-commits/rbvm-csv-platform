@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "io.rbvm"
-version = "0.23.1-SNAPSHOT"
+version = "0.23.2-SNAPSHOT"
 
 java {
     toolchain {

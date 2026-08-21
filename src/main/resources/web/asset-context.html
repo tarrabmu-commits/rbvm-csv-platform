@@ -57,6 +57,7 @@
     @media (max-width:950px) { header{display:block}.badge{display:inline-block;margin-top:16px}.grid,.filters{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)}.guide-nav{grid-template-columns:repeat(2,1fr)}.guide-options{grid-template-columns:1fr} }
     @media (max-width:480px) { .cards,.guide-nav{grid-template-columns:1fr} }
   </style>
+  <link rel="stylesheet" href="/ui/rbvm-ui.css">
 </head>
 <body>
 <main>
@@ -343,5 +344,6 @@
     if(apiToken) loadHealth().then(loadEvidence); else loadHealth();
   }
 </script>
+<script src="/ui/rbvm-ui.js" defer></script>
 </body>
 </html>

@@ -95,6 +95,8 @@ public final class CsvPlatformServer implements AutoCloseable {
     private final byte[] businessImpactUi;
     private final byte[] managedAssetsUi;
     private final byte[] scannerManagedAssetLinksUi;
+    private final byte[] frontendCss;
+    private final byte[] frontendJs;
     private final ApiKeyAuthenticator authenticator;
     private final RequestRateLimiter rateLimiter;
     private final long maximumUploadBytes;
@@ -175,6 +177,8 @@ public final class CsvPlatformServer implements AutoCloseable {
         this.businessImpactUi = loadResource("/web/business-impact.html");
         this.managedAssetsUi = loadResource("/web/assets.html");
         this.scannerManagedAssetLinksUi = loadResource("/web/asset-links.html");
+        this.frontendCss = loadResource("/web/rbvm-ui.css");
+        this.frontendJs = loadResource("/web/rbvm-ui.js");
         this.server = HttpServer.create(new InetSocketAddress(host, port), 32);
         int workers = Math.max(4, Math.min(16, Runtime.getRuntime().availableProcessors()));
         this.executor = Executors.newFixedThreadPool(workers);
@@ -603,6 +607,8 @@ public final class CsvPlatformServer implements AutoCloseable {
         this.businessImpactUi = loadResource("/web/business-impact.html");
         this.managedAssetsUi = loadResource("/web/assets.html");
         this.scannerManagedAssetLinksUi = loadResource("/web/asset-links.html");
+        this.frontendCss = loadResource("/web/rbvm-ui.css");
+        this.frontendJs = loadResource("/web/rbvm-ui.js");
         this.server = HttpServer.create(new InetSocketAddress(host, port), 32);
         int workers = Math.max(4, Math.min(16, Runtime.getRuntime().availableProcessors()));
         this.executor = Executors.newFixedThreadPool(workers);
@@ -696,6 +702,16 @@ public final class CsvPlatformServer implements AutoCloseable {
             String path = exchange.getRequestURI().getPath();
             String method = exchange.getRequestMethod().toUpperCase(Locale.ROOT);
 
+            if ("/ui/rbvm-ui.css".equals(path)) {
+                requireMethod(exchange, method, "GET");
+                sendBytes(exchange, 200, "text/css; charset=utf-8", frontendCss);
+                return;
+            }
+            if ("/ui/rbvm-ui.js".equals(path)) {
+                requireMethod(exchange, method, "GET");
+                sendBytes(exchange, 200, "text/javascript; charset=utf-8", frontendJs);
+                return;
+            }
             if ("/".equals(path)) {
                 requireMethod(exchange, method, "GET");
                 sendBytes(exchange, 200, "text/html; charset=utf-8", webUi);
@@ -1942,7 +1958,10 @@ public final class CsvPlatformServer implements AutoCloseable {
         headers.set("X-Frame-Options", "DENY");
         headers.set("Referrer-Policy", "no-referrer");
         headers.set("Content-Security-Policy",
-                "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'");
+                "default-src 'self'; style-src 'self' 'unsafe-inline'; "
+                        + "script-src 'self' 'unsafe-inline'; connect-src 'self'; "
+                        + "img-src 'self' data:; object-src 'none'; base-uri 'none'; "
+                        + "frame-ancestors 'none'; form-action 'self'");
         headers.set("X-Correlation-Id", correlationId);
     }
 
