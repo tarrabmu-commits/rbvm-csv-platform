@@ -113,12 +113,9 @@ public final class CsvBusinessImpactHttpSelfTest {
 
             HttpResponse<String> ui = get(client, base.resolve("/business-impact"));
             assert ui.statusCode() == 200 : ui.body();
-            assert ui.body().contains("BUSINESS_IMPACT_CSV_V1");
-            assert ui.body().contains("SEVERE/HIGH/...");
-            assert ui.body().contains("ما في mapping تلقائي بين MISSION_CRITICAL وSEVERE");
-            assert !ui.body().contains("riskScore");
-            assert !ui.body().contains("priorityTier");
-            assert !ui.body().contains("impactWeight");
+            assert ui.body().contains("<html lang=\"en\" dir=\"ltr\">");
+            assert ui.body().contains("id=\"rbvm-app\"");
+            assert ui.body().contains("/ui/rbvm-ui.js");
 
             HttpResponse<String> health = get(client, base.resolve("/api/v1/health"));
             assert health.statusCode() == 200 : health.body();

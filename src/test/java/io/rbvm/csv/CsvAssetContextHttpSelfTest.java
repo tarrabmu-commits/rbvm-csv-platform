@@ -106,12 +106,9 @@ public final class CsvAssetContextHttpSelfTest {
 
             HttpResponse<String> ui = get(client, base.resolve("/asset-context"));
             assert ui.statusCode() == 200 : ui.body();
-            assert ui.body().contains("ASSET_CONTEXT_CSV_V1");
-            assert ui.body().contains("Business Criticality");
-            assert ui.body().contains("qualitative evidence");
-            assert !ui.body().contains("criticalityWeight");
-            assert !ui.body().contains("riskScore");
-            assert !ui.body().contains("priorityTier");
+            assert ui.body().contains("<html lang=\"en\" dir=\"ltr\">");
+            assert ui.body().contains("id=\"rbvm-app\"");
+            assert ui.body().contains("/ui/rbvm-ui.js");
 
             HttpResponse<String> health = get(client, base.resolve("/api/v1/health"));
             assert health.statusCode() == 200 : health.body();

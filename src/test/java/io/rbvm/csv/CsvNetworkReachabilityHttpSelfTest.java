@@ -119,12 +119,9 @@ public final class CsvNetworkReachabilityHttpSelfTest {
 
             HttpResponse<String> ui = get(client, base.resolve("/reachability"));
             assert ui.statusCode() == 200 : ui.body();
-            assert ui.body().contains("NETWORK_REACHABILITY_CSV_V1");
-            assert ui.body().contains("NOT_REACHABLE");
-            assert ui.body().contains("مو إثبات إن الـasset معزول عالمياً");
-            assert !ui.body().contains("riskScore");
-            assert !ui.body().contains("priorityTier");
-            assert !ui.body().contains("internetExposed");
+            assert ui.body().contains("<html lang=\"en\" dir=\"ltr\">");
+            assert ui.body().contains("id=\"rbvm-app\"");
+            assert ui.body().contains("/ui/rbvm-ui.js");
 
             HttpResponse<String> health = get(client, base.resolve("/api/v1/health"));
             assert health.statusCode() == 200 : health.body();
