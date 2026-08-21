@@ -64,10 +64,17 @@
     document.documentElement.dataset.rbvmPageGroup = meta.group.toLowerCase();
   }
 
+  function containGeneratedNav(nav) {
+    nav.style.setProperty('display', 'block', 'important');
+    nav.style.setProperty('gap', '0', 'important');
+    nav.style.setProperty('flex-wrap', 'nowrap', 'important');
+  }
+
   function createNav() {
     const nav = document.createElement('nav');
     nav.className = 'rbvm-nav';
     nav.setAttribute('aria-label', 'التنقل الرئيسي');
+    containGeneratedNav(nav);
 
     const list = document.createElement('ul');
     list.className = 'rbvm-nav__list';
@@ -112,6 +119,7 @@
 
     const nav = document.createElement('nav');
     nav.setAttribute('aria-label', 'التنقل الرئيسي للموبايل');
+    containGeneratedNav(nav);
     const list = document.createElement('ul');
     const activePath = currentPath();
 
@@ -217,6 +225,7 @@
     const main = document.querySelector('main');
     if (!main) return null;
     main.classList.add('rbvm-page');
+    main.style.setProperty('max-width', 'none', 'important');
     if (!main.id) main.id = 'rbvm-main';
     if (!main.hasAttribute('tabindex')) main.tabIndex = -1;
     const skip = document.querySelector('.rbvm-skip-link');
