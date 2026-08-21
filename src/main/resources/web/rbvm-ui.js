@@ -306,6 +306,15 @@
     });
   }
 
+  function normalizeGuideTabs() {
+    document.querySelectorAll('.guide-tab').forEach(tab => {
+      const active = tab.classList.contains('active');
+      tab.classList.toggle('secondary', !active);
+      tab.dataset.rbvmTabState = active ? 'active' : 'inactive';
+      tab.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
   function normalizeSemanticStates() {
     const stateMap = new Map([
       ['PRESENT', 'present'],
@@ -333,7 +342,10 @@
 
   function observeSemanticStates() {
     if (!document.body || typeof MutationObserver !== 'function') return;
-    const observer = new MutationObserver(() => normalizeSemanticStates());
+    const observer = new MutationObserver(() => {
+      normalizeSemanticStates();
+      normalizeGuideTabs();
+    });
     observer.observe(document.body, {subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class', 'data-state']});
   }
 
@@ -379,6 +391,7 @@
     normalizeModules(main);
     normalizeTables();
     normalizeExternalState();
+    normalizeGuideTabs();
     normalizeSemanticStates();
     observeSemanticStates();
     normalizeDialogs();
