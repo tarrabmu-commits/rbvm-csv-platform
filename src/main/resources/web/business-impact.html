@@ -1,175 +1,18 @@
 <!doctype html>
-<html lang="ar" dir="rtl">
+<html lang="en" dir="ltr">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>RBVM Business / Mission Impact Evidence</title>
-  <style>
-    :root { color-scheme: dark; --bg:#10031c; --panel:#21073a; --text:#fbf8ff; --muted:#bcaecd; --accent:#ad7aff; --ok:#63e6be; --danger:#ff7b9c; --border:rgba(255,255,255,.13); }
-    * { box-sizing:border-box; }
-    body { margin:0; min-height:100vh; font-family:system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif; background:linear-gradient(145deg,#0b0214,var(--bg)); color:var(--text); }
-    main { width:min(1220px,calc(100% - 32px)); margin:0 auto; padding:42px 0 72px; }
-    h1 { margin:0 0 10px; font-size:clamp(2rem,5vw,4rem); letter-spacing:-.04em; }
-    h2 { margin:0 0 18px; font-size:1.15rem; }
-    p { color:var(--muted); line-height:1.75; }
-    .panel { margin-top:18px; padding:22px; border:1px solid var(--border); border-radius:20px; background:rgba(33,7,58,.88); }
-    .grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; align-items:end; }
-    .auth { display:grid; grid-template-columns:1fr auto; gap:12px; align-items:end; }
-    label { display:grid; gap:7px; color:var(--muted); font-size:.88rem; }
-    input,select { width:100%; min-height:46px; border:1px solid var(--border); border-radius:11px; background:rgba(5,0,10,.42); color:var(--text); padding:11px 12px; font:inherit; }
-    button { min-height:46px; border:0; border-radius:11px; padding:11px 18px; font-weight:800; cursor:pointer; background:var(--accent); color:#160326; }
-    button.secondary { background:var(--ok); }
-    .note { border-inline-start:3px solid var(--accent); padding-inline-start:14px; }
-    .status { min-height:24px; margin-top:12px; color:var(--muted); }
-    .status.error { color:var(--danger); }
-    .cards { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:14px 0; }
-    .card { border:1px solid var(--border); border-radius:13px; padding:14px; background:rgba(5,0,10,.32); }
-    .card span { display:block; color:var(--muted); font-size:.78rem; margin-bottom:7px; }
-    .card strong { font-size:1.45rem; }
-    .scroll { overflow:auto; }
-    table { width:100%; border-collapse:collapse; font-size:.86rem; }
-    th,td { padding:10px; border-bottom:1px solid var(--border); text-align:right; vertical-align:top; }
-    th { color:var(--muted); font-weight:600; white-space:nowrap; }
-    code { direction:ltr; unicode-bidi:embed; }
-    @media(max-width:900px){ .grid,.auth,.cards{grid-template-columns:1fr;} }
-  </style>
+  <meta name="color-scheme" content="light dark">
+  <title>RBVM</title>
   <link rel="stylesheet" href="/ui/rbvm-ui.css">
 </head>
 <body>
-<main>
-  <header>
-    <h1>Business / Mission Impact</h1>
-    <p>واجهة تشغيلية لدليل <code>BUSINESS_IMPACT_CSV_V1</code>. تعرض التصنيف النوعي كما أرسله مصدر الـImpact ولا تختار مصدراً فائزاً ولا تبني منه ترتيب مخاطر.</p>
-  </header>
-
-  <section class="panel">
-    <h2>الدخول</h2>
-    <div class="auth">
-      <label>API access token
-        <input id="apiToken" type="password" autocomplete="off" spellcheck="false" placeholder="الصق مفتاح الوصول">
-      </label>
-      <button id="saveToken" class="secondary">استخدام المفتاح</button>
-    </div>
-    <p id="authMessage" class="status">المفتاح يبقى في sessionStorage لهذه النافذة فقط.</p>
-  </section>
-
-  <section class="panel">
-    <h2>استيراد Business Impact evidence</h2>
-    <div class="grid">
-      <label>CSV
-        <input id="impactFile" type="file" accept=".csv,text/csv">
-      </label>
-      <div><button id="importImpact">استيراد BUSINESS_IMPACT_CSV_V1</button></div>
-    </div>
-    <div id="importMessage" class="status" role="status" aria-live="polite"></div>
-    <p class="note">غياب row يعني عدم وجود evidence قابلة للاستخدام. لا يتم تحويل الغياب إلى LOW أو NEGLIGIBLE أو UNKNOWN. كذلك SEVERE/HIGH/... تبقى تصنيفات مصدرية نوعية من دون numeric multiplier.</p>
-  </section>
-
-  <section class="panel">
-    <h2>Current evidence per source + service + dimension</h2>
-    <div class="grid">
-      <label>Asset prefix<input id="assetFilter" maxlength="160" placeholder="web-"></label>
-      <label>Source profile<input id="profileFilter" maxlength="128" placeholder="wazuh-primary"></label>
-      <label>Business service<input id="serviceFilter" maxlength="256" placeholder="checkout"></label>
-      <label>Impact source<input id="sourceFilter" maxlength="256" placeholder="bia-2026"></label>
-      <label>Impact dimension
-        <select id="dimensionFilter"><option value="">الكل</option><option>AVAILABILITY</option><option>INTEGRITY</option><option>CONFIDENTIALITY</option><option>SAFETY</option><option>FINANCIAL</option><option>REGULATORY</option><option>OPERATIONAL</option><option>REPUTATIONAL</option><option>MISSION</option><option>OTHER</option><option>UNKNOWN</option></select>
-      </label>
-      <label>Impact level
-        <select id="levelFilter"><option value="">الكل</option><option>SEVERE</option><option>HIGH</option><option>MODERATE</option><option>LOW</option><option>NEGLIGIBLE</option><option>UNKNOWN</option></select>
-      </label>
-      <label>Limit<input id="limitFilter" type="number" min="1" max="500" value="100"></label>
-      <div><button id="loadEvidence" class="secondary">تحميل evidence</button></div>
-    </div>
-    <div id="readMessage" class="status" role="status" aria-live="polite"></div>
-    <div class="cards">
-      <div class="card"><span>Rows</span><strong id="rowCount">0</strong></div>
-      <div class="card"><span>Assets</span><strong id="assetCount">0</strong></div>
-      <div class="card"><span>Services</span><strong id="serviceCount">0</strong></div>
-      <div class="card"><span>Impact sources</span><strong id="sourceCount">0</strong></div>
-    </div>
-    <div class="scroll"><table>
-      <thead><tr><th>Asset</th><th>Business Service</th><th>Dimension</th><th>Impact Level</th><th>Method</th><th>Impact Source</th><th>Statement</th><th>Observed</th><th>SHA-256</th></tr></thead>
-      <tbody id="evidenceRows"></tbody>
-    </table></div>
-    <p class="note">Asset Context وBusiness Impact بعدهم evidence dimensions منفصلة. ما في mapping تلقائي بين MISSION_CRITICAL وSEVERE، وما في max-level winner بين مصادر مختلفة.</p>
-  </section>
-</main>
-<script>
-const byId = id => document.getElementById(id);
-const tokenKey = 'rbvmApiToken';
-byId('apiToken').value = sessionStorage.getItem(tokenKey) || '';
-byId('saveToken').addEventListener('click', () => {
-  const value = byId('apiToken').value.trim();
-  if (value) sessionStorage.setItem('rbvmApiToken', value); else sessionStorage.removeItem(tokenKey);
-  byId('authMessage').textContent = value ? 'تم اعتماد المفتاح لهذه الجلسة.' : 'تم مسح المفتاح من الجلسة.';
-});
-
-async function apiFetch(path, options = {}) {
-  const headers = new Headers(options.headers || {});
-  const token = sessionStorage.getItem(tokenKey) || byId('apiToken').value.trim();
-  if (token) headers.set('Authorization', `Bearer ${token}`);
-  const response = await fetch(path, {...options, headers});
-  if (!response.ok) {
-    let detail = `${response.status} ${response.statusText}`;
-    try { const body = await response.json(); detail = body.detail || body.title || detail; } catch (_) {}
-    throw new Error(detail);
-  }
-  return response;
-}
-
-function setStatus(id, text, error = false) {
-  const node = byId(id); node.textContent = text; node.classList.toggle('error', error);
-}
-
-byId('importImpact').addEventListener('click', async () => {
-  const file = byId('impactFile').files[0];
-  if (!file) { setStatus('importMessage', 'اختر ملف CSV أولاً.', true); return; }
-  setStatus('importMessage', 'جارٍ الاستيراد…');
-  try {
-    const response = await apiFetch('/api/v1/business-impact-imports', {method:'POST', headers:{'Content-Type':'text/csv; charset=utf-8'}, body:file});
-    const body = await response.json();
-    setStatus('importMessage', `accepted=${body.acceptedRows} inserted=${body.insertedEvidence} replayed=${body.replayedEvidence} quarantined=${body.totalQuarantinedRows}`);
-    await loadEvidence();
-  } catch (error) { setStatus('importMessage', error.message, true); }
-});
-
-function query() {
-  const params = new URLSearchParams();
-  const pairs = [
-    ['asset', byId('assetFilter').value], ['sourceProfile', byId('profileFilter').value],
-    ['businessService', byId('serviceFilter').value], ['impactSource', byId('sourceFilter').value],
-    ['impactDimension', byId('dimensionFilter').value], ['impactLevel', byId('levelFilter').value],
-    ['limit', byId('limitFilter').value]
-  ];
-  for (const [key,value] of pairs) if (value.trim()) params.set(key,value.trim());
-  return params.toString();
-}
-
-function td(text) { const node = document.createElement('td'); node.textContent = text ?? ''; return node; }
-async function loadEvidence() {
-  setStatus('readMessage', 'جارٍ التحميل…');
-  try {
-    const response = await apiFetch(`/api/v1/business-impact-evidence?${query()}`);
-    const body = await response.json();
-    const rows = byId('evidenceRows'); rows.replaceChildren();
-    const assets = new Set(), services = new Set(), sources = new Set();
-    for (const item of body.items || []) {
-      assets.add(`${item.sourceProfileKey}|${item.assetIdentityBasis}|${item.assetSourceId || item.assetName}`);
-      services.add(item.businessService); sources.add(item.impactSource);
-      const tr = document.createElement('tr');
-      tr.append(td(item.assetName)); tr.append(td(item.businessService)); tr.append(td(item.impactDimension));
-      tr.append(td(item.impactLevel)); tr.append(td(item.impactMethod)); tr.append(td(item.impactSource));
-      tr.append(td(item.impactStatement)); tr.append(td(item.impactObservedAt)); tr.append(td(item.impactSourceSha256));
-      rows.append(tr);
-    }
-    byId('rowCount').textContent = String(body.count || 0); byId('assetCount').textContent = String(assets.size);
-    byId('serviceCount').textContent = String(services.size); byId('sourceCount').textContent = String(sources.size);
-    setStatus('readMessage', `semantics=${body.semantics}; returned=${body.count}`);
-  } catch (error) { setStatus('readMessage', error.message, true); }
-}
-byId('loadEvidence').addEventListener('click', loadEvidence);
-</script>
-<script src="/ui/rbvm-ui.js" defer></script>
+  <a class="skip-link" href="#rbvm-main">Skip to main content</a>
+  <main id="rbvm-main" tabindex="-1">
+    <div id="rbvm-app" aria-live="polite"></div>
+  </main>
+  <noscript>RBVM requires JavaScript for the operator interface.</noscript>
+  <script src="/ui/rbvm-ui.js" defer></script>
 </body>
 </html>

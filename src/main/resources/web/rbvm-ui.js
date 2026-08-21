@@ -1,406 +1,293 @@
 (() => {
   'use strict';
 
-  const FRONTEND_CONTRACT = 'RBVM_FRONTEND_SYSTEM_V1';
+  const CONTRACT = 'RBVM_FRONTEND_SYSTEM_V2';
   const THEME_KEY = 'rbvm.ui.theme';
-  const dialogOpeners = new WeakMap();
-  const PAGE_META = new Map([
-    ['/', {id: 'overview', nav: 'Home', group: 'Platform', eyebrow: 'OPERATIONS · EVIDENCE → DECISION'}],
-    ['/cvss', {id: 'cvss', nav: 'CVSS', group: 'Intelligence', eyebrow: 'TECHNICAL SEVERITY · CVSS v3.1'}],
-    ['/kev', {id: 'kev', nav: 'KEV', group: 'Intelligence', eyebrow: 'KNOWN EXPLOITATION · CISA KEV'}],
-    ['/epss', {id: 'epss', nav: 'EPSS', group: 'Intelligence', eyebrow: 'EXPLOITATION PROBABILITY · FIRST EPSS'}],
-    ['/asset-context', {id: 'context', nav: 'Context', group: 'Context', eyebrow: 'ASSET CONTEXT · CUSTOMER EVIDENCE'}],
-    ['/reachability', {id: 'reachability', nav: 'Reachability', group: 'Context', eyebrow: 'NETWORK REACHABILITY · SCOPED EVIDENCE'}],
-    ['/business-impact', {id: 'impact', nav: 'Impact', group: 'Context', eyebrow: 'BUSINESS / MISSION IMPACT'}],
-    ['/assets', {id: 'assets', nav: 'Assets', group: 'Assets', eyebrow: 'MANAGED ASSETS · CUSTOMER REGISTRY'}],
-    ['/asset-links', {id: 'links', nav: 'Links', group: 'Assets', eyebrow: 'SCANNER ↔ MANAGED ASSET · EXPLICIT LINK'}]
+  const DENSITY_KEY = 'rbvm.ui.density';
+  const PAGE_SIZE = 100;
+  const MAX_PAGES = 60;
+
+  const ROUTE_ALIASES = new Map([
+    ['/cvss', ['/evidence', {type: 'cvss'}]],
+    ['/kev', ['/evidence', {type: 'kev'}]],
+    ['/epss', ['/evidence', {type: 'epss'}]],
+    ['/asset-context', ['/evidence', {type: 'asset-context'}]],
+    ['/reachability', ['/evidence', {type: 'reachability'}]],
+    ['/business-impact', ['/evidence', {type: 'business-impact'}]],
+    ['/asset-links', ['/assets', {tab: 'scanner-links'}]],
   ]);
-  const pages = Array.from(PAGE_META, ([href, meta]) => [href, meta.nav, meta.group]);
+  const QUERY_ROUTES = new Set(['/findings', '/analytics', '/reports', '/evidence', '/imports', '/settings']);
+  const NAV = [
+    [null, [['/', 'Overview', '⌂']]],
+    ['Work', [['/findings', 'Findings', '▤'], ['/assets', 'Assets', '▣']]],
+    ['Insights', [['/analytics', 'Analytics', '⌁'], ['/reports', 'Reports', '▦']]],
+    ['Data', [['/evidence', 'Evidence', '◇'], ['/imports', 'Imports', '⇧']]],
+    [null, [['/settings', 'Settings', '⚙']]],
+  ];
+  const EVIDENCE = {
+    cvss: {label: 'CVSS v3.1', endpoint: '/api/v1/cvss-v31-evidence', importEndpoint: '/api/v1/cvss-v31-imports', capability: 'cvssV31', contract: 'CVSS_V31_CSV_V1'},
+    kev: {label: 'CISA KEV', endpoint: '/api/v1/cisa-kev-evidence', importEndpoint: '/api/v1/cisa-kev-imports', capability: 'cisaKev', contract: 'CISA_KEV_CSV_V1'},
+    epss: {label: 'FIRST EPSS', endpoint: '/api/v1/epss-evidence', importEndpoint: '/api/v1/epss-imports', capability: 'epss', contract: 'EPSS_CSV_V1'},
+    'asset-context': {label: 'Asset context', endpoint: '/api/v1/asset-context-evidence', importEndpoint: '/api/v1/asset-context-imports', capability: 'assetContext', contract: 'ASSET_CONTEXT_CSV_V1'},
+    reachability: {label: 'Network reachability', endpoint: '/api/v1/network-reachability-evidence', importEndpoint: '/api/v1/network-reachability-imports', capability: 'networkReachability', contract: 'NETWORK_REACHABILITY_CSV_V1'},
+    'business-impact': {label: 'Business impact', endpoint: '/api/v1/business-impact-evidence', importEndpoint: '/api/v1/business-impact-imports', capability: 'businessImpact', contract: 'BUSINESS_IMPACT_CSV_V1'},
+  };
+  const state = {health: null, summary: null, cases: [], assets: [], reportCases: null};
+  const app = document.getElementById('rbvm-app');
+  if (!app) return;
+  document.documentElement.dataset.frontendContract = CONTRACT;
 
-  function currentPath() {
-    const path = window.location.pathname || '/';
-    return path.length > 1 ? path.replace(/\/+$/, '') : '/';
-  }
-
-  function pageMeta() {
-    return PAGE_META.get(currentPath()) || PAGE_META.get('/');
-  }
-
-  function readTheme() {
-    try {
-      const stored = window.localStorage.getItem(THEME_KEY);
-      return stored === 'dark' || stored === 'light' ? stored : null;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  function storeTheme(theme) {
-    try {
-      if (theme) window.localStorage.setItem(THEME_KEY, theme);
-      else window.localStorage.removeItem(THEME_KEY);
-    } catch (_) {
-      // UI preference storage is optional. The application must still function without it.
-    }
-  }
-
-  function applyTheme(theme) {
-    if (theme === 'dark' || theme === 'light') {
-      document.documentElement.dataset.rbvmTheme = theme;
-    } else {
-      delete document.documentElement.dataset.rbvmTheme;
-    }
-  }
-
-  function effectiveTheme() {
-    const explicit = document.documentElement.dataset.rbvmTheme;
-    if (explicit) return explicit;
-    return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-  }
-
-  function markPageIdentity() {
-    const meta = pageMeta();
-    document.documentElement.dataset.rbvmPage = meta.id;
-    document.documentElement.dataset.rbvmPageGroup = meta.group.toLowerCase();
-  }
-
-  function containGeneratedNav(nav) {
-    nav.style.setProperty('display', 'block', 'important');
-    nav.style.setProperty('gap', '0', 'important');
-    nav.style.setProperty('flex-wrap', 'nowrap', 'important');
-  }
-
-  function createNav() {
-    const nav = document.createElement('nav');
-    nav.className = 'rbvm-nav';
-    nav.setAttribute('aria-label', 'التنقل الرئيسي');
-    containGeneratedNav(nav);
-
-    const list = document.createElement('ul');
-    list.className = 'rbvm-nav__list';
-    const activePath = currentPath();
-    let previousGroup = null;
-
-    for (const [href, label, group] of pages) {
-      const item = document.createElement('li');
-      item.dataset.rbvmNavGroup = group.toLowerCase();
-      if (previousGroup && previousGroup !== group) item.classList.add('rbvm-nav__group-start');
-      previousGroup = group;
-
-      const link = document.createElement('a');
-      link.href = href;
-      link.textContent = label;
-      link.dataset.rbvmNavGroup = group;
-      if (activePath === href) link.setAttribute('aria-current', 'page');
-      item.append(link);
-      list.append(item);
-    }
-
-    nav.append(list);
-    return nav;
-  }
-
-  function createMobileNav() {
-    const disclosure = document.createElement('details');
-    disclosure.className = 'rbvm-mobile-nav';
-
-    const summary = document.createElement('summary');
-    summary.textContent = 'التنقل';
-
-    function refreshDisclosureLabel() {
-      summary.setAttribute(
-        'aria-label',
-        disclosure.open ? 'إغلاق قائمة التنقل' : 'فتح قائمة التنقل'
-      );
-    }
-
-    disclosure.addEventListener('toggle', refreshDisclosureLabel);
-    refreshDisclosureLabel();
-
-    const nav = document.createElement('nav');
-    nav.setAttribute('aria-label', 'التنقل الرئيسي للموبايل');
-    containGeneratedNav(nav);
-    const list = document.createElement('ul');
-    const activePath = currentPath();
-
-    for (const [href, label, group] of pages) {
-      const item = document.createElement('li');
-      item.dataset.rbvmNavGroup = group.toLowerCase();
-      const link = document.createElement('a');
-      link.href = href;
-      link.textContent = label;
-      link.dataset.rbvmNavGroup = group;
-      if (activePath === href) link.setAttribute('aria-current', 'page');
-      item.append(link);
-      list.append(item);
-    }
-
-    nav.append(list);
-    disclosure.append(summary, nav);
-    return disclosure;
-  }
-
-  function createShell() {
-    if (document.querySelector('.rbvm-shell')) return;
-
-    const skip = document.createElement('a');
-    skip.className = 'rbvm-skip-link';
-    skip.href = '#rbvm-main';
-    skip.textContent = 'تجاوز إلى المحتوى الرئيسي';
-
-    const shell = document.createElement('header');
-    shell.className = 'rbvm-shell';
-    shell.setAttribute('data-contract', FRONTEND_CONTRACT);
-    // Legacy pages predate the shared shell and contain broad `header` rules.
-    // Contain those rules here so the global application chrome stays full-width and predictable.
-    shell.style.setProperty('display', 'block', 'important');
-    shell.style.setProperty('width', '100%', 'important');
-    shell.style.setProperty('max-width', 'none', 'important');
-    shell.style.setProperty('margin', '0', 'important');
-    shell.style.setProperty('padding', '0', 'important');
-    shell.style.setProperty('gap', '0', 'important');
-
-    const inner = document.createElement('div');
-    inner.className = 'rbvm-shell__inner';
-
-    const brand = document.createElement('a');
-    brand.className = 'rbvm-brand';
-    brand.href = '/';
-    brand.setAttribute('aria-label', 'RBVM — الصفحة الرئيسية');
-    brand.innerHTML = '<span class="rbvm-brand__mark" aria-hidden="true"><span>RB</span></span><span class="rbvm-brand__meta"><span>RBVM Platform</span><small><i aria-hidden="true"></i>Evidence → Decision</small></span>';
-
-    const tools = document.createElement('div');
-    tools.className = 'rbvm-shell__tools';
-
-    const pageChip = document.createElement('span');
-    pageChip.className = 'rbvm-shell__page-chip';
-    pageChip.textContent = pageMeta().group;
-    pageChip.setAttribute('aria-hidden', 'true');
-
-    const themeButton = document.createElement('button');
-    themeButton.className = 'rbvm-icon-button';
-    themeButton.type = 'button';
-
-    function refreshThemeButton() {
-      const theme = effectiveTheme();
-      const dark = theme === 'dark';
-      themeButton.textContent = dark ? '☀' : '☾';
-      themeButton.setAttribute('aria-pressed', dark ? 'true' : 'false');
-      themeButton.setAttribute(
-        'aria-label',
-        dark ? 'التبديل إلى الوضع الفاتح' : 'التبديل إلى الوضع الداكن'
-      );
-      themeButton.setAttribute(
-        'title',
-        dark ? 'الوضع الفاتح' : 'الوضع الداكن'
-      );
-    }
-
-    themeButton.addEventListener('click', () => {
-      const next = effectiveTheme() === 'dark' ? 'light' : 'dark';
-      applyTheme(next);
-      storeTheme(next);
-      refreshThemeButton();
+  function h(tag, attrs = {}, ...children) {
+    const node = document.createElement(tag);
+    Object.entries(attrs).forEach(([key, value]) => {
+      if (value === null || value === undefined || value === false) return;
+      if (key === 'class') node.className = value;
+      else if (key === 'text') node.textContent = String(value);
+      else if (key === 'style') node.style.cssText = String(value);
+      else if (key.startsWith('on') && typeof value === 'function') node.addEventListener(key.slice(2).toLowerCase(), value);
+      else if (key in node && !key.startsWith('aria') && !key.startsWith('data-')) node[key] = value;
+      else node.setAttribute(key, String(value));
     });
-
-    if (window.matchMedia) {
-      const systemTheme = window.matchMedia('(prefers-color-scheme: light)');
-      if (typeof systemTheme.addEventListener === 'function') {
-        systemTheme.addEventListener('change', () => {
-          if (!document.documentElement.dataset.rbvmTheme) refreshThemeButton();
-        });
-      }
-    }
-
-    tools.append(pageChip, themeButton);
-    inner.append(brand, createNav(), createMobileNav(), tools);
-    shell.append(inner);
-
-    document.body.prepend(shell);
-    document.body.prepend(skip);
-    refreshThemeButton();
-  }
-
-  function normalizeMain() {
-    const main = document.querySelector('main');
-    if (!main) return null;
-    main.classList.add('rbvm-page');
-    main.style.setProperty('max-width', 'none', 'important');
-    if (!main.id) main.id = 'rbvm-main';
-    if (!main.hasAttribute('tabindex')) main.tabIndex = -1;
-    const skip = document.querySelector('.rbvm-skip-link');
-    if (skip) skip.href = `#${main.id}`;
-    return main;
-  }
-
-  function normalizeLegacyHero(main) {
-    if (!main || (main.firstElementChild && main.firstElementChild.tagName === 'HEADER')) return;
-    const legacyHeader = main.previousElementSibling;
-    if (!legacyHeader || legacyHeader.tagName !== 'HEADER' || legacyHeader.classList.contains('rbvm-shell')) return;
-    main.prepend(legacyHeader);
-  }
-
-  function enhanceHero(main) {
-    if (!main) return;
-    const hero = main.firstElementChild;
-    if (!hero || hero.tagName !== 'HEADER') return;
-    hero.classList.add('rbvm-page-hero');
-    hero.dataset.rbvmModule = 'hero';
-
-    const content = hero.querySelector(':scope > div:first-child') || hero;
-    if (!content.querySelector('.rbvm-page-eyebrow')) {
-      const eyebrow = document.createElement('div');
-      eyebrow.className = 'rbvm-page-eyebrow';
-      eyebrow.textContent = pageMeta().eyebrow;
-      const heading = content.querySelector('h1');
-      if (heading) content.insertBefore(eyebrow, heading);
-      else content.prepend(eyebrow);
-    }
-
-    const contract = hero.querySelector('.badge, .pill, .tag, .chip');
-    if (contract) contract.classList.add('rbvm-page-contract');
-    const localNav = hero.querySelector(':scope > nav');
-    if (localNav) localNav.classList.add('rbvm-page-links');
-  }
-
-  function normalizeModules(main) {
-    if (!main) return;
-    const modules = main.querySelectorAll('.panel');
-    modules.forEach((module, index) => {
-      module.classList.add('rbvm-module');
-      module.dataset.rbvmModule = module.dataset.rbvmModule || 'section';
-      module.style.setProperty('--rbvm-module-order', String(index));
+    children.flat().forEach(child => {
+      if (child === null || child === undefined || child === false) return;
+      node.append(child instanceof Node ? child : document.createTextNode(String(child)));
     });
+    return node;
+  }
+  const clear = node => { node.replaceChildren(); return node; };
+  const num = value => Number(value ?? 0).toLocaleString('en-US');
+  const title = value => String(value || '').toLowerCase().replace(/(^|[_\s-])\w/g, part => part.toUpperCase()).replaceAll('_', ' ');
+  const pct = (value, digits = 0) => Number.isFinite(Number(value)) ? `${(Number(value) * 100).toFixed(digits)}%` : '—';
+  function date(value) {
+    if (!value) return '—';
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? String(value) : new Intl.DateTimeFormat('en-GB', {dateStyle: 'medium', timeStyle: 'short'}).format(parsed);
+  }
+  function age(value) {
+    const parsed = value ? new Date(value) : null;
+    return !parsed || Number.isNaN(parsed.getTime()) ? null : Math.max(0, Math.floor((Date.now() - parsed.getTime()) / 86400000));
+  }
+  const uuid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
-    document.querySelectorAll('.cards').forEach(collection => collection.classList.add('rbvm-metrics'));
-    document.querySelectorAll('.card, .metric, .stat, .summary, .result-card').forEach(card => {
-      card.classList.add('rbvm-metric-card');
-    });
-    document.querySelectorAll('.detail').forEach(card => card.classList.add('rbvm-detail-card'));
-    document.querySelectorAll('.history-item').forEach(item => item.classList.add('rbvm-history-item'));
-    document.querySelectorAll('.note').forEach(note => note.classList.add('rbvm-callout'));
-    document.querySelectorAll('.scroll, .table-wrap, .table-scroll').forEach(frame => frame.classList.add('rbvm-table-frame'));
-    document.querySelectorAll('.badge, .pill, .tag, .chip, .status-pill').forEach(chip => chip.classList.add('rbvm-chip'));
-    document.querySelectorAll('.status, [role="status"]').forEach(status => status.classList.add('rbvm-status'));
+  async function api(path, options = {}) {
+    const response = await fetch(path, {...options, cache: options.cache || 'no-store'});
+    if (!response.ok) {
+      let message = `HTTP ${response.status}`;
+      try { const body = await response.json(); message = body.detail || body.title || message; } catch (_) {}
+      const error = new Error(message); error.status = response.status; throw error;
+    }
+    return response;
+  }
+  const json = async (path, options = {}) => (await api(path, options)).json();
+
+  function route() {
+    let path = location.pathname || '/';
+    if (path.length > 1) path = path.replace(/\/+$/, '');
+    const params = new URLSearchParams(location.search);
+    if (path === '/' && params.get('view')) {
+      const candidate = `/${params.get('view')}`;
+      if (QUERY_ROUTES.has(candidate)) return candidate;
+    }
+    return ROUTE_ALIASES.get(path)?.[0] || path;
+  }
+  function routeParams() {
+    const params = new URLSearchParams(location.search);
+    const alias = ROUTE_ALIASES.get(location.pathname.replace(/\/+$/, '') || '/');
+    if (alias) Object.entries(alias[1]).forEach(([key, value]) => { if (!params.has(key)) params.set(key, value); });
+    return params;
+  }
+  function url(path, input = null) {
+    const params = input instanceof URLSearchParams ? new URLSearchParams(input) : new URLSearchParams(input || {});
+    let physical = path;
+    if (QUERY_ROUTES.has(path)) { physical = '/'; params.set('view', path.slice(1)); }
+    return physical + (params.toString() ? `?${params}` : '');
+  }
+  function navigate(path, params = null, replace = false) {
+    history[replace ? 'replaceState' : 'pushState']({}, '', url(path, params));
+    closeOverlay(); closeNav(); render();
+  }
+  function queryUpdate(changes) {
+    const params = routeParams();
+    Object.entries(changes).forEach(([key, value]) => value === '' || value === null || value === undefined ? params.delete(key) : params.set(key, String(value)));
+    navigate(route(), params);
   }
 
-  function normalizeTables() {
-    document.querySelectorAll('table').forEach((table, index) => {
-      table.classList.add('rbvm-data-table');
-      if (!table.querySelector('caption')) {
-        const caption = document.createElement('caption');
-        caption.className = 'sr-only';
-        caption.textContent = `RBVM data table ${index + 1}`;
-        table.prepend(caption);
-      }
-      table.querySelectorAll('thead th').forEach(th => {
-        if (!th.hasAttribute('scope')) th.setAttribute('scope', 'col');
+  function readSetting(key, fallback) { try { return localStorage.getItem(key) || fallback; } catch (_) { return fallback; } }
+  function writeSetting(key, value) { try { localStorage.setItem(key, value); } catch (_) {} }
+  function applyTheme(value) { const theme = value === 'dark' ? 'dark' : 'light'; document.documentElement.dataset.theme = theme; writeSetting(THEME_KEY, theme); }
+  function applyDensity(value) { const density = value === 'compact' ? 'compact' : 'comfortable'; document.documentElement.dataset.density = density; writeSetting(DENSITY_KEY, density); }
+
+  function buildShell() {
+    clear(app);
+    const shell = h('div', {class: 'app-shell'});
+    const top = h('header', {class: 'topbar'});
+    const brand = h('a', {class: 'brand', href: '/', 'data-spa': 'true', 'data-route': '/', 'aria-label': 'RBVM overview'}, h('span', {class: 'brand-mark', text: 'R'}), h('span', {text: 'RBVM'}));
+    const searchWrap = h('div', {class: 'global-search'});
+    const search = h('input', {type: 'search', id: 'global-search', placeholder: 'Search CVE or asset…', 'aria-label': 'Search findings'});
+    search.addEventListener('keydown', event => { if (event.key === 'Enter') navigate('/findings', search.value.trim() ? {q: search.value.trim()} : null); });
+    searchWrap.append(search, h('span', {class: 'search-key', text: '/'}));
+    const mobile = h('button', {class: 'icon-button mobile-nav-button', type: 'button', text: '☰', 'aria-label': 'Open navigation', onclick: () => { document.documentElement.dataset.navOpen = document.documentElement.dataset.navOpen === 'true' ? 'false' : 'true'; }});
+    const theme = h('button', {class: 'icon-button', id: 'theme-toggle', type: 'button', 'aria-label': 'Toggle dark mode', text: readSetting(THEME_KEY, 'light') === 'dark' ? '☀' : '☾'});
+    theme.addEventListener('click', () => { const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; applyTheme(next); theme.textContent = next === 'dark' ? '☀' : '☾'; });
+    top.append(brand, searchWrap, h('div'), h('div', {class: 'topbar-actions'}, mobile, theme));
+
+    const side = h('aside', {class: 'sidebar', 'aria-label': 'Primary navigation'});
+    NAV.forEach(([label, items]) => {
+      const section = h('section', {class: 'nav-section'});
+      if (label) section.append(h('div', {class: 'nav-label', text: label}));
+      const list = h('ul', {class: 'nav-list'});
+      items.forEach(([path, labelText, icon]) => {
+        list.append(h(
+          'li', {},
+          h('a', {class: 'nav-link', href: url(path), 'data-spa': 'true', 'data-route': path},
+            h('span', {class: 'nav-icon', text: icon}),
+            h('span', {text: labelText}))
+        ));
       });
+      section.append(list); side.append(section);
+    });
+    const workspace = h('div', {class: 'workspace'}, h('section', {class: 'page', id: 'page-content'}));
+    shell.append(top, side, workspace); app.append(shell);
+    app.addEventListener('click', event => {
+      const anchor = event.target.closest('a[data-spa]');
+      if (!anchor || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault(); const target = new URL(anchor.href, location.href); navigate(anchor.dataset.route || target.pathname, target.searchParams);
     });
   }
+  const page = () => document.getElementById('page-content');
+  const closeNav = () => { document.documentElement.dataset.navOpen = 'false'; };
+  function activateNav(current) { document.querySelectorAll('.nav-link').forEach(link => link.getAttribute('data-route') === current ? link.setAttribute('aria-current', 'page') : link.removeAttribute('aria-current')); }
 
-  function normalizeExternalState() {
-    document.querySelectorAll('[role="status"]').forEach(region => {
-      if (!region.hasAttribute('aria-live')) region.setAttribute('aria-live', 'polite');
-      if (!region.hasAttribute('aria-atomic')) region.setAttribute('aria-atomic', 'true');
+  function pageHeader(name, description, actions = []) { return h('div', {class: 'page-header'}, h('div', {}, h('h1', {class: 'page-title', text: name}), h('p', {class: 'page-description', text: description})), actions.length ? h('div', {class: 'page-actions'}, actions) : null); }
+  function button(label, {kind = 'secondary', onClick = null, type = 'button', disabled = false} = {}) { return h('button', {class: `button button-${kind}`, type, disabled, text: label, onclick: onClick}); }
+  function metric(label, value, meta = '') { return h('div', {class: 'metric'}, h('div', {class: 'metric-label', text: label}), h('div', {class: 'metric-value', text: value}), meta ? h('div', {class: 'metric-meta', text: meta}) : null); }
+  function badge(label, css = '') { return h('span', {class: `badge ${css}`.trim(), text: label}); }
+  function severity(value) { const key = String(value || 'UNKNOWN').toLowerCase(); return badge(String(value || 'UNKNOWN'), `severity-${['critical','high','medium','low'].includes(key) ? key : 'unknown'}`); }
+  function evidenceState(value) { const key = String(value || 'MISSING').toUpperCase(); const map = {PRESENT:['✓ Present','state-present'],MISSING:['— Missing','state-missing'],AMBIGUOUS:['◇ Ambiguous','state-ambiguous'],STALE:['◷ Stale','state-stale']}; const item = map[key] || [title(key),'state-missing']; return badge(item[0], item[1]); }
+  function panel(name, subtitle = '', body = null, actions = null) { const header = h('div', {class: 'panel-header'}, h('div', {}, h('h2', {class: 'panel-title', text: name}), subtitle ? h('p', {class: 'panel-subtitle', text: subtitle}) : null), actions); return h('section', {class: 'panel'}, header, h('div', {class: 'panel-body'}, body || '')); }
+  const callout = (text, kind = 'info') => h('div', {class: `callout callout-${kind}`, text});
+  function empty(name, description, action = null) { return h('div', {class: 'empty-state'}, h('div', {}, h('h3', {text: name}), h('p', {text: description}), action ? h('div', {class: 'inline-actions'}, action) : null)); }
+  function failure(error, retry) { return empty('This view could not be loaded', `${error.message}. Your current navigation context is preserved.`, button('Retry', {onClick: retry})); }
+  function loading(count = 5) { const out = h('div', {class: 'stack'}); for (let i = 0; i < count; i++) out.append(h('div', {class: 'skeleton'})); return out; }
+  function table(columns, rows, caption = 'Data table', onRow = null) {
+    const frame = h('div', {class: 'table-frame'}); const node = h('table', {}, h('caption', {class: 'sr-only', text: caption}));
+    const head = h('tr'); columns.forEach(col => head.append(h('th', {scope: 'col', text: col.label}))); node.append(h('thead', {}, head));
+    const body = h('tbody'); rows.forEach(row => { const tr = h('tr', {'data-clickable': onRow ? 'true' : null}); if (onRow) { tr.tabIndex = 0; tr.addEventListener('click', () => onRow(row)); tr.addEventListener('keydown', event => { if (event.key === 'Enter') onRow(row); }); } columns.forEach(col => { const td = h('td'); const value = col.render ? col.render(row) : row[col.key]; value instanceof Node ? td.append(value) : td.textContent = value === null || value === undefined || value === '' ? '—' : String(value); tr.append(td); }); body.append(tr); }); node.append(body); frame.append(node); return frame;
+  }
+  function bars(items, onSelect = null) { const max = Math.max(1, ...items.map(item => Number(item.value) || 0)); const out = h('div', {class: 'bar-list'}); items.forEach(item => { const fill = h('div', {class: 'bar-fill'}); fill.style.width = `${Math.max(.5, ((Number(item.value) || 0) / max) * 100)}%`; const label = onSelect ? button(item.label, {kind: 'ghost', onClick: () => onSelect(item)}) : h('span', {text: item.label}); out.append(h('div', {class: 'bar-row'}, label, h('div', {class: 'bar-track'}, fill), h('strong', {text: num(item.value)}))); }); return out; }
+  function pair(label, value, mono = false) { return h('div', {class: 'detail'}, h('dt', {text: label}), h('dd', {class: mono ? 'mono' : '', text: value ?? '—'})); }
+  function countBy(rows, fn) { const result = {}; rows.forEach(row => { const key = fn(row); result[key] = (result[key] || 0) + 1; }); return result; }
+  function topCounts(rows, fn, limit = 10) { return Object.entries(countBy(rows, fn)).map(([label, value]) => ({label, value})).sort((a,b) => b.value - a.value).slice(0, limit); }
+
+  function closeOverlay() { document.querySelectorAll('.drawer,.drawer-backdrop,.modal-backdrop').forEach(node => node.remove()); }
+  function drawer(name, subtitle = '') { closeOverlay(); const backdrop = h('div', {class:'drawer-backdrop', onclick: closeOverlay}); const body = h('div', {class:'drawer-body'}); const node = h('aside', {class:'drawer', role:'dialog', 'aria-modal':'true','aria-label':name}, h('div',{class:'drawer-header'},h('div',{},h('h2',{class:'drawer-title',text:name}),subtitle?h('div',{class:'panel-subtitle',text:subtitle}):null),h('button',{class:'icon-button',type:'button','aria-label':'Close details',text:'×',onclick:closeOverlay})),body); document.body.append(backdrop,node); return body; }
+  function modal(name) { const backdrop=h('div',{class:'modal-backdrop'}); const body=h('div',{class:'modal-body'}); const node=h('section',{class:'modal',role:'dialog','aria-modal':'true','aria-label':name},h('div',{class:'modal-header'},h('h2',{class:'panel-title',text:name}),h('button',{class:'icon-button',type:'button','aria-label':'Close dialog',text:'×',onclick:()=>backdrop.remove()})),body); backdrop.append(node);document.body.append(backdrop);return {backdrop,body}; }
+
+  async function health(force = false) { if (!state.health || force) state.health = await json('/api/v1/health'); return state.health; }
+  async function summary(force = false) { if (!state.summary || force) state.summary = await json('/api/v1/catalog/summary'); return state.summary; }
+  function caseParams(input = routeParams(), cursor = null) { const out = new URLSearchParams({limit:String(PAGE_SIZE)}); if (cursor) out.set('cursor',cursor); ['severity','status','cve','asset','knownExploited'].forEach(key => { if(input.get(key)) out.set(key,input.get(key)); }); const q=(input.get('q')||'').trim(); if(q){if(/^CVE-/i.test(q))out.set('cve',q.toUpperCase());else out.set('asset',q);} return out; }
+  async function allCases(force = false, filtered = false) { if (state.cases.length && !force && !filtered) return state.cases; const out=[];const seen=new Set();let cursor=null; for(let pageNo=0;pageNo<MAX_PAGES;pageNo++){const params=filtered?caseParams(routeParams(),cursor):new URLSearchParams({limit:String(PAGE_SIZE)});if(!filtered&&cursor)params.set('cursor',cursor);const data=await json(`/api/v1/cases?${params}`);(data.cases||[]).forEach(row=>{if(!seen.has(row.caseId)){seen.add(row.caseId);out.push(row);}});cursor=data.nextCursor||null;if(!cursor)break;} if(!filtered)state.cases=out;return out; }
+  async function allAssets(force = false) { if(state.assets.length&&!force)return state.assets;const out=[];let after=null;for(let pageNo=0;pageNo<MAX_PAGES;pageNo++){const params=new URLSearchParams({limit:String(PAGE_SIZE),lifecycle:'ALL'});if(after)params.set('afterId',after);const data=await json(`/api/v1/managed-assets?${params}`);out.push(...(data.assets||[]));after=data.nextAfterId||null;if(!after)break;}state.assets=out;return out; }
+  function readiness(cases) { const total=Math.max(1,cases.length);const coverage=fn=>Math.round(cases.filter(fn).length/total*100);return {cvss:coverage(c=>c.vulnerabilityIntelligence?.cvssBaseScore!=null),epss:coverage(c=>c.vulnerabilityIntelligence?.epssProbability!=null),kev:coverage(c=>typeof c.vulnerabilityIntelligence?.knownExploited==='boolean')}; }
+
+  async function renderOverview() {
+    const root=clear(page());root.append(pageHeader('Overview','Monitor current vulnerability exposure and move directly into investigation.'));const holder=h('div',{class:'stack'},loading());root.append(holder);
+    try { const [sum,cases]=await Promise.all([summary(),allCases()]);const intel=sum.vulnerabilityIntelligence||{};const sev=countBy(cases,c=>String(c.currentSeverity||'UNKNOWN').toUpperCase());const severityRows=['CRITICAL','HIGH','MEDIUM','LOW','UNKNOWN'].map(key=>({label:title(key),key,value:sev[key]||0}));const attention=cases.slice().sort((a,b)=>(b.vulnerabilityIntelligence?.knownExploited===true)-(a.vulnerabilityIntelligence?.knownExploited===true)||({CRITICAL:4,HIGH:3,MEDIUM:2,LOW:1}[b.currentSeverity]||0)-({CRITICAL:4,HIGH:3,MEDIUM:2,LOW:1}[a.currentSeverity]||0)).slice(0,8);const r=readiness(cases);
+      holder.replaceChildren(h('div',{class:'metrics'},metric('Open findings',num(sum.openCases),'Current canonical cases'),metric('Known exploited CVEs',num(intel.knownExploitedVulnerabilities),'CISA KEV evidence'),metric('Affected assets',num(sum.assets),'Canonical assets'),metric('Exposure instances',num(sum.exposures),'Asset × CVE × product')),panel('Current exposure by severity','Technical severity only; no risk score is inferred.',bars(severityRows,item=>navigate('/findings',{severity:item.key}))),panel('Needs attention','Ordered by explicit exploitation and severity signals, not an RBVM risk formula.',attention.length?table([{label:'Finding',render:r=>h('span',{class:'mono',text:r.cveId})},{label:'Asset',key:'assetName'},{label:'Severity',render:r=>severity(r.currentSeverity)},{label:'KEV',render:r=>r.vulnerabilityIntelligence?.knownExploited===true?badge('Listed','severity-critical'):'Not listed'},{label:'Age',render:r=>`${age(r.firstObservedAt)??'—'}d`}],attention,'Findings needing attention',openFinding):empty('No findings','No current findings are available.')),panel('Decision readiness','Missing evidence is shown explicitly and never treated as zero.',h('div',{class:'metrics'},metric('CVSS available',`${r.cvss}%`),metric('EPSS available',`${r.epss}%`),metric('KEV assessed',`${r.kev}%`),metric('Evidence analysis','Open Analytics','Decision Readiness'))));
+    } catch(error){holder.replaceChildren(failure(error,renderOverview));}
+  }
+
+  async function renderFindings() {
+    const root=clear(page());root.append(pageHeader('Findings','Investigate asset-specific vulnerability findings without losing filter context.',[button('Export CSV',{onClick:exportFindings})]));const params=routeParams();const search=h('input',{class:'search-input',type:'search',value:params.get('q')||'',placeholder:'Search CVE or asset…','aria-label':'Search findings'});search.addEventListener('keydown',e=>{if(e.key==='Enter')queryUpdate({q:search.value.trim(),cursor:null});});
+    const select=(label,key,values)=>{const node=h('select',{'aria-label':label},h('option',{value:'',text:`All ${label.toLowerCase()}`}),...values.map(value=>h('option',{value,text:title(value),selected:params.get(key)===value})));node.addEventListener('change',()=>queryUpdate({[key]:node.value,cursor:null}));return node;};
+    const sev=select('Severities','severity',['CRITICAL','HIGH','MEDIUM','LOW','UNKNOWN']);const status=select('Statuses','status',['OPEN','SOURCE_RESOLVED','ACCEPTED_RISK','FALSE_POSITIVE','CLOSED_MANUAL']);const kev=h('select',{'aria-label':'KEV state'},h('option',{value:'',text:'All KEV states'}),h('option',{value:'true',text:'KEV listed',selected:params.get('knownExploited')==='true'}),h('option',{value:'false',text:'Not listed',selected:params.get('knownExploited')==='false'}));kev.addEventListener('change',()=>queryUpdate({knownExploited:kev.value,cursor:null}));const toolbar=h('div',{class:'toolbar'},h('div',{class:'toolbar-main'},search,sev,status,kev),h('div',{class:'toolbar-actions'},button('Copy view link',{kind:'ghost',onClick:()=>navigator.clipboard?.writeText(location.href)}),button('Clear filters',{kind:'ghost',onClick:()=>navigate('/findings')})));const holder=h('div',{class:'stack'},toolbar,loading());root.append(holder);
+    try{const data=await json(`/api/v1/cases?${caseParams(params,params.get('cursor'))}`);const rows=data.cases||[];holder.replaceChildren(toolbar,rows.length?table([{label:'Finding',render:r=>h('span',{class:'mono',text:r.cveId})},{label:'Asset',key:'assetName'},{label:'Severity',render:r=>severity(r.currentSeverity)},{label:'KEV',render:r=>r.vulnerabilityIntelligence?.knownExploited===true?badge('Listed','severity-critical'):'Not listed'},{label:'EPSS',render:r=>r.vulnerabilityIntelligence?.epssProbability==null?'—':pct(r.vulnerabilityIntelligence.epssProbability,1)},{label:'Exposures',key:'exposureCount'},{label:'Age',render:r=>`${age(r.firstObservedAt)??'—'}d`},{label:'Status',render:r=>badge(title(r.status),r.status==='OPEN'?'status-open':'')}],rows,'Current findings',openFinding):empty('No matching findings','Clear one or more filters to broaden the result set.',button('Clear filters',{onClick:()=>navigate('/findings')})),h('div',{class:'pagination'},h('span',{text:`${rows.length} findings · catalog revision ${data.catalogRevision??'—'}`}),data.nextCursor?button('Next page',{onClick:()=>queryUpdate({cursor:data.nextCursor})}):h('span',{text:'End of results'})));
+    }catch(error){holder.replaceChildren(toolbar,failure(error,renderFindings));}
+  }
+  async function exportFindings(){try{const rows=await allCases(false,true);downloadCsv('rbvm-findings.csv',[['Finding','Asset','Severity','Status','Known_Exploited','CVSS','EPSS','First_Seen','Last_Seen','Exposure_Count'],...rows.map(r=>[r.cveId,r.assetName,r.currentSeverity,r.status,r.vulnerabilityIntelligence?.knownExploited??'',r.vulnerabilityIntelligence?.cvssBaseScore??'',r.vulnerabilityIntelligence?.epssProbability??'',r.firstObservedAt??'',r.lastObservedAt??'',r.exposureCount??''])]);}catch(error){window.alert(`Export failed: ${error.message}`);}}
+  function downloadCsv(name,rows){const esc=v=>`"${String(v??'').replaceAll('"','""')}"`;const blob=new Blob([rows.map(row=>row.map(esc).join(',')).join('\r\n')+'\r\n'],{type:'text/csv;charset=utf-8'});const href=URL.createObjectURL(blob);const link=h('a',{href,download:name});document.body.append(link);link.click();link.remove();URL.revokeObjectURL(href);}
+
+  async function openFinding(item){const body=drawer(item.cveId,item.assetName);body.append(loading());try{const detail=await json(`/api/v1/cases/${encodeURIComponent(item.caseId)}`);renderFinding(body,detail,'overview');}catch(error){body.replaceChildren(failure(error,()=>openFinding(item)));}}
+  function renderFinding(body,detail,tabName){clear(body);const intel=detail.vulnerabilityIntelligence||{};body.append(h('div',{class:'inline-actions'},severity(detail.currentSeverity),intel.knownExploited===true?badge('KEV listed','severity-critical'):badge('Not listed in KEV','state-missing'),intel.epssProbability==null?evidenceState('MISSING'):badge(`EPSS ${pct(intel.epssProbability,1)}`,'state-present')));const tabs=h('div',{class:'tabs',role:'tablist'});['overview','evidence','asset','timeline'].forEach(id=>tabs.append(h('button',{class:'tab',role:'tab','aria-selected':tabName===id?'true':'false',text:title(id),onclick:()=>renderFinding(body,detail,id)})));body.append(tabs);
+    if(tabName==='overview'){const facts=[];if(intel.knownExploited===true)facts.push('This vulnerability is listed in CISA KEV.');if(detail.currentSeverity)facts.push(`Current technical severity is ${title(detail.currentSeverity)}.`);if(intel.epssProbability!=null)facts.push(`FIRST EPSS evidence reports ${pct(intel.epssProbability,1)} exploitation probability.`);body.append(panel('Summary','Facts are stated directly; no hidden RBVM risk score or priority is inferred.',h('p',{text:facts.join(' ')||'Threat-intelligence evidence is currently limited.'})),h('div',{class:'panel',style:'margin-top:16px'},h('div',{class:'panel-body'},h('dl',{class:'details-grid'},pair('Status',title(detail.status)),pair('First seen',date(detail.firstObservedAt)),pair('Last seen',date(detail.lastObservedAt)),pair('Age',`${age(detail.firstObservedAt)??'—'} days`),pair('Exposure instances',detail.exposureCount??detail.exposures?.length??'—'),pair('Workflow version',detail.workflowVersion??'—')))),h('div',{style:'margin-top:16px'},button('Record manual decision',{onClick:()=>manualDecision(detail)})));
+    } else if(tabName==='evidence'){findingEvidence(body,detail);} else if(tabName==='asset'){const rows=detail.exposures||[];body.append(panel('Asset context',`Finding currently resolves to ${detail.assetName}.`,rows.length?table([{label:'Product',key:'product'},{label:'Severity',render:r=>severity(r.currentSeverity)},{label:'Observations',key:'observationCount'},{label:'First seen',render:r=>date(r.firstObservedAt)},{label:'Last seen',render:r=>date(r.lastObservedAt)}],rows,'Finding exposures'):empty('No exposure details','No exposure rows were returned.')));} else {const events=[];if(detail.firstObservedAt)events.push(['First observed',date(detail.firstObservedAt),'']);(detail.auditEvents||[]).forEach(e=>events.push([title(e.action),`${date(e.occurredAt)} · ${e.actorId||'system'}`,e.reason||`${e.fromStatus} → ${e.toStatus}`]));if(detail.lastObservedAt)events.push(['Last observed',date(detail.lastObservedAt),'']);const list=h('ol',{class:'timeline'});events.forEach(([name,meta,text])=>list.append(h('li',{class:'timeline-item'},h('strong',{text:name}),text?h('div',{text}):null,h('div',{class:'timeline-meta',text:meta}))));body.append(panel('Timeline','Observation and explicit workflow events are kept separate.',list));}
+  }
+  async function findingEvidence(body,detail){const holder=h('div',{class:'stack'},loading());body.append(holder);try{const tasks=[['cvss','cve',detail.cveId],['kev','cve',detail.cveId],['epss','cve',detail.cveId],['asset-context','asset',detail.assetName],['reachability','asset',detail.assetName],['business-impact','asset',detail.assetName]];const results=await Promise.all(tasks.map(async([type,key,value])=>{const cfg=EVIDENCE[type];const q=new URLSearchParams({limit:'100',[key]:value});try{const data=await json(`${cfg.endpoint}?${q}`);return {cfg,items:data.items||[]};}catch(error){if(error.status===503)return {cfg,items:[],unavailable:true};throw error;}}));holder.replaceChildren(...results.map(result=>panel(result.cfg.label,'Current source evidence; absence is not converted to zero.',h('div',{class:'stack'},result.unavailable?badge('Runtime unavailable','state-stale'):evidenceState(result.items.length?'PRESENT':'MISSING'),result.items.length?genericEvidence(result.items.slice(0,5)):h('p',{class:'chart-summary',text:'No usable current evidence rows.'})))));}catch(error){holder.replaceChildren(failure(error,()=>findingEvidence(body,detail)));}}
+  function genericEvidence(rows){const preferred=['cveId','assetName','observedName','cvssBaseScore','cvssVector','membershipStatus','epssProbability','epssPercentile','environment','businessService','businessCriticality','reachabilityStatus','originScope','impactLevel','impactDimension','observedAt','ingestedAt'];const keys=preferred.filter(key=>Object.hasOwn(rows[0]||{},key)).slice(0,8);const finalKeys=keys.length?keys:Object.keys(rows[0]||{}).filter(key=>typeof rows[0][key]!=='object').slice(0,8);return table(finalKeys.map(key=>({label:title(key),render:r=>typeof r[key]==='boolean'?(r[key]?'Yes':'No'):(r[key]??'—')})),rows,'Evidence records');}
+  function field(label,placeholder='',type='text'){const input=h('input',{type,placeholder});return {input,wrap:h('div',{class:'field'},h('label',{text:label}),input)};}
+  function textarea(label,placeholder=''){const input=h('textarea',{placeholder});return {input,wrap:h('div',{class:'field wide'},h('label',{text:label}),input)};}
+  function choice(label,values){const input=h('select',{},...values.map(value=>h('option',{value,text:title(value)})));return {input,wrap:h('div',{class:'field'},h('label',{text:label}),input)};}
+  function manualDecision(detail){const {backdrop,body}=modal('Record manual decision');const action=choice('Action',['COMMENT','ACCEPT_RISK','MARK_FALSE_POSITIVE','CLOSE_MANUAL','REOPEN']);const reason=textarea('Reason','Explain the explicit operator decision.');const ref=field('Evidence reference','Optional evidence or change reference');const expiry=field('Risk acceptance expiry','Optional','datetime-local');const status=h('div',{class:'status-message',role:'status'});const form=h('form',{},h('div',{class:'form-grid'},action.wrap,reason.wrap,ref.wrap,expiry.wrap),status,h('div',{class:'form-actions'},button('Cancel',{kind:'ghost',onClick:()=>backdrop.remove()}),button('Save decision',{kind:'primary',type:'submit'})));form.addEventListener('submit',async e=>{e.preventDefault();if(!reason.input.value.trim()){status.textContent='Reason is required.';status.className='status-message error';return;}const data=new URLSearchParams({action:action.input.value,reason:reason.input.value.trim()});if(ref.input.value.trim())data.set('evidenceReference',ref.input.value.trim());if(action.input.value==='ACCEPT_RISK'&&expiry.input.value)data.set('expiresAt',new Date(expiry.input.value).toISOString());try{await api(`/api/v1/cases/${encodeURIComponent(detail.caseId)}/actions`,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded; charset=utf-8','Idempotency-Key':uuid()},body:data});backdrop.remove();closeOverlay();state.cases=[];render();}catch(error){status.textContent=error.message;status.className='status-message error';}});body.append(form);}
+
+  async function renderAssets(){const root=clear(page());const params=routeParams();const tab=params.get('tab')==='scanner-links'?'scanner-links':'managed';root.append(pageHeader('Assets','Manage customer-owned context and explicit scanner-to-managed-asset relationships.',tab==='managed'?[button('Create asset',{kind:'primary',onClick:createAsset})]:[]));const tabs=h('div',{class:'tabs',role:'tablist'},h('button',{class:'tab',role:'tab','aria-selected':tab==='managed'?'true':'false',text:'Managed assets',onclick:()=>navigate('/assets',{tab:'managed'})}),h('button',{class:'tab',role:'tab','aria-selected':tab==='scanner-links'?'true':'false',text:'Scanner links',onclick:()=>navigate('/assets',{tab:'scanner-links'})}));root.append(tabs);tab==='managed'?await managedAssets(root):await scannerLinks(root);}
+  async function managedAssets(root){const holder=h('div',{class:'stack'},loading());root.append(holder);try{const runtime=await health();if(!runtime.managedAssets?.readEnabled){holder.replaceChildren(callout('Managed asset persistence is unavailable in this runtime.','warning'));return;}const assets=await allAssets();const search=h('input',{class:'search-input',type:'search',placeholder:'Search asset, service or owner…','aria-label':'Search managed assets'});const tableHolder=h('div');const paint=()=>{const q=search.value.trim().toLowerCase();const rows=assets.filter(a=>!q||[a.currentRevision?.displayName,a.customerAssetKey,a.currentRevision?.businessService,a.currentRevision?.businessOwner].some(v=>String(v||'').toLowerCase().includes(q)));tableHolder.replaceChildren(rows.length?table([{label:'Asset',render:r=>h('strong',{text:r.currentRevision?.displayName||r.id})},{label:'Service',render:r=>r.currentRevision?.businessService||'—'},{label:'Environment',render:r=>title(r.currentRevision?.environment)},{label:'Criticality',render:r=>title(r.currentRevision?.businessCriticality)},{label:'Owner',render:r=>r.currentRevision?.businessOwner||'—'},{label:'Revision',render:r=>r.currentRevision?.revision??'—'}],rows,'Managed assets',openAsset):empty('No assets match','Try a broader search.'));};search.addEventListener('input',paint);paint();holder.replaceChildren(h('div',{class:'metrics'},metric('Managed assets',assets.length),metric('Active',assets.filter(a=>a.currentRevision?.lifecycleStatus==='ACTIVE').length),metric('Mission critical',assets.filter(a=>a.currentRevision?.businessCriticality==='MISSION_CRITICAL').length),metric('Unknown criticality',assets.filter(a=>a.currentRevision?.businessCriticality==='UNKNOWN').length)),h('div',{class:'toolbar'},h('div',{class:'toolbar-main'},search),h('div',{class:'toolbar-actions'},button('Refresh',{kind:'ghost',onClick:()=>{state.assets=[];render();}}))),tableHolder);}catch(error){holder.replaceChildren(failure(error,()=>managedAssets(root)));}}
+  function assetModel(initial={},withLifecycle=false){
+    const display=field('Display name');display.input.value=initial.displayName||'';
+    const service=field('Business service');service.input.value=initial.businessService||'';
+    const owner=field('Business owner');owner.input.value=initial.businessOwner||'';
+    const env=choice('Environment',['PRODUCTION','PRE_PRODUCTION','DEVELOPMENT','TEST','SANDBOX','DISASTER_RECOVERY','UNKNOWN']);env.input.value=initial.environment||'UNKNOWN';
+    const crit=choice('Business criticality',['MISSION_CRITICAL','HIGH','MODERATE','LOW','UNKNOWN']);crit.input.value=initial.businessCriticality||'UNKNOWN';
+    const method=choice('Classification method',['CUSTOMER_DIRECT','GUIDED']);method.input.value=initial.classificationMethod||'CUSTOMER_DIRECT';
+    const guideId=field('Guide contract ID','ASSET_CLASSIFICATION_GUIDE_V1');guideId.input.value=initial.guideContractId||'ASSET_CLASSIFICATION_GUIDE_V1';
+    const guideRevision=field('Guide revision','1','number');guideRevision.input.value=initial.guideRevision??1;guideRevision.input.min='1';guideRevision.input.step='1';
+    const guide=h('div',{class:'wide'},callout('Guided classification records explicit guide provenance. It never derives criticality from CVSS, KEV, EPSS, or a hidden score.'),h('div',{class:'form-grid',style:'margin-top:12px'},guideId.wrap,guideRevision.wrap));
+    const syncGuide=()=>{const guided=method.input.value==='GUIDED';guide.classList.toggle('hidden',!guided);guideId.input.required=guided;guideRevision.input.required=guided;};method.input.addEventListener('change',syncGuide);syncGuide();
+    const note=textarea('Change note');
+    const lifecycle=withLifecycle?choice('Lifecycle status',['ACTIVE','RETIRED']):null;if(lifecycle)lifecycle.input.value=initial.lifecycleStatus||'ACTIVE';
+    return {grid:h('div',{class:'form-grid'},lifecycle?lifecycle.wrap:null,display.wrap,env.wrap,crit.wrap,service.wrap,owner.wrap,method.wrap,guide,note.wrap),read:()=>{const payload={...(lifecycle?{lifecycleStatus:lifecycle.input.value}:{}),displayName:display.input.value.trim(),environment:env.input.value,businessService:service.input.value.trim(),businessOwner:owner.input.value.trim(),businessCriticality:crit.input.value,classificationMethod:method.input.value,changeNote:note.input.value.trim()};if(method.input.value==='GUIDED'){payload.guideContractId=guideId.input.value.trim();payload.guideRevision=Number(guideRevision.input.value);}return payload;}};
+  }
+  function createAsset(){const {backdrop,body}=modal('Create managed asset');const key=field('Customer asset key','Optional stable customer key');const model=assetModel();const status=h('div',{class:'status-message'});const form=h('form',{},h('div',{class:'form-grid'},key.wrap),model.grid,status,h('div',{class:'form-actions'},button('Cancel',{kind:'ghost',onClick:()=>backdrop.remove()}),button('Create asset',{kind:'primary',type:'submit'})));form.addEventListener('submit',async e=>{e.preventDefault();const payload=model.read();if(key.input.value.trim())payload.customerAssetKey=key.input.value.trim();try{const created=await json('/api/v1/managed-assets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});state.assets=[];backdrop.remove();render();openAsset(created);}catch(error){status.textContent=error.message;status.className='status-message error';}});body.append(form);}
+  async function openAsset(asset){const body=drawer(asset.currentRevision?.displayName||'Managed asset',asset.customerAssetKey||asset.id);body.append(loading());try{const response=await api(`/api/v1/managed-assets/${encodeURIComponent(asset.id)}`);const current=await response.json();const etag=response.headers.get('ETag');if(!etag)throw new Error('Managed asset response did not include an ETag.');const rev=current.currentRevision||{};body.replaceChildren(h('dl',{class:'details-grid'},pair('Managed Asset ID',current.id,true),pair('Customer key',current.customerAssetKey||'—',true),pair('Lifecycle',title(rev.lifecycleStatus)),pair('Environment',title(rev.environment)),pair('Business service',rev.businessService),pair('Business owner',rev.businessOwner),pair('Criticality',title(rev.businessCriticality)),pair('Classification',title(rev.classificationMethod)),pair('Revision',rev.revision),pair('Recorded',date(rev.recordedAt)),pair('Changed by',rev.changedBy||'—'),pair('Evidence SHA-256',rev.evidenceSha256||'—',true)),h('div',{class:'inline-actions',style:'margin-top:16px'},button('Add revision',{kind:'primary',onClick:()=>reviseAsset(current,etag)})));try{const history=await json(`/api/v1/managed-assets/${encodeURIComponent(asset.id)}/revisions?limit=20`);const list=h('ol',{class:'timeline'});(history.revisions||[]).forEach(r=>list.append(h('li',{class:'timeline-item'},h('strong',{text:`Revision ${r.revision} · ${r.displayName}`}),h('div',{text:`${title(r.lifecycleStatus)} · ${title(r.environment)} · ${title(r.businessCriticality)}`}),h('div',{class:'timeline-meta',text:`${date(r.recordedAt)} · ${r.changedBy||'—'}`}))));body.append(h('div',{style:'margin-top:24px'},panel('Revision history','Immutable customer-managed asset revisions.',list)));}catch(_){} }catch(error){body.replaceChildren(failure(error,()=>openAsset(asset)));}}
+  function reviseAsset(asset,etag){const {backdrop,body}=modal('Add managed asset revision');const model=assetModel(asset.currentRevision||{},true);const status=h('div',{class:'status-message'});const form=h('form',{},model.grid,callout('A complete immutable revision is written. Concurrent changes return a conflict instead of being silently merged.'),status,h('div',{class:'form-actions'},button('Cancel',{kind:'ghost',onClick:()=>backdrop.remove()}),button('Save revision',{kind:'primary',type:'submit'})));form.addEventListener('submit',async e=>{e.preventDefault();try{await json(`/api/v1/managed-assets/${encodeURIComponent(asset.id)}/revisions`,{method:'POST',headers:{'Content-Type':'application/json','If-Match':etag},body:JSON.stringify(model.read())});state.assets=[];backdrop.remove();closeOverlay();render();}catch(error){status.textContent=error.status===412?'The asset changed after you loaded it. Refresh and review the latest revision.':error.message;status.className='status-message error';}});body.append(form);}
+  async function scannerLinks(root){const holder=h('div',{class:'stack'},loading());root.append(holder);try{const runtime=await health();if(!runtime.scannerManagedAssetLinks?.readEnabled){holder.replaceChildren(callout('Scanner link persistence is unavailable in this runtime.','warning'));return;}const data=await json('/api/v1/scanner-assets?limit=100');const rows=data.assets||[];holder.replaceChildren(h('div',{class:'metrics'},metric('Page rows',rows.length),metric('Linked',rows.filter(a=>a.currentLink?.linkStatus==='LINKED').length),metric('Unlinked',rows.filter(a=>a.currentLink?.linkStatus==='UNLINKED').length),metric('Not assessed',rows.filter(a=>!a.currentLink).length)),callout('Links are explicit customer decisions. RBVM never chooses a managed-asset target automatically.'),table([{label:'Scanner asset',key:'observedName'},{label:'Source profile',key:'sourceProfileKey'},{label:'OS',render:r=>r.osNameRaw||'—'},{label:'Link state',render:r=>r.currentLink?badge(title(r.currentLink.linkStatus),r.currentLink.linkStatus==='LINKED'?'state-present':'state-missing'):evidenceState('MISSING')},{label:'Managed asset',render:r=>r.currentLink?.managedAssetId||'—'}],rows,'Scanner asset links',openScannerLink));}catch(error){holder.replaceChildren(failure(error,()=>scannerLinks(root)));}}
+  async function openScannerLink(asset){const body=drawer(asset.observedName||'Scanner asset',asset.sourceProfileKey||asset.id);body.append(loading());try{const path=`/api/v1/scanner-assets/${encodeURIComponent(asset.id)}/managed-asset-link`;const response=await api(path);const data=await response.json();const etag=response.headers.get('ETag');if(!etag)throw new Error('Link response did not include an ETag.');const link=choice('Link status',['LINKED','UNLINKED']);link.input.value=data.currentLink?.linkStatus||'UNLINKED';const managed=field('Managed Asset ID','Required when linked');managed.input.value=data.currentLink?.managedAssetId||'';const note=textarea('Change note');const status=h('div',{class:'status-message'});const form=h('form',{},h('dl',{class:'details-grid'},pair('Scanner asset ID',asset.id,true),pair('Current revision',data.currentLink?.revision??'Not assessed'),pair('Current state',data.currentLink?.linkStatus||'Not assessed')),h('div',{class:'form-grid',style:'margin-top:20px'},link.wrap,managed.wrap,note.wrap),status,h('div',{class:'form-actions'},button('Save link revision',{kind:'primary',type:'submit'})));form.addEventListener('submit',async e=>{e.preventDefault();const linked=link.input.value==='LINKED';if(linked&&!managed.input.value.trim()){status.textContent='Managed Asset ID is required for LINKED.';status.className='status-message error';return;}try{await api(`${path}/revisions`,{method:'POST',headers:{'Content-Type':'application/json','If-Match':etag},body:JSON.stringify({linkStatus:link.input.value,managedAssetId:linked?managed.input.value.trim():null,changeNote:note.input.value.trim()})});closeOverlay();render();}catch(error){status.textContent=error.status===412?'This link changed after you loaded it. Reopen it to review the latest revision.':error.message;status.className='status-message error';}});body.replaceChildren(callout('Not assessed differs from Unlinked. Every revision is an explicit append-only decision.'),form);try{const history=await json(`${path}/revisions?limit=20`);body.append(h('div',{style:'margin-top:24px'},panel('Link history','Append-only link decisions.',table([{label:'Revision',key:'revision'},{label:'State',key:'linkStatus'},{label:'Managed asset',render:r=>r.managedAssetId||'—'},{label:'Changed by',key:'changedBy'},{label:'Recorded',render:r=>date(r.recordedAt)}],history.events||[],'Link history'))));}catch(_){} }catch(error){body.replaceChildren(failure(error,()=>openScannerLink(asset)));}}
+
+  async function renderAnalytics(){const root=clear(page());const params=routeParams();const valid=['exposure','trend','threat','aging','assets','readiness'];const tab=valid.includes(params.get('tab'))?params.get('tab'):'exposure';root.append(pageHeader('Analytics','Understand exposure patterns. Charts never create hidden risk or priority semantics.'));const tabs=h('div',{class:'tabs',role:'tablist'});valid.forEach(id=>tabs.append(h('button',{class:'tab',role:'tab','aria-selected':tab===id?'true':'false',text:id==='readiness'?'Decision Readiness':title(id),onclick:()=>navigate('/analytics',{tab:id})})));const holder=h('div',{class:'stack'},loading());root.append(tabs,holder);try{const cases=await allCases();if(tab==='trend'){holder.replaceChildren(callout('The current API does not expose historical aggregate snapshots for a defensible backlog trend. RBVM will not fabricate trend values from current-state data.'),panel('Available now','Use current-state analytics until a historical aggregation API exists.',h('div',{class:'inline-actions'},button('View exposure',{onClick:()=>navigate('/analytics',{tab:'exposure'})}),button('View aging',{onClick:()=>navigate('/analytics',{tab:'aging'})}))));return;}if(tab==='exposure'){const sev=countBy(cases,c=>String(c.currentSeverity||'UNKNOWN').toUpperCase());holder.replaceChildren(h('div',{class:'metrics'},metric('Current findings',cases.length),metric('Unique CVEs',new Set(cases.map(c=>c.cveId)).size),metric('KEV-listed findings',cases.filter(c=>c.vulnerabilityIntelligence?.knownExploited===true).length),metric('Affected assets',new Set(cases.map(c=>c.assetName)).size)),panel('Findings by severity','Current technical severity distribution.',bars(['CRITICAL','HIGH','MEDIUM','LOW','UNKNOWN'].map(key=>({label:title(key),key,value:sev[key]||0})),item=>navigate('/findings',{severity:item.key}))),panel('Most affected assets','Current finding concentration by observed asset.',bars(topCounts(cases,c=>c.assetName,10),item=>navigate('/findings',{asset:item.label}))));return;}if(tab==='threat'){const kev=cases.filter(c=>c.vulnerabilityIntelligence?.knownExploited===true);holder.replaceChildren(h('div',{class:'metrics'},metric('Known exploited',kev.length,'CISA KEV listed'),metric('EPSS ≥ 80%',cases.filter(c=>Number(c.vulnerabilityIntelligence?.epssProbability)>=.8).length),metric('Critical + KEV',kev.filter(c=>c.currentSeverity==='CRITICAL').length),metric('Current findings',cases.length)),panel('Known exploited by severity','Signal intersection for exploration, not a risk score.',bars(['CRITICAL','HIGH','MEDIUM','LOW','UNKNOWN'].map(key=>({label:title(key),key,value:kev.filter(c=>String(c.currentSeverity||'UNKNOWN').toUpperCase()===key).length})),item=>navigate('/findings',{severity:item.key,knownExploited:'true'}))),callout('These are threat signals, not an RBVM risk score. V24 Formula Contract remains the future authority.'));return;}if(tab==='aging'){const ranges=[['0–7 days',0,7],['8–30 days',8,30],['31–90 days',31,90],['91–180 days',91,180],['180+ days',181,Infinity]];const ages=cases.map(c=>age(c.firstObservedAt)).filter(Number.isFinite);const sorted=ages.slice().sort((a,b)=>a-b);holder.replaceChildren(h('div',{class:'metrics'},metric('Median age',`${sorted.length?sorted[Math.floor(sorted.length/2)]:0}d`),metric('Average age',`${ages.length?Math.round(ages.reduce((a,b)=>a+b,0)/ages.length):0}d`),metric('Oldest finding',`${ages.length?Math.max(...ages):0}d`),metric('Current findings',cases.length)),panel('Current findings by age','Computed from explicit first-observed timestamps.',bars(ranges.map(([label,min,max])=>({label,value:ages.filter(value=>value>=min&&value<=max).length})))));return;}if(tab==='assets'){const assets=await allAssets().catch(()=>[]);holder.replaceChildren(h('div',{class:'metrics'},metric('Observed assets',new Set(cases.map(c=>c.assetName)).size),metric('Managed assets',assets.length),metric('Mission critical',assets.filter(a=>a.currentRevision?.businessCriticality==='MISSION_CRITICAL').length),metric('Business services',new Set(assets.map(a=>a.currentRevision?.businessService).filter(Boolean)).size)),panel('Most exposed observed assets','Current findings per observed asset.',bars(topCounts(cases,c=>c.assetName,12),item=>navigate('/findings',{asset:item.label}))),assets.length?panel('Managed assets by business service','Inventory distribution; not a vulnerability risk score.',bars(topCounts(assets,a=>a.currentRevision?.businessService||'Unknown',10))):callout('Business-service analytics requires managed asset records.'));return;}const r=readiness(cases);const evidenceRows=[];for(const type of ['asset-context','reachability','business-impact']){const cfg=EVIDENCE[type];try{const data=await json(`${cfg.endpoint}?limit=500`);evidenceRows.push({label:cfg.label,value:`${(data.items||[]).length} current evidence rows`,state:'PRESENT'});}catch(error){evidenceRows.push({label:cfg.label,value:error.status===503?'Runtime unavailable':'Unavailable',state:'STALE'});}}holder.replaceChildren(h('div',{class:'metrics'},metric('CVSS coverage',`${r.cvss}%`),metric('EPSS coverage',`${r.epss}%`),metric('KEV assessed',`${r.kev}%`),metric('Findings evaluated',cases.length)),panel('Evidence coverage','Missing evidence remains information, never zero.',table([{label:'Evidence dimension',key:'label'},{label:'Coverage',key:'value'},{label:'State',render:row=>evidenceState(row.state)}],[{label:'CVSS',value:`${r.cvss}%`,state:r.cvss?'PRESENT':'MISSING'},{label:'EPSS',value:`${r.epss}%`,state:r.epss?'PRESENT':'MISSING'},{label:'KEV assessment',value:`${r.kev}%`,state:r.kev?'PRESENT':'MISSING'},...evidenceRows],'Decision readiness')));
+    }catch(error){holder.replaceChildren(failure(error,renderAnalytics));}}
+
+  async function renderEvidence(){const root=clear(page());const params=routeParams();const type=EVIDENCE[params.get('type')]?params.get('type'):'cvss';root.append(pageHeader('Evidence','Inspect current source evidence without turning missing data into implicit conclusions.'));const tabs=h('div',{class:'tabs',role:'tablist'});Object.entries(EVIDENCE).forEach(([key,cfg])=>tabs.append(h('button',{class:'tab',role:'tab','aria-selected':type===key?'true':'false',text:cfg.label,onclick:()=>navigate('/evidence',{type:key})})));const holder=h('div',{class:'stack'},loading());root.append(tabs,holder);try{const cfg=EVIDENCE[type];const data=await json(`${cfg.endpoint}?limit=500`);const rows=data.items||[];holder.replaceChildren(h('div',{class:'metrics'},metric('Current rows',rows.length),metric('Evidence type',cfg.label),metric('Semantics',data.semantics||'Source-specific','No hidden precedence'),metric('Limit',data.limit||500)),rows.length?genericEvidence(rows):empty('No evidence rows','Absence means no usable current evidence; it does not mean zero or safe.'));}catch(error){holder.replaceChildren(error.status===503?callout('This evidence capability is unavailable in the current runtime.','warning'):failure(error,renderEvidence));}}
+
+  async function renderImports(){const root=clear(page());root.append(pageHeader('Imports','Bring findings and evidence into RBVM and validate them at the data boundary.'));const holder=h('div',{class:'stack'},loading());root.append(holder);try{const runtime=await health();const rows=[{source:'Wazuh findings',contract:'WAZUH_CSV_V1/V2',state:runtime.status||'UNKNOWN'},...Object.values(EVIDENCE).map(cfg=>({source:cfg.label,contract:cfg.contract,state:runtime[cfg.capability]?.importEnabled?'Ready':'Unavailable'})),{source:'Applicability',contract:'APPLICABILITY_CSV_V1',state:runtime.applicability?.importEnabled?'Ready':'Unavailable'}];holder.replaceChildren(panel('Source readiness','The trusted-local UI uses same-origin APIs directly.',table([{label:'Source',key:'source'},{label:'Contract',key:'contract'},{label:'State',render:r=>badge(r.state,r.state==='Ready'||r.state==='UP'?'state-present':'state-stale')}],rows,'Import readiness')),wazuhImport(),evidenceImport(),applicabilityImport());}catch(error){holder.replaceChildren(failure(error,renderImports));}}
+  function wrap(label,input){return h('div',{class:'field'},h('label',{text:label}),input);}
+  function wazuhImport(){const file=h('input',{type:'file',accept:'.csv,text/csv'});const profile=h('input',{value:'accepted-wazuh-csv'});const contract=h('select',{},h('option',{text:'WAZUH_CSV_V1'}),h('option',{text:'WAZUH_CSV_V2'}));const status=h('div',{class:'status-message',role:'status'});const result=h('div');let current=null;const analyze=button('Analyze import',{kind:'primary'});const confirm=button('Confirm import',{disabled:true});analyze.addEventListener('click',async()=>{if(!file.files[0]){status.textContent='Choose a Wazuh CSV file first.';status.className='status-message error';return;}try{status.textContent=`Analyzing ${file.files[0].name}…`;const response=await api('/api/v1/csv-imports',{method:'POST',headers:{'Content-Type':'text/csv; charset=utf-8','X-Source-Profile-Id':profile.value.trim(),'X-CSV-Contract':contract.value,'Idempotency-Key':uuid()},body:file.files[0]});const data=await response.json();current=data.importId;confirm.disabled=data.status!=='PREVIEW_READY';importPreview(result,data);status.textContent='Analysis complete. Review validation before confirming.';status.className='status-message success';}catch(error){status.textContent=error.message;status.className='status-message error';}});confirm.addEventListener('click',async()=>{if(!current)return;try{const data=await json(`/api/v1/csv-imports/${current}/confirm`,{method:'POST',headers:{'Idempotency-Key':uuid()}});importPreview(result,data);confirm.disabled=true;state.cases=[];state.summary=null;status.textContent='Import confirmed and materialized through the canonical boundary.';status.className='status-message success';}catch(error){status.textContent=error.message;status.className='status-message error';}});return panel('Import vulnerability findings','Preview, validate, and explicitly confirm WAZUH_CSV_V1/V2 findings.',h('div',{class:'stack'},h('div',{class:'form-grid'},wrap('CSV file',file),wrap('Source profile ID',profile),wrap('CSV contract',contract)),h('div',{class:'inline-actions'},analyze,confirm),status,result));}
+  function importPreview(target,data){clear(target);if(!data.analysis)return;const ledger=data.analysis.ledger||{};target.append(h('div',{class:'metrics'},metric('Logical rows',num(ledger.logicalRows)),metric('Accepted',num(ledger.acceptedRows)),metric('Deduplicated',num(ledger.deduplicatedRows)),metric('Quarantined',num(ledger.quarantinedRows))),callout(`Import ${data.importId} · ${data.status} · SHA-256 ${data.fileSha256||'—'}`));}
+  function evidenceImport(){const type=h('select',{},...Object.entries(EVIDENCE).map(([key,cfg])=>h('option',{value:key,text:`${cfg.label} · ${cfg.contract}`})));const file=h('input',{type:'file',accept:'.csv,text/csv'});const status=h('div',{class:'status-message',role:'status'});const result=h('div');const run=button('Import evidence',{kind:'primary'});run.addEventListener('click',async()=>{if(!file.files[0]){status.textContent='Choose an evidence CSV file first.';status.className='status-message error';return;}const cfg=EVIDENCE[type.value];try{const data=await json(cfg.importEndpoint,{method:'POST',headers:{'Content-Type':'text/csv; charset=utf-8'},body:file.files[0]});result.replaceChildren(h('pre',{class:'mono',text:JSON.stringify(data,null,2)}));status.textContent='Evidence import completed.';status.className='status-message success';}catch(error){status.textContent=error.message;status.className='status-message error';}});return panel('Import evidence','Each evidence source stays independent and append-only.',h('div',{class:'stack'},h('div',{class:'form-grid'},wrap('Evidence contract',type),wrap('CSV file',file)),run,status,result));}
+  function applicabilityImport(){const file=h('input',{type:'file',accept:'.csv,text/csv'});const status=h('div',{class:'status-message',role:'status'});const download=button('Download finding references');download.addEventListener('click',async()=>{try{const response=await api('/api/v1/applicability-findings.csv');const blob=await response.blob();const href=URL.createObjectURL(blob);const link=h('a',{href,download:'rbvm-applicability-findings.csv'});document.body.append(link);link.click();link.remove();URL.revokeObjectURL(href);}catch(error){status.textContent=error.message;status.className='status-message error';}});const run=button('Import applicability',{kind:'primary'});run.addEventListener('click',async()=>{if(!file.files[0]){status.textContent='Choose APPLICABILITY_CSV_V1 first.';status.className='status-message error';return;}try{const data=await json('/api/v1/applicability-imports',{method:'POST',headers:{'Content-Type':'text/csv; charset=utf-8'},body:file.files[0]});status.textContent=`Imported ${data.insertedAssessments||0}; replayed ${data.replayedAssessments||0}; quarantined ${data.totalQuarantinedRows||0}.`;status.className='status-message success';}catch(error){status.textContent=error.message;status.className='status-message error';}});return panel('Applicability assessment','Reference export and APPLICABILITY_CSV_V1 are separate. Missing rows stay unassessed.',h('div',{class:'stack'},wrap('APPLICABILITY_CSV_V1',file),h('div',{class:'inline-actions'},download,run),status));}
+
+  async function renderReports(){
+    const root=clear(page());
+    root.append(pageHeader('Reports','Generate readable current-state reports without overstating historical or risk semantics.'));
+    const templates=[
+      ['executive','Executive summary','Management-focused exposure summary.'],
+      ['vulnerability','Vulnerability analysis','Technical current-finding analysis.'],
+      ['threat','Threat exposure','KEV and EPSS signals.'],
+      ['asset','Asset exposure','Asset-centric concentration.'],
+      ['readiness','Decision readiness','Current evidence completeness.']
+    ];
+    const cards=h('div',{class:'grid-3'});
+    templates.forEach(([id,name,description])=>{
+      cards.append(h(
+        'button',
+        {class:'panel',type:'button',style:'text-align:left;padding:0',onclick:()=>reportBuilder(id)},
+        h('div',{class:'panel-body'},
+          h('h2',{class:'panel-title',text:name}),
+          h('p',{class:'panel-subtitle',text:description})
+        )
+      ));
     });
+    root.append(
+      cards,
+      callout('PDF uses the browser print pipeline in this frontend increment. Persistent report definitions, immutable report artifacts, scheduling, and server-side PDF/XLSX generation belong to a report backend increment.')
+    );
   }
+  async function reportBuilder(template){const root=clear(page());root.append(pageHeader('Generate report','Choose scope, preview the report, then print/save PDF or export its data.',[h('a',{class:'button button-ghost',href:url('/reports'),'data-spa':'true','data-route':'/reports',text:'Back to reports'})]));const search=field('Scope search','Optional CVE or asset substring');const details=h('input',{type:'checkbox'});details.checked=template!=='executive';const status=h('div',{class:'status-message'});const preview=h('div',{class:'report-layout'});const generate=button('Preview report',{kind:'primary'});const print=button('Print / Save PDF',{disabled:true,onClick:()=>window.print()});const csv=button('Export report data CSV',{disabled:true});generate.addEventListener('click',async()=>{try{status.textContent='Building current-state report…';const cases=await allCases();const q=search.input.value.trim().toLowerCase();const filtered=cases.filter(c=>!q||String(c.cveId).toLowerCase().includes(q)||String(c.assetName).toLowerCase().includes(q));state.reportCases=filtered;reportPreview(preview,template,filtered,details.checked);print.disabled=false;csv.disabled=false;status.textContent=`Preview ready from ${filtered.length} current findings.`;status.className='status-message success';}catch(error){status.textContent=error.message;status.className='status-message error';}});csv.addEventListener('click',()=>{if(!state.reportCases)return;downloadCsv(`rbvm-${template}-report-data.csv`,[['Finding','Asset','Severity','Status','Known_Exploited','EPSS','First_Seen','Last_Seen'],...state.reportCases.map(c=>[c.cveId,c.assetName,c.currentSeverity,c.status,c.vulnerabilityIntelligence?.knownExploited??'',c.vulnerabilityIntelligence?.epssProbability??'',c.firstObservedAt??'',c.lastObservedAt??''])]);});const controls=h('section',{class:'panel report-controls'},h('div',{class:'panel-header'},h('div',{},h('h2',{class:'panel-title',text:`${title(template)} report`}),h('p',{class:'panel-subtitle',text:'Current state · generated in the browser'}))),h('div',{class:'panel-body'},h('div',{class:'form-grid'},search.wrap,h('div',{class:'field'},h('label',{text:'Content'}),h('label',{},details,' Include detailed finding table'))),h('div',{class:'form-actions'},generate,print,csv),status));root.append(controls,preview);}
+  function reportPreview(target,template,cases,details){clear(target);const kev=cases.filter(c=>c.vulnerabilityIntelligence?.knownExploited===true);const r=readiness(cases);const sheet=h('article',{class:'report-sheet'},h('header',{class:'report-heading'},h('div',{class:'brand-mark',text:'R'}),h('h1',{text:`RBVM ${title(template)} report`}),h('p',{class:'report-meta',text:`Generated ${date(new Date().toISOString())} · Current-state browser report · ${cases.length} findings`})),h('section',{class:'report-section'},h('h2',{text:'Summary'}),h('div',{class:'metrics'},metric('Current findings',cases.length),metric('Unique CVEs',new Set(cases.map(c=>c.cveId)).size),metric('Known exploited',kev.length),metric('Affected assets',new Set(cases.map(c=>c.assetName)).size))));if(['threat','executive','vulnerability'].includes(template))sheet.append(h('section',{class:'report-section'},h('h2',{text:'Threat exposure'}),bars([{label:'KEV listed',value:kev.length},{label:'EPSS ≥ 80%',value:cases.filter(c=>Number(c.vulnerabilityIntelligence?.epssProbability)>=.8).length},{label:'Critical',value:cases.filter(c=>c.currentSeverity==='CRITICAL').length}])));if(['asset','executive'].includes(template))sheet.append(h('section',{class:'report-section'},h('h2',{text:'Most affected assets'}),bars(topCounts(cases,c=>c.assetName,10))));if(['readiness','executive'].includes(template))sheet.append(h('section',{class:'report-section'},h('h2',{text:'Decision readiness'}),table([{label:'Dimension',key:'label'},{label:'Coverage',key:'value'}],[{label:'CVSS',value:`${r.cvss}%`},{label:'EPSS',value:`${r.epss}%`},{label:'KEV assessed',value:`${r.kev}%`}],'Decision readiness')));if(details&&cases.length)sheet.append(h('section',{class:'report-section'},h('h2',{text:'Finding detail'}),table([{label:'Finding',key:'cveId'},{label:'Asset',key:'assetName'},{label:'Severity',key:'currentSeverity'},{label:'Status',key:'status'},{label:'KEV',render:x=>x.vulnerabilityIntelligence?.knownExploited===true?'Listed':'Not listed'},{label:'EPSS',render:x=>x.vulnerabilityIntelligence?.epssProbability==null?'—':pct(x.vulnerabilityIntelligence.epssProbability,1)}],cases.slice(0,500),'Report findings')));sheet.append(h('section',{class:'report-section'},h('h2',{text:'Methodology and provenance'}),h('p',{class:'report-meta',text:'This report reflects current API state at generation time. It does not claim immutable server-side report identity, historical snapshot replay, RBVM Formula output, priority, or SLA.'})));target.append(sheet);}
 
-  function normalizeGuideTabs() {
-    document.querySelectorAll('.guide-tab').forEach(tab => {
-      const active = tab.classList.contains('active');
-      tab.classList.toggle('secondary', !active);
-      tab.dataset.rbvmTabState = active ? 'active' : 'inactive';
-      tab.setAttribute('aria-pressed', active ? 'true' : 'false');
-    });
-  }
+  function renderSettings(){const root=clear(page());root.append(pageHeader('Settings','Adjust local display preferences. Authentication is intentionally not configured in this operator UI.'));const appearance=choice('Appearance',['light','dark']);appearance.input.value=readSetting(THEME_KEY,'light');appearance.input.addEventListener('change',()=>{applyTheme(appearance.input.value);document.getElementById('theme-toggle').textContent=appearance.input.value==='dark'?'☀':'☾';});const density=choice('Table density',['comfortable','compact']);density.input.value=readSetting(DENSITY_KEY,'comfortable');density.input.addEventListener('change',()=>applyDensity(density.input.value));root.append(panel('Display preferences','Stored locally in this browser only.',h('div',{class:'form-grid'},appearance.wrap,density.wrap)),panel('Local access model','Default trusted-local deployment uses RBVM_AUTH_MODE=DISABLED. Hardened remote deployments should enforce access control at the deployment boundary or use API clients.',callout('Frontend System V2 contains no in-app sign-in or access-token controls.')));}
+  function notFound(){const root=clear(page());root.append(pageHeader('Page not found','The requested RBVM route does not exist.'),empty('Nothing here','Use the navigation to return to a supported workspace.',h('a',{class:'button button-primary',href:'/',text:'Go to Overview'})));}
+  async function render(){const current=route();activateNav(current);document.title=`${current==='/'?'Overview':title(current.slice(1))} · RBVM`;try{if(current==='/')await renderOverview();else if(current==='/findings')await renderFindings();else if(current==='/assets')await renderAssets();else if(current==='/analytics')await renderAnalytics();else if(current==='/reports')await renderReports();else if(current==='/evidence')await renderEvidence();else if(current==='/imports')await renderImports();else if(current==='/settings')renderSettings();else notFound();}catch(error){clear(page()).append(failure(error,render));}}
 
-  function normalizeSemanticStates() {
-    const stateMap = new Map([
-      ['PRESENT', 'present'],
-      ['MISSING', 'missing'],
-      ['UNKNOWN', 'unknown'],
-      ['STALE', 'stale'],
-      ['AMBIGUOUS', 'ambiguous'],
-      ['ACTIVE', 'active'],
-      ['RESOLVED', 'resolved'],
-      ['LINKED', 'linked'],
-      ['UNLINKED', 'unlinked']
-    ]);
-    const candidates = document.querySelectorAll('.badge, .pill, .tag, .chip, .status-pill, td');
-    candidates.forEach(node => {
-      const state = stateMap.get(node.textContent.trim().toUpperCase());
-      if (state) node.dataset.rbvmState = state;
-    });
-    document.querySelectorAll('.status.error, [role="status"].error, [data-state="error"]').forEach(node => {
-      node.dataset.rbvmState = 'error';
-    });
-    document.querySelectorAll('.status.success, [role="status"].success, [role="status"].ok, [data-state="success"]').forEach(node => {
-      node.dataset.rbvmState = 'success';
-    });
-  }
-
-  function observeSemanticStates() {
-    if (!document.body || typeof MutationObserver !== 'function') return;
-    const observer = new MutationObserver(() => {
-      normalizeSemanticStates();
-      normalizeGuideTabs();
-    });
-    observer.observe(document.body, {subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class', 'data-state']});
-  }
-
-  function normalizeDialogs() {
-    document.querySelectorAll('dialog').forEach(dialog => {
-      dialog.classList.add('rbvm-dialog');
-      dialog.setAttribute('aria-modal', 'true');
-      dialog.addEventListener('close', () => {
-        const opener = dialogOpeners.get(dialog);
-        if (opener && opener.isConnected && typeof opener.focus === 'function') opener.focus();
-        dialogOpeners.delete(dialog);
-      });
-    });
-
-    document.addEventListener('click', event => {
-      if (!(event.target instanceof Element)) return;
-      const trigger = event.target.closest('button, a');
-      if (!trigger) return;
-      queueMicrotask(() => {
-        document.querySelectorAll('dialog[open]').forEach(dialog => {
-          if (!dialogOpeners.has(dialog)) dialogOpeners.set(dialog, trigger);
-        });
-      });
-    }, true);
-  }
-
-  function createFooter() {
-    if (document.querySelector('.rbvm-page-footer')) return;
-    const footer = document.createElement('footer');
-    footer.className = 'rbvm-page-footer';
-    footer.innerHTML = '<span><strong>RBVM</strong> · Evidence-first decision platform</span><span class="rbvm-page-footer__meta"><span>Modular operator UI</span><span aria-hidden="true">·</span><code>RBVM_FRONTEND_SYSTEM_V1</code></span>';
-    document.body.append(footer);
-  }
-
-  function init() {
-    applyTheme(readTheme());
-    document.documentElement.dataset.rbvmFrontend = FRONTEND_CONTRACT;
-    markPageIdentity();
-    createShell();
-    const main = normalizeMain();
-    normalizeLegacyHero(main);
-    enhanceHero(main);
-    normalizeModules(main);
-    normalizeTables();
-    normalizeExternalState();
-    normalizeGuideTabs();
-    normalizeSemanticStates();
-    observeSemanticStates();
-    normalizeDialogs();
-    createFooter();
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init, {once: true});
-  } else {
-    init();
-  }
+  window.addEventListener('popstate',()=>{closeOverlay();render();});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'){closeOverlay();closeNav();}if(event.key==='/'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)){event.preventDefault();document.getElementById('global-search')?.focus();}});
+  applyTheme(readSetting(THEME_KEY,'light')); applyDensity(readSetting(DENSITY_KEY,'comfortable')); buildShell(); render();
 })();

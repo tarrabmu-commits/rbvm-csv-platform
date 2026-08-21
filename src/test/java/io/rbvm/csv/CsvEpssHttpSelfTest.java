@@ -97,9 +97,9 @@ public final class CsvEpssHttpSelfTest {
 
             HttpResponse<String> ui = get(client, base.resolve("/epss"));
             assert ui.statusCode() == 200 : ui.body();
-            assert ui.body().contains("EPSS_CSV_V1");
-            assert ui.body().contains("Probability");
-            assert !ui.body().contains("EPSS &gt;=");
+            assert ui.body().contains("<html lang=\"en\" dir=\"ltr\">");
+            assert ui.body().contains("id=\"rbvm-app\"");
+            assert ui.body().contains("/ui/rbvm-ui.js");
 
             HttpResponse<String> health = get(client, base.resolve("/api/v1/health"));
             assert health.statusCode() == 200 : health.body();

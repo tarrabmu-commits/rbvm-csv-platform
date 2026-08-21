@@ -1,137 +1,18 @@
 <!doctype html>
-<html lang="ar" dir="rtl">
+<html lang="en" dir="ltr">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>RBVM · Network Reachability Evidence</title>
-  <style>
-    :root { color-scheme:dark; --bg:#101827; --panel:#172438; --text:#f7fbff; --muted:#b8c5d6; --accent:#8dd7f7; --warn:#ffd166; --danger:#ff829a; --border:rgba(255,255,255,.13); }
-    * { box-sizing:border-box; }
-    body { margin:0; min-height:100vh; font-family:system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif; background:radial-gradient(circle at 84% 9%,rgba(141,215,247,.15),transparent 32rem),linear-gradient(145deg,#080d15,var(--bg)); color:var(--text); }
-    main { width:min(1420px,calc(100% - 32px)); margin:0 auto; padding:46px 0 72px; }
-    header { display:flex; justify-content:space-between; gap:24px; align-items:flex-start; }
-    h1 { margin:0 0 8px; font-size:clamp(2rem,5vw,4rem); letter-spacing:-.04em; }
-    h2 { margin:0 0 16px; font-size:1.25rem; }
-    p { margin:0; color:var(--muted); line-height:1.8; }
-    a { color:var(--accent); }
-    .badge { border:1px solid var(--border); border-radius:999px; padding:9px 13px; color:var(--accent); white-space:nowrap; }
-    .panel { margin-top:18px; padding:24px; border:1px solid var(--border); border-radius:22px; background:linear-gradient(145deg,rgba(25,39,58,.92),rgba(14,24,38,.97)); box-shadow:0 18px 70px rgba(0,0,0,.25); }
-    .grid { display:grid; grid-template-columns:1.5fr auto; gap:14px; align-items:end; }
-    .filters { display:grid; grid-template-columns:1.1fr .9fr 1fr .8fr .8fr .45fr auto; gap:10px; align-items:end; }
-    label { display:grid; gap:8px; color:var(--muted); font-size:.86rem; }
-    input,select { width:100%; min-height:49px; border:1px solid var(--border); background:rgba(4,7,17,.55); color:var(--text); border-radius:12px; padding:13px 14px; font:inherit; }
-    input[type=file]::file-selector-button { background:#234052; color:var(--text); border:0; border-radius:8px; padding:8px 12px; margin-inline-end:10px; cursor:pointer; }
-    button { min-height:49px; border:0; border-radius:12px; padding:14px 20px; background:var(--accent); color:#06141b; font-weight:800; cursor:pointer; }
-    button.secondary { background:#d7f1fc; }
-    button:disabled { opacity:.5; cursor:wait; }
-    .status { min-height:28px; margin-top:14px; color:var(--muted); }
-    .status.error { color:var(--danger); }
-    .cards { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:18px; }
-    .card { padding:17px; background:rgba(4,7,17,.38); border:1px solid var(--border); border-radius:15px; }
-    .card span { display:block; color:var(--muted); font-size:.82rem; margin-bottom:8px; }
-    .card strong { font-size:1.7rem; }
-    .note { border-inline-start:3px solid var(--accent); padding-inline-start:14px; margin-top:18px; }
-    .warning { border-inline-start-color:var(--warn); }
-    .scroll { overflow-x:auto; margin-top:18px; }
-    table { width:100%; border-collapse:collapse; font-size:.8rem; direction:ltr; min-width:1900px; }
-    th,td { padding:11px 10px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }
-    th { color:var(--muted); font-weight:600; }
-    .issues { margin-top:16px; white-space:pre-wrap; direction:ltr; text-align:left; color:var(--muted); font-size:.82rem; }
-    .hidden { display:none !important; }
-    @media (max-width:1050px) { header{display:block}.badge{display:inline-block;margin-top:16px}.grid,.filters{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)} }
-    @media (max-width:480px) { .cards{grid-template-columns:1fr} }
-  </style>
+  <meta name="color-scheme" content="light dark">
+  <title>RBVM</title>
   <link rel="stylesheet" href="/ui/rbvm-ui.css">
 </head>
 <body>
-<main>
-  <header>
-    <div>
-      <h1>Network Reachability Evidence</h1>
-      <p>دليل تقني scoped حسب الـasset + origin + transport endpoint + source + observation time. الصفحة تعرض evidence كما هي؛ ما بتحولها إلى asset-wide Internet exposure أوRisk/Priority.</p>
-      <p><a href="/">العودة للمنصة الرئيسية</a> · <a href="/asset-context">Asset Context</a> · <a href="/cvss">CVSS</a> · <a href="/kev">KEV</a> · <a href="/epss">EPSS</a></p>
-    </div>
-    <div class="badge">NETWORK_REACHABILITY_CSV_V1 · PostgreSQL V14+</div>
-  </header>
-
-  <section class="panel">
-    <h2>الدخول</h2>
-    <div class="grid">
-      <label>API access token
-        <input id="apiToken" type="password" autocomplete="off" spellcheck="false" placeholder="الصق مفتاح الوصول هنا">
-      </label>
-      <button id="saveToken" class="secondary">استخدام المفتاح</button>
-    </div>
-    <div id="healthMessage" class="status">جاري التحقق من Reachability runtime capability…</div>
-  </section>
-
-  <section class="panel">
-    <h2>1. استيراد NETWORK_REACHABILITY_CSV_V1</h2>
-    <div class="grid">
-      <label>ملف Reachability CSV
-        <input id="reachabilityFile" type="file" accept=".csv,text/csv">
-      </label>
-      <button id="importReachability">استيراد الدليل</button>
-    </div>
-    <div id="importMessage" class="status"></div>
-    <div id="importResult" class="hidden">
-      <div id="importCards" class="cards"></div>
-      <div id="issues" class="issues"></div>
-    </div>
-    <p class="note">الـimporter يحل الصفوف إلى assets موجودة مسبقاً فقط. Reachability evidence ما بتنشيء scanner inventory وما بتغير lifecycle أوapplicability.</p>
-  </section>
-
-  <section class="panel">
-    <h2>2. Current Scoped Reachability Evidence</h2>
-    <div class="filters">
-      <label>Asset prefix
-        <input id="assetFilter" placeholder="web-">
-      </label>
-      <label>Source profile
-        <input id="profileFilter" placeholder="wazuh-primary">
-      </label>
-      <label>Evidence source
-        <input id="sourceFilter" placeholder="reachability-export">
-      </label>
-      <label>Origin scope
-        <select id="originFilter"><option value="">All</option><option>INTERNET</option><option>EXTERNAL_PARTNER</option><option>INTERNAL_ENTERPRISE</option><option>LOCAL_SEGMENT</option><option>OTHER</option><option>UNKNOWN</option></select>
-      </label>
-      <label>Status
-        <select id="statusFilter"><option value="">All</option><option>REACHABLE</option><option>NOT_REACHABLE</option><option>UNKNOWN</option></select>
-      </label>
-      <label>Limit
-        <input id="limit" type="number" min="1" max="500" value="100">
-      </label>
-      <button id="refresh" class="secondary">تحديث</button>
-    </div>
-    <div id="evidenceMessage" class="status"></div>
-    <div id="evidenceCards" class="cards"></div>
-    <div class="scroll">
-      <table>
-        <thead><tr><th>Asset</th><th>Profile</th><th>Identity Basis</th><th>Source ID</th><th>Origin Scope</th><th>Origin Label</th><th>Protocol</th><th>Port</th><th>Service</th><th>Status</th><th>Method</th><th>Evidence Source</th><th>Source SHA-256</th><th>Observed At</th><th>Evidence Ingested</th><th>Snapshot Ingested</th></tr></thead>
-        <tbody id="evidenceRows"></tbody>
-      </table>
-    </div>
-    <p class="note warning"><code>NOT_REACHABLE</code> يعني فقط إن هالـorigin/endpoint/source/method ما أثبت reachability بهالوقت؛ مو إثبات إن الـasset معزول عالمياً. غياب row كمان مو <code>NOT_REACHABLE</code>. و<code>INTERNET + REACHABLE</code> evidence تقنية للendpoint، مو Risk Score.</p>
-  </section>
-</main>
-<script>
-  const byId = id => document.getElementById(id);
-  let apiToken = sessionStorage.getItem('rbvmApiToken') || '';
-  let importEnabled = false;
-  let readEnabled = false;
-  function apiFetch(resource, options={}) { const headers=new Headers(options.headers||{}); if(apiToken)headers.set('Authorization',`Bearer ${apiToken}`); return fetch(resource,{...options,headers}); }
-  function setStatus(id,text,error=false){const node=byId(id);node.textContent=text;node.classList.toggle('error',error);}
-  function card(label,value){const node=document.createElement('div');node.className='card';const caption=document.createElement('span');caption.textContent=label;const number=document.createElement('strong');number.textContent=Number(value??0).toLocaleString('en-US');node.append(caption,number);return node;}
-  async function errorFrom(response){try{const problem=await response.json();return problem.detail||problem.title||`HTTP ${response.status}`;}catch(_){return `HTTP ${response.status}`;}}
-  async function loadHealth(){try{const response=await apiFetch('/api/v1/health',{cache:'no-store'});if(!response.ok)throw new Error(await errorFrom(response));const data=await response.json();const capability=data.networkReachability||{};importEnabled=capability.importEnabled===true;readEnabled=capability.evidenceReadEnabled===true;byId('importReachability').disabled=!importEnabled;byId('refresh').disabled=!readEnabled;if(importEnabled&&readEnabled)setStatus('healthMessage','Network Reachability persistence جاهز: import + current evidence read متاحان.');else setStatus('healthMessage','Network Reachability persistence يحتاج PostgreSQL schema V14 أو أحدث.',true);}catch(error){importEnabled=false;readEnabled=false;byId('importReachability').disabled=true;byId('refresh').disabled=true;setStatus('healthMessage',error.message||'تعذر قراءة runtime health.',true);}}
-  function renderImport(data){byId('importResult').classList.remove('hidden');byId('importCards').replaceChildren(card('Evidence inserted',data.insertedEvidence),card('Evidence replayed',data.replayedEvidence),card('Snapshots inserted',data.insertedSnapshots),card('Quarantined',data.totalQuarantinedRows));const issues=[...(data.contractIssues||[]),...(data.persistenceIssues||[])];byId('issues').textContent=issues.length===0?'No quarantine issues.':issues.map(issue=>`row ${issue.rowNumber} · ${issue.code} · ${issue.message}`).join('\n');}
-  async function loadEvidence(){if(!readEnabled)return;const p=new URLSearchParams();p.set('limit',byId('limit').value||'100');const asset=byId('assetFilter').value.trim();if(asset)p.set('asset',asset);const profile=byId('profileFilter').value.trim();if(profile)p.set('sourceProfile',profile);const source=byId('sourceFilter').value.trim();if(source)p.set('evidenceSource',source);const origin=byId('originFilter').value;if(origin)p.set('originScope',origin);const status=byId('statusFilter').value;if(status)p.set('reachabilityStatus',status);setStatus('evidenceMessage','جاري تحميل current scoped reachability evidence…');try{const response=await apiFetch(`/api/v1/network-reachability-evidence?${p}`,{cache:'no-store'});if(!response.ok)throw new Error(await errorFrom(response));const data=await response.json();const items=data.items||[];const assets=new Set(items.map(item=>`${item.sourceProfileKey}|${item.assetIdentityBasis}|${item.assetSourceId||item.assetName}`));const sources=new Set(items.map(item=>item.evidenceSource));const origins=new Set(items.map(item=>`${item.originScope}|${item.originLabel}`));byId('evidenceCards').replaceChildren(card('Rows',data.count),card('Assets',assets.size),card('Evidence Sources',sources.size),card('Origin Scopes/Labels',origins.size));const body=byId('evidenceRows');body.replaceChildren();for(const item of items){const tr=document.createElement('tr');[item.assetName,item.sourceProfileKey,item.assetIdentityBasis,item.assetSourceId,item.originScope,item.originLabel,item.transportProtocol,item.targetPort,item.targetService,item.reachabilityStatus,item.reachabilityMethod,item.evidenceSource,item.evidenceSourceSha256,item.evidenceObservedAt,item.evidenceIngestedAt,item.snapshotIngestedAt].forEach(value=>{const td=document.createElement('td');td.textContent=String(value??'');tr.appendChild(td);});body.appendChild(tr);}setStatus('evidenceMessage',`${data.count} current scoped reachability evidence row(s).`);}catch(error){setStatus('evidenceMessage',error.message||'تعذر قراءة Reachability evidence.',true);}}
-  byId('saveToken').addEventListener('click',async()=>{const supplied=byId('apiToken').value.trim();if(!supplied){setStatus('healthMessage','ألصق مفتاح الوصول أولاً.',true);return;}apiToken=supplied;sessionStorage.setItem('rbvmApiToken',supplied);byId('apiToken').value='';await loadHealth();await loadEvidence();});
-  byId('importReachability').addEventListener('click',async()=>{const file=byId('reachabilityFile').files[0];if(!importEnabled)return;if(!file){setStatus('importMessage','اختر ملف NETWORK_REACHABILITY_CSV_V1 أولاً.',true);return;}const button=byId('importReachability');button.disabled=true;setStatus('importMessage',`جاري استيراد ${file.name}…`);try{const response=await apiFetch('/api/v1/network-reachability-imports',{method:'POST',headers:{'Content-Type':'text/csv; charset=utf-8'},body:file});if(!response.ok)throw new Error(await errorFrom(response));const data=await response.json();renderImport(data);setStatus('importMessage',`تم: ${data.insertedEvidence} evidence جديد، ${data.replayedEvidence} replay، ${data.totalQuarantinedRows} quarantine.`);await loadEvidence();await loadHealth();}catch(error){setStatus('importMessage',error.message||'تعذر استيراد Reachability evidence.',true);}finally{button.disabled=!importEnabled;}});
-  byId('refresh').addEventListener('click',loadEvidence);
-  if(apiToken)loadHealth().then(loadEvidence);else loadHealth();
-</script>
-<script src="/ui/rbvm-ui.js" defer></script>
+  <a class="skip-link" href="#rbvm-main">Skip to main content</a>
+  <main id="rbvm-main" tabindex="-1">
+    <div id="rbvm-app" aria-live="polite"></div>
+  </main>
+  <noscript>RBVM requires JavaScript for the operator interface.</noscript>
+  <script src="/ui/rbvm-ui.js" defer></script>
 </body>
 </html>

@@ -7,12 +7,11 @@ RBVM_EPSS_INPUT=/var/lib/rbvm-platform/current-wazuh-v1.csv
 # service ReadWritePaths setting if you intentionally choose another protected path.
 RBVM_EPSS_KEEP=14
 
-# Local HTTP is accepted. Any non-local API base must use HTTPS.
+# Local default: no access token is required when the platform runs with RBVM_AUTH_MODE=DISABLED.
 RBVM_API_BASE_URL=http://127.0.0.1:8080
 
-# Dedicated OPERATOR API key for POST /api/v1/epss-imports.
-# Load the real value from protected configuration / secret management.
-RBVM_EPSS_API_KEY=replace-me
+# Optional only for a hardened/authenticated API deployment.
+# RBVM_EPSS_API_KEY=from-a-secret-manager
 
 # Optional bound for the canonical EPSS_CSV_V1 handoff (default 32 MiB).
 RBVM_EPSS_MAX_BYTES=33554432

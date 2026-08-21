@@ -99,8 +99,9 @@ public final class CsvCisaKevHttpSelfTest {
 
             HttpResponse<String> ui = get(client, base.resolve("/kev"));
             assert ui.statusCode() == 200 : ui.body();
-            assert ui.body().contains("CISA_KEV_CSV_V1");
-            assert ui.body().contains("NOT_LISTED");
+            assert ui.body().contains("<html lang=\"en\" dir=\"ltr\">");
+            assert ui.body().contains("id=\"rbvm-app\"");
+            assert ui.body().contains("/ui/rbvm-ui.js");
 
             HttpResponse<String> health = get(client, base.resolve("/api/v1/health"));
             assert health.statusCode() == 200 : health.body();
