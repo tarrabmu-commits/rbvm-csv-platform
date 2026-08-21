@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 12
     services:
       postgres:
-        image: postgres:16.12-bookworm@sha256:92620daddcd947f8d5ab5ba66e848702fe443d87fed30c4cea8e389fd78dfc55
+        image: postgres:16.14-bookworm@sha256:92620daddcd947f8d5ab5ba66e848702fe443d87fed30c4cea8e389fd78dfc55
         env:
           POSTGRES_DB: rbvm
           POSTGRES_USER: postgres
