@@ -71,12 +71,12 @@ public record RbvmResolvedDecisionInput(
                     "Resolved evidence count must exactly match Decision Input Snapshot references");
         }
 
-        Map<UUID, EvidenceReference> expectedById = new HashMap<>();
+        Map<NativeEvidenceIdentity, EvidenceReference> expectedById = new HashMap<>();
         for (EvidenceReference reference : expectedReferences) {
-            expectedById.put(reference.evidenceId(), reference);
+            expectedById.put(identity(reference), reference);
         }
 
-        Set<UUID> seen = new HashSet<>();
+        Set<NativeEvidenceIdentity> seen = new HashSet<>();
         List<ResolvedEvidence> normalized = new ArrayList<>(input.size());
         for (ResolvedEvidence evidence : input) {
             Objects.requireNonNull(evidence, "resolved evidence");
@@ -85,18 +85,36 @@ public record RbvmResolvedDecisionInput(
                 throw new IllegalArgumentException(
                         "Resolved evidence dimension must match its snapshot dimension");
             }
-            if (!seen.add(reference.evidenceId())) {
-                throw new IllegalArgumentException("Resolved evidence contains a duplicate native UUID");
+            NativeEvidenceIdentity identity = identity(reference);
+            if (!seen.add(identity)) {
+                throw new IllegalArgumentException(
+                        "Resolved evidence contains a duplicate native identity");
             }
-            EvidenceReference expected = expectedById.get(reference.evidenceId());
+            EvidenceReference expected = expectedById.get(identity);
             if (!reference.equals(expected)) {
                 throw new IllegalArgumentException(
                         "Resolved evidence provenance must exactly match its snapshot reference");
             }
             normalized.add(evidence);
         }
-        normalized.sort(Comparator.comparing(value -> value.reference().evidenceId()));
+        normalized.sort(Comparator
+                .comparing((ResolvedEvidence value) ->
+                        value.reference().nativeEvidenceKind().name())
+                .thenComparing(value -> value.reference().evidenceId()));
         return List.copyOf(normalized);
+    }
+
+    private static NativeEvidenceIdentity identity(EvidenceReference reference) {
+        return new NativeEvidenceIdentity(
+                reference.nativeEvidenceKind(),
+                reference.evidenceId()
+        );
+    }
+
+    private record NativeEvidenceIdentity(
+            RbvmDecisionInputSnapshot.NativeEvidenceKind nativeEvidenceKind,
+            UUID evidenceId
+    ) {
     }
 
     public sealed interface ResolvedEvidence permits

@@ -4,6 +4,7 @@ import io.rbvm.asset.ManagedAssetSelfTest;
 import io.rbvm.asset.ScannerManagedAssetLinkSelfTest;
 import io.rbvm.decision.DecisionInputEvidenceSelectionSelfTest;
 import io.rbvm.decision.RbvmDecisionInputSnapshotSelfTest;
+import io.rbvm.decision.RbvmDecisionInputSnapshotV2SelfTest;
 import io.rbvm.decision.RbvmDecisionMethodologyPolicySelfTest;
 import io.rbvm.decision.RbvmResolvedDecisionInputSelfTest;
 import io.rbvm.postgres.DecisionInputSnapshotMaterializerSelfTest;
@@ -41,6 +42,7 @@ public final class PlatformSelfTest {
         EpssCsvContractSelfTest.main(args);
         RbvmDecisionMethodologyPolicySelfTest.main(args);
         RbvmDecisionInputSnapshotSelfTest.main(args);
+        RbvmDecisionInputSnapshotV2SelfTest.main(args);
         DecisionInputEvidenceSelectionSelfTest.main(args);
         RbvmResolvedDecisionInputSelfTest.main(args);
         DomainCatalogSelfTest.main(args);

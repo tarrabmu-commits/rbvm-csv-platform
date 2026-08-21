@@ -55,8 +55,8 @@ def main():
 
     if document.get("openapi") != "3.1.2":
         raise AssertionError("OpenAPI document must declare 3.1.2")
-    if document.get("info", {}).get("version") != "0.21.0":
-        raise AssertionError("OpenAPI info.version must match Increment 21")
+    if document.get("info", {}).get("version") != "0.22.0":
+        raise AssertionError("OpenAPI info.version must match Increment 22")
 
     bearer = document.get("components", {}).get("securitySchemes", {}).get("bearerAuth", {})
     if bearer.get("type") != "http" or bearer.get("scheme") != "bearer":
