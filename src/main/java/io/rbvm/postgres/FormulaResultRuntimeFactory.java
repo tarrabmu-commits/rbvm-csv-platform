@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
-/** Discovers replay-verified Formula/Decision Input workflow capabilities from PostgreSQL V23+. */
+/** Discovers replay-verified Formula Result capabilities from PostgreSQL V23+. */
 public final class FormulaResultRuntimeFactory {
     private static final int REQUIRED_SCHEMA_VERSION = 23;
 
@@ -32,37 +32,17 @@ public final class FormulaResultRuntimeFactory {
             return Optional.empty();
         }
 
-        PostgresDecisionMethodologyPolicyStore methodologies =
-                new PostgresDecisionMethodologyPolicyStore(connections, false);
-        PostgresDecisionInputSnapshotStore snapshots = new PostgresDecisionInputSnapshotStore(
+        DecisionInputRuntimeAccess decisionInputs = DecisionInputRuntimeFactory
+                .fromEnvironment(environment)
+                .orElseThrow(() -> new IOException(
+                        "Decision Input workflow is unavailable despite PostgreSQL V23 Formula runtime"
+                ));
+
+        FormulaResultStore results = new PostgresFormulaResultStore(connections, false);
+        DecisionInputSnapshotStore snapshots = new PostgresDecisionInputSnapshotStore(
                 connections,
                 false
         );
-        PostgresDecisionInputSnapshotBuilder snapshotBuilder =
-                new PostgresDecisionInputSnapshotBuilder(
-                        connections,
-                        methodologies,
-                        installedVersion
-                );
-        DecisionInputSnapshotMaterializer decisionInputMaterializer =
-                new DefaultDecisionInputSnapshotMaterializer(snapshotBuilder, snapshots);
-        DecisionInputRuntimeAccess decisionInputs = new DecisionInputRuntimeAccess(
-                methodologies,
-                snapshots,
-                decisionInputMaterializer,
-                new PostgresDecisionInputHistoryReader(
-                        connections,
-                        snapshots,
-                        installedVersion
-                ),
-                new PostgresDecisionMethodologyCatalog(
-                        connections,
-                        methodologies,
-                        installedVersion
-                )
-        );
-
-        FormulaResultStore results = new PostgresFormulaResultStore(connections, false);
         DecisionInputEvidenceResolver evidenceResolver =
                 new PostgresDecisionInputEvidenceResolver(connections, installedVersion);
         FormulaResultReplayVerifier replayVerifier = new FormulaResultReplayVerifier(
