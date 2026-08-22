@@ -170,11 +170,6 @@ public final class PostgresFormulaResultStore implements FormulaResultStore {
                     "Formula-result persistence accepts only Decision Input Snapshot V3"
             );
         }
-        if (!RbvmFormulaV1Explanation.PAYLOAD_FORMAT.equals(
-                RbvmFormulaV1Explanation.PAYLOAD_FORMAT
-        )) {
-            throw new IllegalStateException("Unexpected Formula explanation payload format");
-        }
     }
 
     private static void beginTransaction(Connection connection) throws SQLException {
