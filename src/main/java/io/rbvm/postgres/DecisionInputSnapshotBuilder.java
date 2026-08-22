@@ -15,4 +15,13 @@ public interface DecisionInputSnapshotBuilder {
             String methodologyPolicySha256,
             Instant evaluatedAt
     ) throws IOException;
+
+    /** Exact requested Finding identity does not exist in the canonical projection. */
+    final class FindingNotFoundException extends IOException {
+        private static final long serialVersionUID = 1L;
+
+        public FindingNotFoundException() {
+            super("Decision input builder Finding_ID does not resolve to an existing canonical finding");
+        }
+    }
 }
