@@ -57,7 +57,11 @@ final class FormulaResultHttpRouter {
         Objects.requireNonNull(method, "method");
         String path = exchange.getRequestURI().getPath();
         if (DecisionInputHttpRouter.inNamespace(path)) {
-            return DecisionInputHttpRouter.requiredRole(exchange, method);
+            try {
+                return DecisionInputHttpRouter.requiredRole(exchange, method);
+            } catch (DecisionInputApi.ApiProblem problem) {
+                throw translate(problem);
+            }
         }
         if (MATERIALIZATION_ITEM_PATH.matcher(path).matches()) {
             if (!"POST".equals(method)) {
@@ -89,13 +93,17 @@ final class FormulaResultHttpRouter {
 
         String path = exchange.getRequestURI().getPath();
         if (DecisionInputHttpRouter.inNamespace(path)) {
-            DecisionInputHttpRouter router = decisionInputs.orElseThrow(() ->
-                    new DecisionInputApi.ApiProblem(
-                            503,
-                            "DECISION_INPUT_RUNTIME_UNAVAILABLE",
-                            "Decision Input workflow requires PostgreSQL schema version 23 or newer"
-                    ));
-            router.routeAuthorized(exchange, method, principal);
+            try {
+                DecisionInputHttpRouter router = decisionInputs.orElseThrow(() ->
+                        new DecisionInputApi.ApiProblem(
+                                503,
+                                "DECISION_INPUT_RUNTIME_UNAVAILABLE",
+                                "Decision Input workflow requires PostgreSQL schema version 23 or newer"
+                        ));
+                router.routeAuthorized(exchange, method, principal);
+            } catch (DecisionInputApi.ApiProblem problem) {
+                throw translate(problem);
+            }
             return;
         }
 
@@ -152,6 +160,14 @@ final class FormulaResultHttpRouter {
             );
         }
         send(exchange, api.getByExplanationSha256(item.group(1)));
+    }
+
+    private static FormulaResultApi.ApiProblem translate(DecisionInputApi.ApiProblem problem) {
+        return new FormulaResultApi.ApiProblem(
+                problem.status(),
+                problem.code(),
+                problem.getMessage()
+        );
     }
 
     private static Map<String, String> parseParameters(String encoded) {
