@@ -47,6 +47,9 @@ for needle in (
     "return'UNKNOWN'",
     "no source precedence was applied",
     "function coverage(predicate)",
+    "expectedCves",
+    "Full canonical CVE set not loaded",
+    "Coverage withheld until the full canonical CVE set is loaded",
     "setMetric('Known exploited CVEs',listed)",
     "setMetric('CVSS coverage',`${cvss}%`)",
     "setMetric('EPSS coverage',`${epss}%`)",
@@ -56,12 +59,22 @@ for needle in (
     if needle not in ui:
         raise AssertionError(f"dedicated intelligence UI missing {needle!r}")
 
+external_marker = '<script src="/ui/rbvm-intelligence-ui.js" defer></script>'
+main_marker = '<script src="/ui/rbvm-ui.js" defer></script>'
+inline_marker = "  <script>\n" + ui + "  </script>\n"
 for name in HOSTS:
     host = (WEB / name).read_text(encoding="utf-8")
-    marker = '<script src="/ui/rbvm-intelligence-ui.js" defer></script>'
-    if host.count(marker) != 1:
-        raise AssertionError(f"{name}: dedicated intelligence UI must load exactly once")
-    if host.index(marker) > host.index('<script src="/ui/rbvm-ui.js" defer></script>'):
-        raise AssertionError(f"{name}: intelligence fetch observer must load before rbvm-ui.js")
+    if external_marker in host:
+        raise AssertionError(
+            f"{name}: must not reference an intelligence JS route the server does not expose"
+        )
+    if host.count(inline_marker) != 1:
+        raise AssertionError(
+            f"{name}: must inline the exact canonical dedicated intelligence UI once"
+        )
+    if host.index(inline_marker) > host.index(main_marker):
+        raise AssertionError(
+            f"{name}: intelligence fetch observer must execute before rbvm-ui.js"
+        )
 
 print("Dedicated intelligence read checks: PASS")
