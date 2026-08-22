@@ -7,6 +7,7 @@ Wants=network-online.target rbvm-csv-platform.service
 Type=oneshot
 WorkingDirectory=%h/rbvm-csv-platform
 EnvironmentFile=%h/.config/rbvm-platform/cisa-kev-refresh.env
+# The canonical wrapper exports current Cases, then delegates to scheduled-cisa-kev-refresh.sh.
 ExecStart=/usr/bin/env bash %h/rbvm-csv-platform/scripts/scheduled-canonical-source-refresh.sh kev
 UMask=0077
 NoNewPrivileges=true
