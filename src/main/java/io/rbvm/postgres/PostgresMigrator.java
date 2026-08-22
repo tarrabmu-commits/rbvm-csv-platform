@@ -40,7 +40,8 @@ public final class PostgresMigrator {
             new Migration(18, "V18__managed_asset_registry.sql"),
             new Migration(19, "V19__scanner_managed_asset_link.sql"),
             new Migration(20, "V20__decision_input_v2_managed_asset_context.sql"),
-            new Migration(21, "V21__finding_context_association.sql")
+            new Migration(21, "V21__finding_context_association.sql"),
+            new Migration(22, "V22__decision_input_v3_context_bindings.sql")
     );
 
     private final JdbcConnectionFactory connections;
