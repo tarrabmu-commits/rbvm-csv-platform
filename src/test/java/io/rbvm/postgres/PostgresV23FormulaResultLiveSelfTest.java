@@ -173,8 +173,8 @@ public final class PostgresV23FormulaResultLiveSelfTest {
         System.out.println(
                 "PostgresV23FormulaResultLiveSelfTest: PASS schema=23 decision_history=PASS "
                         + "methodology_catalog=PASS decision_materialization_replay=PASS "
-                        + "formula_result=PASS decision_v3_append_only=PASS idempotency=PASS "
-                        + "replay=PASS append_only=PASS"
+                        + "materialization=PASS formula_result=PASS decision_v3_append_only=PASS "
+                        + "idempotency=PASS replay=PASS append_only=PASS"
         );
     }
 
