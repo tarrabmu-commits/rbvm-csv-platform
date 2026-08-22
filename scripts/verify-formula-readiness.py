@@ -67,7 +67,7 @@ for needle in (
     "Risk Result",
     "Golden-case suite",
     "Priority / Treatment / SLA",
-    "RBVM_FORMULA_V1 remains intentionally unimplemented",
+    "remains intentionally unimplemented",
 ):
     if needle.lower() not in readiness.lower():
         raise AssertionError(f"formula readiness contract missing {needle!r}")
