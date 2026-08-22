@@ -15,11 +15,16 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Narrow read-only socket adapter for RBVM_FORMULA_RESULT_API_V1. */
+/** Exact Formula read transport plus a separate exact-snapshot Operator materialization command. */
 final class FormulaResultHttpRouter {
     private static final String COLLECTION_PATH = "/api/v1/formula-results";
     private static final Pattern ITEM_PATH = Pattern.compile(
             "^/api/v1/formula-results/([^/]+)$"
+    );
+    private static final String MATERIALIZATION_COLLECTION_PATH =
+            "/api/v1/formula-result-materializations";
+    private static final Pattern MATERIALIZATION_ITEM_PATH = Pattern.compile(
+            "^/api/v1/formula-result-materializations/([^/]+)$"
     );
 
     private final FormulaResultApi api;
@@ -29,17 +34,34 @@ final class FormulaResultHttpRouter {
     }
 
     static boolean inNamespace(String path) {
-        return COLLECTION_PATH.equals(path) || path.startsWith(COLLECTION_PATH + '/');
+        return COLLECTION_PATH.equals(path)
+                || path.startsWith(COLLECTION_PATH + '/')
+                || MATERIALIZATION_COLLECTION_PATH.equals(path)
+                || path.startsWith(MATERIALIZATION_COLLECTION_PATH + '/');
     }
 
     static boolean handles(String path) {
-        return COLLECTION_PATH.equals(path) || ITEM_PATH.matcher(path).matches();
+        return COLLECTION_PATH.equals(path)
+                || ITEM_PATH.matcher(path).matches()
+                || MATERIALIZATION_ITEM_PATH.matcher(path).matches();
     }
 
-    /** Resolve Viewer RBAC before capability lookup so V23 availability is not leaked pre-auth. */
+    /** Resolve route-specific RBAC before capability lookup so V23 availability is not leaked. */
     static ApiRole requiredRole(HttpExchange exchange, String method) {
         Objects.requireNonNull(exchange, "exchange");
         Objects.requireNonNull(method, "method");
+        String path = exchange.getRequestURI().getPath();
+        if (MATERIALIZATION_ITEM_PATH.matcher(path).matches()) {
+            if (!"POST".equals(method)) {
+                exchange.getResponseHeaders().set("Allow", "POST");
+                throw new FormulaResultApi.ApiProblem(
+                        405,
+                        "METHOD_NOT_ALLOWED",
+                        "Use POST for this route"
+                );
+            }
+            return ApiRole.OPERATOR;
+        }
         if (!"GET".equals(method)) {
             exchange.getResponseHeaders().set("Allow", "GET");
             throw new FormulaResultApi.ApiProblem(
@@ -56,11 +78,35 @@ final class FormulaResultHttpRouter {
         Objects.requireNonNull(exchange, "exchange");
         Objects.requireNonNull(method, "method");
         Objects.requireNonNull(principal, "principal");
+
+        String path = exchange.getRequestURI().getPath();
+        Matcher materialization = MATERIALIZATION_ITEM_PATH.matcher(path);
+        if (materialization.matches()) {
+            if (!"POST".equals(method)) {
+                requiredRole(exchange, method);
+            }
+            String rawQuery = exchange.getRequestURI().getRawQuery();
+            if (rawQuery != null && !rawQuery.isBlank()) {
+                throw new FormulaResultApi.ApiProblem(
+                        400,
+                        "INVALID_FORMULA_MATERIALIZATION_REQUEST",
+                        "Formula materialization does not accept query parameters"
+                );
+            }
+            if (exchange.getRequestBody().read() != -1) {
+                throw new FormulaResultApi.ApiProblem(
+                        400,
+                        "FORMULA_MATERIALIZATION_BODY_NOT_ALLOWED",
+                        "Formula materialization accepts the exact Decision Input identity in the path only"
+                );
+            }
+            send(exchange, api.materializeByInputSnapshotSha256(materialization.group(1)));
+            return;
+        }
+
         if (!"GET".equals(method)) {
             requiredRole(exchange, method);
         }
-
-        String path = exchange.getRequestURI().getPath();
         if (COLLECTION_PATH.equals(path)) {
             Map<String, String> query = parseParameters(exchange.getRequestURI().getRawQuery());
             rejectUnknown(query, Set.of("inputSnapshotSha256", "formulaSha256"));
