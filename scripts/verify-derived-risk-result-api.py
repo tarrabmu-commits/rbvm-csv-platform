@@ -51,7 +51,7 @@ for marker in [
     "exposesCatalogWithoutDefaultSemantics",
     "materializesAndReadsExactMethodologyIdentities",
     "rejectsInvalidMissingAndNonCanonicalMethodologyIdentities",
-    "resultStore.size() == 2",
+    "fixture.store().size() == 2",
     "owasp_derived_rbvm_v1",
     "canonicalPayloadBase64",
 ]:
