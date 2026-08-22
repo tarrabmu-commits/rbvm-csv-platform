@@ -1,11 +1,9 @@
 # Source-only systemd refresh derives CVEs from the current canonical Cases API.
 RBVM_API_BASE_URL=http://127.0.0.1:8080
-RBVM_INTELLIGENCE_WORK_DIR=/var/lib/rbvm-platform/canonical-intelligence-refresh
 
-# Immutable refresh snapshots default to:
-#   $HOME/.local/share/rbvm-platform/cisa-kev
-# Leave RBVM_KEV_OUTPUT_DIR unset when using the supplied user service, or change the
-# service ReadWritePaths setting if you intentionally choose another protected path.
+# The supplied user service is sandboxed for the default per-user work/output paths.
+# Leave RBVM_INTELLIGENCE_WORK_DIR and RBVM_KEV_OUTPUT_DIR unset unless you also update
+# the service ReadWritePaths for your chosen locations.
 RBVM_KEV_KEEP=14
 
 # Optional only for a hardened/authenticated API deployment. The source-specific key wins;
