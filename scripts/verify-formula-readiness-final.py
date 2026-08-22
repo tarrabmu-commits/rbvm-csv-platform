@@ -18,6 +18,7 @@ required_decisions = (
     "EPSS probability only",
     "EPSS_Percentile` is excluded",
     "must not directly multiply CVSS Base by EPSS probability",
+    "KEV_VALUE_UNKNOWN",
     "Business_Criticality",
     "BUSINESS_CRITICALITY_UNKNOWN",
     "REACHABILITY_MULTI_SUBGRAIN",
