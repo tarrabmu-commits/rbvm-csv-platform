@@ -4,7 +4,7 @@ RBVM CSV Platform is a local, evidence-driven vulnerability-management platform 
 
 Current release contract: **0.23.2**  
 Java runtime/toolchain: **17**  
-Database migrations: **V1–V20**
+Database migrations: **V1–V22**
 
 ## Product interface
 
@@ -68,34 +68,45 @@ Versioned Decision Methodology
         ↓
 Evidence Selection
         ↓
-Immutable Decision Input Snapshot
+Immutable Decision Input Snapshot V3
         ↓
-Exact Native Evidence Resolution
+Exact Native Evidence + Association-Event Resolution
         ↓
 [Formula Contract — not implemented yet]
 ```
 
-PostgreSQL V20 stores typed Decision Input V2 native references and binds managed-asset context to the exact scanner↔managed link event and managed-asset revision used as of the evaluation time.
+PostgreSQL V22 stores Decision Input V3 snapshots with typed native references. Managed-asset context is bound to the exact scanner↔managed-asset link event and managed-asset revision used as of evaluation time. Reachability and Business Impact evidence are admitted only through exact customer-confirmed Finding-context association events, rather than being inherited asset-wide.
 
-Current Decision Input semantics preserve `PRESENT / MISSING / AMBIGUOUS / STALE`; the resolver dereferences exact immutable evidence rather than re-selecting from `current_*` views.
+Current Decision Input semantics preserve `PRESENT / MISSING / AMBIGUOUS / STALE`; the resolver dereferences exact immutable evidence and exact binding provenance rather than re-selecting from `current_*` views.
+
+See [`docs/DECISION_INPUT_V3.md`](docs/DECISION_INPUT_V3.md) for the current immutable Decision Input boundary.
 
 ## External intelligence refresh
 
-CVSS, CISA KEV, and FIRST EPSS support safe scheduled refresh pipelines that follow the canonical boundary:
+CVSS, CISA KEV, and FIRST EPSS use the same normalized, deduplicated canonical CVE inventory derived from current canonical Cases. The umbrella refresh and the deployed source-only refresh services both export that canonical inventory before invoking their official-source pipelines:
 
 ```text
-Official source
+Canonical Cases
     ↓
-Validated source snapshot
-    ↓
-Canonical CSV contract
-    ↓
-Same-origin / authenticated API handoff as configured
-    ↓
-Transactional PostgreSQL import
+Normalized / deduplicated CVE inventory
+    ├── NVD CVSS v3.1
+    ├── FIRST EPSS
+    └── CISA KEV
+         ↓
+Validated source snapshots
+         ↓
+Canonical evidence contracts
+         ↓
+Authenticated API handoff
+         ↓
+Transactional PostgreSQL imports
 ```
 
-There is no official-source-to-database shortcut.
+Finding/Case reads and intelligence summaries use the dedicated CVSS, EPSS, and KEV evidence stores. Missing evidence remains `MISSING`/unknown, multiple admissible current sources remain `AMBIGUOUS`, and no hidden source winner is selected. In particular, absence of usable KEV evidence never becomes `NOT_LISTED`.
+
+The umbrella and source-only systemd schedules are mutually exclusive so enabling both cannot duplicate scheduled refresh work. Supplied hardened user services whitelist only their documented per-user work/output/cache paths.
+
+There is no official-source-to-database shortcut. Remote canonical-CVE export requires HTTPS; HTTP is accepted only on loopback, and credentialed export requests do not follow redirects.
 
 ## Local access model
 
@@ -170,8 +181,8 @@ The platform includes:
 - Explicit workflow events for accepted risk, false positive, manual close, reopen, and comments.
 - Tenant-scoped PostgreSQL projection and reads.
 - Serializable/transactional evidence importers with replay/conflict/quarantine semantics.
-- Migration integrity with SHA-256 checks and advisory locking through V20.
-- Append-only runtime privileges/guards for immutable evidence and audit history.
+- Migration integrity with SHA-256 checks and advisory locking through V22.
+- Append-only runtime privileges/guards for immutable evidence, association decisions, and audit history.
 - TLS `verify-full` support, backup/restore tooling, readiness/liveness, metrics, and reconciliation health.
 - Backend API-key/RBAC capability for hardened deployments.
 - Reproducible JAR, SHA-256 checksum, SPDX 2.3 SBOM, CodeQL, and GitHub build/release verification.
@@ -205,9 +216,13 @@ Frontend V2 itself is additionally guarded for:
 - no browser credential state.
 - accessibility/focus/reduced-motion/forced-colors contracts.
 - managed-asset ETag concurrency.
-- explicit scanner-link semantics.
+- explicit scanner-link and Finding-context association semantics.
 - no fabricated historical analytics or hidden risk score.
 
-## Roadmap boundary
+## Formula readiness and roadmap boundary
 
-The next core methodology work starts with **Formula Readiness / Formula Contract research**, not with arbitrary scoring. Any future Formula must define, version, hash, explain, and test its treatment of applicability, CVSS, KEV, EPSS, asset context, reachability, business impact, and `MISSING / STALE / AMBIGUOUS` states before it produces a risk result.
+Formula-readiness semantics and the Stage 8 golden-case corpus are already frozen and verified. They require Formula V1 to consume exactly one `RBVM_DECISION_INPUT_SNAPSHOT_V3`, preserve terminal `NOT_APPLICABLE` / `NON_COMPUTABLE` states, reject missing/stale/ambiguous required evidence, and remain sensitive to every authorized Formula-relevant dimension without smuggling in excluded fields.
+
+The next core methodology increment may therefore define the canonical **`RBVM_FORMULA_V1`** artifact and its deterministic evaluator contract. It must satisfy [`RBVM_FORMULA_READINESS_DECISIONS_V1`](docs/RBVM_FORMULA_READINESS_DECISIONS_V1.md), [`RBVM_FORMULA_GOLDEN_CASES_V1`](docs/RBVM_FORMULA_GOLDEN_CASES_V1.md), and [`RBVM_FORMULA_CANONICALIZATION_V1`](docs/RBVM_FORMULA_CANONICALIZATION_V1.md) before any numeric runtime result is accepted.
+
+Priority, Treatment, SLA, remediation deadlines, and workflow policy remain separate later contracts; they must not be hidden inside Formula V1.
