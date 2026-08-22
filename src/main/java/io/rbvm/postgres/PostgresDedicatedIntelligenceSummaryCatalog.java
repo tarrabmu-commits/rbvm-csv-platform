@@ -113,7 +113,7 @@ public final class PostgresDedicatedIntelligenceSummaryCatalog implements Domain
         return delegate.isMaterialized(importId);
     }
 
-    private CatalogSnapshot replaceSummary(CatalogSnapshot base) {
+    CatalogSnapshot replaceSummary(CatalogSnapshot base) {
         VulnerabilityIntelligenceSummary intelligence = dedicatedSummary(
                 base.vulnerabilityIntelligence().priorityDistribution());
         return new CatalogSnapshot(
