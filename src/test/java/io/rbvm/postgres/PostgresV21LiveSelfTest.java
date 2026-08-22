@@ -1,23 +1,35 @@
 package io.rbvm.postgres;
 
+import io.rbvm.context.FindingBusinessServiceLink;
+import io.rbvm.context.FindingBusinessServiceLinkRegistry;
+import io.rbvm.context.FindingReachabilityScopeLink;
+import io.rbvm.context.FindingReachabilityScopeLink.OriginScope;
+import io.rbvm.context.FindingReachabilityScopeLink.TransportProtocol;
+import io.rbvm.context.FindingReachabilityScopeLinkRegistry;
+
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.sql.Connection;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.UUID;
 
 /**
- * Live PostgreSQL integration coverage for V21 Finding-context association persistence.
+ * Live PostgreSQL integration coverage for V21 Finding-context association persistence and
+ * optimistic-concurrency registries.
  *
  * <p>The existing V18-V20 integration body is deliberately reused through its test helpers so the
  * new schema gate extends rather than replaces the established managed-asset/link/Decision-Input
- * coverage. This class then proves V21 inserts, current views, and append-only runtime privileges
- * against a real PostgreSQL service.</p>
+ * coverage.</p>
  */
 public final class PostgresV21LiveSelfTest {
     private static final UUID FINDING_ID = UUID.fromString("70000000-0000-4000-8000-000000000001");
+    private static final UUID MISSING_FINDING_ID = UUID.fromString("70000000-0000-4000-8000-000000000099");
+    private static final Instant T7 = Instant.parse("2026-08-21T00:07:00Z");
+    private static final Instant T8 = Instant.parse("2026-08-21T00:08:00Z");
 
     private PostgresV21LiveSelfTest() {
     }
@@ -56,83 +68,213 @@ public final class PostgresV21LiveSelfTest {
                 runtimeConnections
         );
 
-        exerciseFindingContextAssociations(runtimeConnections);
+        exerciseReachabilityRegistry(runtimeConnections, schemaVersion);
+        exerciseBusinessServiceRegistry(runtimeConnections, schemaVersion);
         proveV21AppendOnlyPrivileges(runtimeConnections);
 
         System.out.println(
                 "PostgresV21LiveSelfTest: PASS schema=21 managed_asset=PASS scanner_link=PASS "
-                        + "decision_v2=PASS finding_context_association=PASS append_only=PASS"
+                        + "decision_v2=PASS finding_context_registry=PASS append_only=PASS"
         );
     }
 
-    private static void exerciseFindingContextAssociations(JdbcConnectionFactory connections)
-            throws Exception {
-        try (Connection connection = connections.open(); Statement statement = connection.createStatement()) {
-            int insertedReachability = statement.executeUpdate("""
-                    INSERT INTO rbvm.finding_reachability_scope_link_event(
-                        id, tenant_id, finding_id, revision, link_status,
-                        origin_scope, origin_label_normalized, transport_protocol, target_port,
-                        link_method, evidence_sha256, changed_by, change_note, recorded_at
-                    ) VALUES (
-                        '91000000-0000-4000-8000-000000000001',
-                        '10000000-0000-4000-8000-000000000001',
-                        '70000000-0000-4000-8000-000000000001',
-                        1, 'LINKED', 'INTERNET', 'edge probe', 'TCP', 443,
-                        'CUSTOMER_CONFIRMED',
-                        'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
-                        'live-test-operator', 'finding serves the confirmed endpoint',
-                        '2026-08-21T00:07:00Z'
-                    )
-                    """);
-            require(insertedReachability == 1, "runtime must INSERT reachability association event");
+    private static void exerciseReachabilityRegistry(
+            JdbcConnectionFactory connections,
+            int schemaVersion
+    ) throws Exception {
+        PostgresFindingReachabilityScopeLinkRegistry registry =
+                new PostgresFindingReachabilityScopeLinkRegistry(
+                        connections,
+                        schemaVersion,
+                        Clock.fixed(T7, ZoneOffset.UTC)
+                );
+        FindingReachabilityScopeLink.ChangeDraft linked =
+                FindingReachabilityScopeLink.ChangeDraft.linked(
+                        OriginScope.INTERNET,
+                        "Edge Probe",
+                        TransportProtocol.TCP,
+                        443,
+                        "live-test-operator",
+                        "finding serves the confirmed endpoint"
+                );
 
-            int insertedService = statement.executeUpdate("""
-                    INSERT INTO rbvm.finding_business_service_link_event(
-                        id, tenant_id, finding_id, revision, link_status,
-                        business_service_normalized, link_method, evidence_sha256,
-                        changed_by, change_note, recorded_at
-                    ) VALUES (
-                        '92000000-0000-4000-8000-000000000001',
-                        '10000000-0000-4000-8000-000000000001',
-                        '70000000-0000-4000-8000-000000000001',
-                        1, 'LINKED', 'payments', 'CUSTOMER_CONFIRMED',
-                        'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
-                        'live-test-operator', 'finding affects the payments service',
-                        '2026-08-21T00:07:00Z'
-                    )
-                    """);
-            require(insertedService == 1, "runtime must INSERT business-service association event");
-        }
+        var first = registry.revise(FINDING_ID, 0, linked);
+        require(first.status() == FindingReachabilityScopeLinkRegistry.MutationStatus.UPDATED,
+                "first reachability association must append revision 1");
+        require(first.current().revision() == 1, "reachability revision 1 expected");
+        require(first.current().recordedAt().equals(T7), "reachability registry clock must be exact");
+        require("edge probe".equals(first.current().originLabel()),
+                "reachability origin label must be normalized");
+        UUID firstEventId = first.current().eventId();
 
-        try (Connection connection = connections.open(); Statement statement = connection.createStatement()) {
-            try (ResultSet rows = statement.executeQuery("""
-                    SELECT finding_id, link_status, origin_scope, origin_label_normalized,
-                           transport_protocol, target_port
-                    FROM rbvm.current_finding_reachability_scope_link
-                    WHERE finding_id = '70000000-0000-4000-8000-000000000001'
-                    """)) {
-                require(rows.next(), "current reachability association view must expose revision 1");
-                require(FINDING_ID.equals(rows.getObject(1, UUID.class)), "reachability finding ID mismatch");
-                require("LINKED".equals(rows.getString(2)), "reachability state must remain LINKED");
-                require("INTERNET".equals(rows.getString(3)), "reachability origin scope mismatch");
-                require("edge probe".equals(rows.getString(4)), "reachability origin label mismatch");
-                require("TCP".equals(rows.getString(5)), "reachability protocol mismatch");
-                require(rows.getInt(6) == 443, "reachability target port mismatch");
-                require(!rows.next(), "only one reachability logical stream expected");
-            }
+        var replay = registry.revise(FINDING_ID, 0, linked);
+        require(replay.status() == FindingReachabilityScopeLinkRegistry.MutationStatus.REPLAYED,
+                "exact reachability retry must replay");
+        require(replay.current().eventId().equals(firstEventId),
+                "reachability replay must retain original event");
 
-            try (ResultSet rows = statement.executeQuery("""
-                    SELECT finding_id, link_status, business_service_normalized
-                    FROM rbvm.current_finding_business_service_link
-                    WHERE finding_id = '70000000-0000-4000-8000-000000000001'
-                    """)) {
-                require(rows.next(), "current business-service association view must expose revision 1");
-                require(FINDING_ID.equals(rows.getObject(1, UUID.class)), "service finding ID mismatch");
-                require("LINKED".equals(rows.getString(2)), "service state must remain LINKED");
-                require("payments".equals(rows.getString(3)), "normalized business service mismatch");
-                require(!rows.next(), "only one business-service logical stream expected");
-            }
-        }
+        var conflict = registry.revise(
+                FINDING_ID,
+                0,
+                FindingReachabilityScopeLink.ChangeDraft.unlinked(
+                        OriginScope.INTERNET,
+                        "edge probe",
+                        TransportProtocol.TCP,
+                        443,
+                        "live-test-operator",
+                        "stale expected revision"
+                )
+        );
+        require(conflict.status() == FindingReachabilityScopeLinkRegistry.MutationStatus.REVISION_CONFLICT,
+                "stale reachability mutation must conflict");
+        require(conflict.current().eventId().equals(firstEventId),
+                "reachability conflict must return current event");
+
+        var current = registry.current(
+                FINDING_ID,
+                OriginScope.INTERNET,
+                "EDGE PROBE",
+                TransportProtocol.TCP,
+                443
+        );
+        require(current.findingExists(), "reachability current lookup must resolve Finding");
+        require(current.currentOptional().orElseThrow().eventId().equals(firstEventId),
+                "reachability current lookup must resolve revision 1");
+        require(registry.history(
+                        FINDING_ID,
+                        OriginScope.INTERNET,
+                        "edge probe",
+                        TransportProtocol.TCP,
+                        443,
+                        10,
+                        null
+                ).orElseThrow().events().size() == 1,
+                "reachability replay must not append history");
+        require(registry.listCurrent(FINDING_ID, 10, null).orElseThrow().links().size() == 1,
+                "reachability current list must expose one logical stream");
+
+        var missing = registry.revise(MISSING_FINDING_ID, 0, linked);
+        require(missing.status() == FindingReachabilityScopeLinkRegistry.MutationStatus.FINDING_NOT_FOUND,
+                "missing Finding must not create reachability history");
+
+        PostgresFindingReachabilityScopeLinkRegistry later =
+                new PostgresFindingReachabilityScopeLinkRegistry(
+                        connections,
+                        schemaVersion,
+                        Clock.fixed(T8, ZoneOffset.UTC)
+                );
+        var unlink = later.revise(
+                FINDING_ID,
+                1,
+                FindingReachabilityScopeLink.ChangeDraft.unlinked(
+                        OriginScope.INTERNET,
+                        "edge probe",
+                        TransportProtocol.TCP,
+                        443,
+                        "live-test-operator",
+                        "explicit customer unlink"
+                )
+        );
+        require(unlink.status() == FindingReachabilityScopeLinkRegistry.MutationStatus.UPDATED,
+                "reachability unlink must append revision 2");
+        require(unlink.current().revision() == 2, "reachability revision 2 expected");
+        require(unlink.current().linkStatus() == FindingReachabilityScopeLink.LinkStatus.UNLINKED,
+                "reachability current state must preserve explicit UNLINKED");
+        require(later.history(
+                        FINDING_ID,
+                        OriginScope.INTERNET,
+                        "edge probe",
+                        TransportProtocol.TCP,
+                        443,
+                        10,
+                        null
+                ).orElseThrow().events().size() == 2,
+                "reachability history must preserve both revisions");
+    }
+
+    private static void exerciseBusinessServiceRegistry(
+            JdbcConnectionFactory connections,
+            int schemaVersion
+    ) throws Exception {
+        PostgresFindingBusinessServiceLinkRegistry registry =
+                new PostgresFindingBusinessServiceLinkRegistry(
+                        connections,
+                        schemaVersion,
+                        Clock.fixed(T7, ZoneOffset.UTC)
+                );
+        FindingBusinessServiceLink.ChangeDraft linked =
+                FindingBusinessServiceLink.ChangeDraft.linked(
+                        "Payments",
+                        "live-test-operator",
+                        "finding affects the payments service"
+                );
+
+        var first = registry.revise(FINDING_ID, 0, linked);
+        require(first.status() == FindingBusinessServiceLinkRegistry.MutationStatus.UPDATED,
+                "first business-service association must append revision 1");
+        require(first.current().revision() == 1, "business-service revision 1 expected");
+        require(first.current().recordedAt().equals(T7), "business-service registry clock must be exact");
+        require("payments".equals(first.current().businessService()),
+                "business service must be normalized");
+        UUID firstEventId = first.current().eventId();
+
+        var replay = registry.revise(FINDING_ID, 0, linked);
+        require(replay.status() == FindingBusinessServiceLinkRegistry.MutationStatus.REPLAYED,
+                "exact business-service retry must replay");
+        require(replay.current().eventId().equals(firstEventId),
+                "business-service replay must retain original event");
+
+        var conflict = registry.revise(
+                FINDING_ID,
+                0,
+                FindingBusinessServiceLink.ChangeDraft.unlinked(
+                        "PAYMENTS",
+                        "live-test-operator",
+                        "stale expected revision"
+                )
+        );
+        require(conflict.status() == FindingBusinessServiceLinkRegistry.MutationStatus.REVISION_CONFLICT,
+                "stale business-service mutation must conflict");
+        require(conflict.current().eventId().equals(firstEventId),
+                "business-service conflict must return current event");
+
+        var current = registry.current(FINDING_ID, "PAYMENTS");
+        require(current.findingExists(), "business-service current lookup must resolve Finding");
+        require(current.currentOptional().orElseThrow().eventId().equals(firstEventId),
+                "business-service current lookup must resolve revision 1");
+        require(registry.history(FINDING_ID, "payments", 10, null)
+                        .orElseThrow().events().size() == 1,
+                "business-service replay must not append history");
+        require(registry.listCurrent(FINDING_ID, 10, null).orElseThrow().links().size() == 1,
+                "business-service current list must expose one logical stream");
+
+        var missing = registry.revise(MISSING_FINDING_ID, 0, linked);
+        require(missing.status() == FindingBusinessServiceLinkRegistry.MutationStatus.FINDING_NOT_FOUND,
+                "missing Finding must not create business-service history");
+
+        PostgresFindingBusinessServiceLinkRegistry later =
+                new PostgresFindingBusinessServiceLinkRegistry(
+                        connections,
+                        schemaVersion,
+                        Clock.fixed(T8, ZoneOffset.UTC)
+                );
+        var unlink = later.revise(
+                FINDING_ID,
+                1,
+                FindingBusinessServiceLink.ChangeDraft.unlinked(
+                        "payments",
+                        "live-test-operator",
+                        "explicit customer unlink"
+                )
+        );
+        require(unlink.status() == FindingBusinessServiceLinkRegistry.MutationStatus.UPDATED,
+                "business-service unlink must append revision 2");
+        require(unlink.current().revision() == 2, "business-service revision 2 expected");
+        require(unlink.current().linkStatus() == FindingBusinessServiceLink.LinkStatus.UNLINKED,
+                "business-service current state must preserve explicit UNLINKED");
+        require(later.history(FINDING_ID, "payments", 10, null)
+                        .orElseThrow().events().size() == 2,
+                "business-service history must preserve both revisions");
     }
 
     private static void proveV21AppendOnlyPrivileges(JdbcConnectionFactory connections)
