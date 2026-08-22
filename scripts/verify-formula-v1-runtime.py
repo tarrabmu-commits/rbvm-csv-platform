@@ -72,10 +72,10 @@ require("io.rbvm.decision.RbvmFormulaV1" in DOC,
         "Formula contract must identify the accepted runtime evaluator")
 require("RBVM_FORMULA_V1 Pure Evaluator" in README,
         "README must expose the current Formula runtime boundary")
-require("Formula result               = Priority / SLA / Treatment" not in README,
-        "README stale Formula boundary formatting detected")
-require("Formula result               = Priority" not in README,
-        "README contains stale Formula roadmap text")
+require("Formula result               = Priority / SLA / Treatment" in README,
+        "README must preserve explicit Formula/priority separation")
+require("Risk Formula, priority, treatment, SLA" not in README,
+        "README contains the stale pre-Formula roadmap boundary")
 require("Formula result               = Priority / SLA / Treatment" not in RUNTIME,
         "runtime must not emit downstream policy")
 
