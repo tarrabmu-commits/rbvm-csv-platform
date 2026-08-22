@@ -1,0 +1,203 @@
+{
+  "canonicalPayloadFormat": "RBVM_FORMULA_CANONICAL_BINARY_V1",
+  "formulaId": "RBVM_FORMULA_V1",
+  "formulaVersion": 1,
+  "formulaSemantics": "FINDING_SCOPED_POLICY_WEIGHTED_RELATIVE_RISK_INDEX",
+  "inputContractId": "RBVM_DECISION_INPUT_SNAPSHOT_V3",
+  "outputName": "RBVM Relative Risk Index",
+  "outputMinimum": "0",
+  "outputMaximum": "100",
+  "outputDisplayScale": 2,
+  "arithmeticPolicy": "BIGDECIMAL_EXACT_INTERMEDIATE_FINAL_SCALE_2",
+  "roundingMode": "HALF_UP",
+  "applicabilityGatePolicy": "APPLICABILITY_PRESENT_APPLICABLE_ONLY",
+  "evidenceStatePolicy": "STRICT_COMPLETE_EVIDENCE_PRESENT_ONLY",
+  "multiSubgrainPolicy": "ONE_REACHABILITY_SUBGRAIN_ONE_BUSINESS_SERVICE_MAX_IMPACT_LEVEL",
+  "factors": [
+    {
+      "ordinal": 1,
+      "factorId": "TECHNICAL_SEVERITY",
+      "transformId": "CVSS_V31_BASE_DIVIDE_BY_10",
+      "inputDimensions": ["TECHNICAL_SEVERITY"],
+      "weightPoints": "25",
+      "parameters": [
+        {"key": "DIVISOR", "type": "DECIMAL", "decimalValue": "10"}
+      ]
+    },
+    {
+      "ordinal": 2,
+      "factorId": "EXPLOITATION_EVIDENCE",
+      "transformId": "KEV_LISTED_OVERRIDE_ELSE_EPSS_PROBABILITY",
+      "inputDimensions": ["KNOWN_EXPLOITATION", "EXPLOITATION_PROBABILITY"],
+      "weightPoints": "25",
+      "parameters": [
+        {"key": "KEV_LISTED_OVERRIDE", "type": "DECIMAL", "decimalValue": "1"}
+      ]
+    },
+    {
+      "ordinal": 3,
+      "factorId": "NETWORK_REACHABILITY",
+      "transformId": "REACHABILITY_STATUS_MAP",
+      "inputDimensions": ["NETWORK_REACHABILITY"],
+      "weightPoints": "15",
+      "parameters": [
+        {
+          "key": "STATUS_MAP",
+          "type": "DECIMAL_MAP",
+          "decimalMap": {"NOT_REACHABLE": "0", "REACHABLE": "1"}
+        }
+      ]
+    },
+    {
+      "ordinal": 4,
+      "factorId": "BUSINESS_CRITICALITY",
+      "transformId": "BUSINESS_CRITICALITY_MAP",
+      "inputDimensions": ["ASSET_CONTEXT"],
+      "weightPoints": "10",
+      "parameters": [
+        {
+          "key": "CRITICALITY_MAP",
+          "type": "DECIMAL_MAP",
+          "decimalMap": {
+            "LOW": "0.25",
+            "MODERATE": "0.5",
+            "HIGH": "0.75",
+            "MISSION_CRITICAL": "1"
+          }
+        }
+      ]
+    },
+    {
+      "ordinal": 5,
+      "factorId": "BUSINESS_MISSION_IMPACT",
+      "transformId": "MAX_SINGLE_SERVICE_IMPACT_LEVEL_MAP",
+      "inputDimensions": ["BUSINESS_MISSION_IMPACT"],
+      "weightPoints": "25",
+      "parameters": [
+        {"key": "AGGREGATION", "type": "STRING", "stringValue": "MAX"},
+        {
+          "key": "IMPACT_LEVEL_MAP",
+          "type": "DECIMAL_MAP",
+          "decimalMap": {
+            "NEGLIGIBLE": "0",
+            "LOW": "0.25",
+            "MODERATE": "0.5",
+            "HIGH": "0.75",
+            "SEVERE": "1"
+          }
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "ordinal": 1,
+      "ruleId": "APPLICABILITY_TERMINAL_GATE",
+      "ruleType": "TERMINAL_GATE",
+      "conditionId": "APPLICATION_STATUS_AND_DIMENSION_STATE",
+      "outcomeId": "NOT_APPLICABLE_OR_NON_COMPUTABLE",
+      "parameters": [
+        {"key": "APPLICABLE_VALUE", "type": "STRING", "stringValue": "APPLICABLE"}
+      ]
+    },
+    {
+      "ordinal": 2,
+      "ruleId": "STRICT_COMPLETE_EVIDENCE_GATE",
+      "ruleType": "TERMINAL_GATE",
+      "conditionId": "ANY_REQUIRED_DIMENSION_NOT_PRESENT",
+      "outcomeId": "NON_COMPUTABLE_DIMENSION_STATE_REASON",
+      "parameters": [
+        {
+          "key": "REQUIRED_DIMENSIONS",
+          "type": "STRING_LIST",
+          "stringList": [
+            "TECHNICAL_SEVERITY",
+            "KNOWN_EXPLOITATION",
+            "EXPLOITATION_PROBABILITY",
+            "ASSET_CONTEXT",
+            "NETWORK_REACHABILITY",
+            "BUSINESS_MISSION_IMPACT"
+          ]
+        }
+      ]
+    },
+    {
+      "ordinal": 3,
+      "ruleId": "PRESENT_UNKNOWN_VALUE_GATE",
+      "ruleType": "TERMINAL_GATE",
+      "conditionId": "PRESENT_VALUE_NOT_NUMERICALLY_AUTHORIZED",
+      "outcomeId": "NON_COMPUTABLE_VALUE_REASON",
+      "parameters": [
+        {
+          "key": "VALUE_REASON_CODES",
+          "type": "STRING_LIST",
+          "stringList": [
+            "APPLICABILITY_UNKNOWN",
+            "KEV_VALUE_UNKNOWN",
+            "BUSINESS_CRITICALITY_UNKNOWN",
+            "REACHABILITY_VALUE_UNKNOWN",
+            "BUSINESS_IMPACT_VALUE_UNKNOWN"
+          ]
+        }
+      ]
+    },
+    {
+      "ordinal": 4,
+      "ruleId": "REACHABILITY_SINGLE_SUBGRAIN_GATE",
+      "ruleType": "STRUCTURAL_GATE",
+      "conditionId": "DISTINCT_REACHABILITY_SUBGRAIN_COUNT_NOT_ONE",
+      "outcomeId": "NON_COMPUTABLE_REACHABILITY_MULTI_SUBGRAIN",
+      "parameters": [
+        {"key": "REQUIRED_COUNT", "type": "DECIMAL", "decimalValue": "1"}
+      ]
+    },
+    {
+      "ordinal": 5,
+      "ruleId": "BUSINESS_IMPACT_SINGLE_SERVICE_GATE",
+      "ruleType": "STRUCTURAL_GATE",
+      "conditionId": "DISTINCT_NORMALIZED_BUSINESS_SERVICE_COUNT_NOT_ONE",
+      "outcomeId": "NON_COMPUTABLE_BUSINESS_IMPACT_MULTI_SERVICE",
+      "parameters": [
+        {"key": "REQUIRED_COUNT", "type": "DECIMAL", "decimalValue": "1"}
+      ]
+    },
+    {
+      "ordinal": 6,
+      "ruleId": "ARITHMETIC_EXCLUSIONS",
+      "ruleType": "ARITHMETIC_BOUNDARY",
+      "conditionId": "CONTEXT_OR_PROVENANCE_FIELD_CHANGE_ONLY",
+      "outcomeId": "NO_RISK_INDEX_CHANGE",
+      "parameters": [
+        {
+          "key": "EXCLUDED_FIELDS",
+          "type": "STRING_LIST",
+          "stringList": [
+            "CVSS_VECTOR",
+            "KEV_DATE_ADDED",
+            "KEV_DUE_DATE",
+            "KNOWN_RANSOMWARE_CAMPAIGN_USE",
+            "EPSS_PERCENTILE",
+            "EPSS_MODEL_VERSION",
+            "EPSS_SCORE_DATE",
+            "ENVIRONMENT",
+            "BUSINESS_SERVICE_LABEL",
+            "BUSINESS_OWNER",
+            "REACHABILITY_ORIGIN_SCOPE",
+            "REACHABILITY_ORIGIN_LABEL",
+            "REACHABILITY_TRANSPORT_PROTOCOL",
+            "REACHABILITY_TARGET_PORT",
+            "REACHABILITY_TARGET_SERVICE",
+            "REACHABILITY_METHOD",
+            "BUSINESS_IMPACT_DIMENSION",
+            "BUSINESS_IMPACT_METHOD",
+            "BUSINESS_IMPACT_STATEMENT"
+          ]
+        }
+      ]
+    }
+  ],
+  "explanationSchemaId": "RBVM_FORMULA_EXPLANATION_CANONICAL_BINARY_V1",
+  "reservedExtensions": [],
+  "canonicalPayloadLength": 3212,
+  "formulaSha256": "e10976aaae2a6e21ffacd80f9184a2a1eb6b73c83dd097708023be8e71857948"
+}
