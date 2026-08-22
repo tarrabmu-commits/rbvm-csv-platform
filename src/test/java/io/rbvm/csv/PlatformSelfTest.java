@@ -2,6 +2,7 @@ package io.rbvm.csv;
 
 import io.rbvm.asset.ManagedAssetSelfTest;
 import io.rbvm.asset.ScannerManagedAssetLinkSelfTest;
+import io.rbvm.context.FindingContextAssociationSelfTest;
 import io.rbvm.decision.DecisionInputEvidenceSelectionSelfTest;
 import io.rbvm.decision.RbvmDecisionInputSnapshotSelfTest;
 import io.rbvm.decision.RbvmDecisionInputSnapshotV2SelfTest;
@@ -34,6 +35,7 @@ public final class PlatformSelfTest {
         AssetClassificationGuideV1SelfTest.main(args);
         ManagedAssetSelfTest.main(args);
         ScannerManagedAssetLinkSelfTest.main(args);
+        FindingContextAssociationSelfTest.main(args);
         ManagedAssetApiSelfTest.main(args);
         ScannerManagedAssetLinkApiSelfTest.main(args);
         CvssV31BaseScoreCalculatorSelfTest.main(args);
