@@ -1,0 +1,101 @@
+{
+  "canonicalPayloadFormatId": "RBVM_FORMULA_CANONICAL_BINARY_V1",
+  "formulaId": "RBVM_FORMULA_V1",
+  "formulaVersion": 1,
+  "formulaSemantics": "WEIGHTED_ADDITIVE_RELATIVE_RISK_INDEX_V1",
+  "inputContractId": "RBVM_DECISION_INPUT_SNAPSHOT_V3",
+  "outputName": "RBVM Relative Risk Index",
+  "outputMinimum": "0",
+  "outputMaximum": "100",
+  "outputDisplayScale": 2,
+  "arithmeticPolicy": "DECIMAL_PRECISION_34",
+  "roundingMode": "HALF_EVEN",
+  "applicabilityGatePolicy": "READINESS_APPLICABILITY_GATE_V1",
+  "evidenceStatePolicy": "STRICT_COMPLETE_PRESENT_AND_KNOWN_V1",
+  "multiSubgrainPolicy": "REACHABILITY_ONE_BUSINESS_SERVICE_ONE_V1",
+  "factors": [
+    {
+      "ordinal": 1,
+      "factorId": "CVSS_V31_BASE",
+      "dimension": "TECHNICAL_SEVERITY",
+      "weight": "0.2",
+      "transformId": "LINEAR_DIVIDE_V1",
+      "parameters": {"divisor": "10"},
+      "mapping": {},
+      "reducerId": null
+    },
+    {
+      "ordinal": 2,
+      "factorId": "EPSS_PROBABILITY",
+      "dimension": "EXPLOITATION_PROBABILITY",
+      "weight": "0.2",
+      "transformId": "IDENTITY_0_1_V1",
+      "parameters": {},
+      "mapping": {},
+      "reducerId": null
+    },
+    {
+      "ordinal": 3,
+      "factorId": "CISA_KEV_MEMBERSHIP",
+      "dimension": "KNOWN_EXPLOITATION",
+      "weight": "0.15",
+      "transformId": "CATEGORICAL_MAP_V1",
+      "parameters": {},
+      "mapping": {"LISTED": "1", "NOT_LISTED": "0"},
+      "reducerId": null
+    },
+    {
+      "ordinal": 4,
+      "factorId": "REACHABILITY_STATUS",
+      "dimension": "NETWORK_REACHABILITY",
+      "weight": "0.15",
+      "transformId": "CATEGORICAL_MAP_V1",
+      "parameters": {},
+      "mapping": {"NOT_REACHABLE": "0", "REACHABLE": "1"},
+      "reducerId": null
+    },
+    {
+      "ordinal": 5,
+      "factorId": "BUSINESS_CRITICALITY",
+      "dimension": "ASSET_CONTEXT",
+      "weight": "0.15",
+      "transformId": "CATEGORICAL_MAP_V1",
+      "parameters": {},
+      "mapping": {
+        "HIGH": "0.75",
+        "LOW": "0.25",
+        "MISSION_CRITICAL": "1",
+        "MODERATE": "0.5"
+      },
+      "reducerId": null
+    },
+    {
+      "ordinal": 6,
+      "factorId": "BUSINESS_IMPACT_LEVEL",
+      "dimension": "BUSINESS_MISSION_IMPACT",
+      "weight": "0.15",
+      "transformId": "CATEGORICAL_MAP_V1",
+      "parameters": {},
+      "mapping": {
+        "HIGH": "0.75",
+        "LOW": "0.25",
+        "MODERATE": "0.5",
+        "NEGLIGIBLE": "0",
+        "SEVERE": "1"
+      },
+      "reducerId": "MAX_MAPPED_IMPACT_LEVEL_PER_SERVICE_V1"
+    }
+  ],
+  "rules": [
+    {
+      "ordinal": 1,
+      "ruleId": "WEIGHTED_SUM_SCALE_OUTPUT_V1",
+      "ruleType": "FINAL_AGGREGATION",
+      "parameters": {"scale": "100"}
+    }
+  ],
+  "explanationSchemaId": "RBVM_FORMULA_EXPLANATION_CANONICAL_BINARY_V1",
+  "reservedExtensions": [],
+  "formulaSha256": "88bf31f510089b4209b1ffcf1c15b39fef60548209875334f084888316e9028e",
+  "canonicalPayloadByteLength": 1290
+}
