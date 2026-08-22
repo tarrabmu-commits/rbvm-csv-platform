@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
-/** Discovers the replay-verified Formula Result read capability from PostgreSQL schema V23+. */
+/** Discovers replay-verified Formula Result read/materialization capabilities from PostgreSQL V23+. */
 public final class FormulaResultRuntimeFactory {
     private static final int REQUIRED_SCHEMA_VERSION = 23;
 
@@ -44,16 +44,24 @@ public final class FormulaResultRuntimeFactory {
                 snapshots,
                 evidenceResolver
         );
-        return Optional.of(new Runtime(results, replayVerifier));
+        FormulaResultMaterializer materializer = new DefaultFormulaResultMaterializer(
+                snapshots,
+                evidenceResolver,
+                results,
+                replayVerifier
+        );
+        return Optional.of(new Runtime(results, replayVerifier, materializer));
     }
 
     public record Runtime(
             FormulaResultStore results,
-            FormulaResultReplayVerifier replayVerifier
+            FormulaResultReplayVerifier replayVerifier,
+            FormulaResultMaterializer materializer
     ) {
         public Runtime {
             results = Objects.requireNonNull(results, "results");
             replayVerifier = Objects.requireNonNull(replayVerifier, "replayVerifier");
+            materializer = Objects.requireNonNull(materializer, "materializer");
         }
     }
 }
