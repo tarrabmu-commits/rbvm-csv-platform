@@ -1,6 +1,6 @@
-# Current vulnerability CSV containing CVE_ID (WAZUH_CSV_V1 is supported).
-# Must be a regular non-symlink file.
-RBVM_KEV_INPUT=/var/lib/rbvm-platform/current-wazuh-v1.csv
+# Source-only systemd refresh derives CVEs from the current canonical Cases API.
+RBVM_API_BASE_URL=http://127.0.0.1:8080
+RBVM_INTELLIGENCE_WORK_DIR=/var/lib/rbvm-platform/canonical-intelligence-refresh
 
 # Immutable refresh snapshots default to:
 #   $HOME/.local/share/rbvm-platform/cisa-kev
@@ -8,11 +8,10 @@ RBVM_KEV_INPUT=/var/lib/rbvm-platform/current-wazuh-v1.csv
 # service ReadWritePaths setting if you intentionally choose another protected path.
 RBVM_KEV_KEEP=14
 
-# Local default: no access token is required when the platform runs with RBVM_AUTH_MODE=DISABLED.
-RBVM_API_BASE_URL=http://127.0.0.1:8080
-
-# Optional only for a hardened/authenticated API deployment.
-# RBVM_KEV_API_KEY=from-a-secret-manager
+# Optional only for a hardened/authenticated API deployment. The source-specific key wins;
+# otherwise RBVM_INTELLIGENCE_API_KEY can be shared with the canonical CVE read.
+# RBVM_INTELLIGENCE_API_KEY=from-a-secret-manager
+# RBVM_KEV_API_KEY=optional-source-specific-override
 
 # Optional bound for the generated evidence handoff (default 32 MiB).
 RBVM_KEV_MAX_BYTES=33554432
