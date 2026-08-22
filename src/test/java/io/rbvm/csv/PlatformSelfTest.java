@@ -62,6 +62,7 @@ public final class PlatformSelfTest {
         CsvBusinessImpactHttpSelfTest.main(args);
         CsvManagedAssetHttpSelfTest.main(args);
         CsvScannerManagedAssetLinkHttpSelfTest.main(args);
+        CsvFindingContextAssociationHttpSelfTest.main(args);
         CanonicalProjectionSelfTest.main(args);
         PostgresFoundationSelfTest.main(args);
         PostgresManagedAssetRegistrySelfTest.main(args);
