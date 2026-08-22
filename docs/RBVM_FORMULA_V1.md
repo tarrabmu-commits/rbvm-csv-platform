@@ -2,7 +2,7 @@
 
 Contract ID: `RBVM_FORMULA_V1`
 
-Status: `STAGE_9_PROPOSAL`
+Status: `ACCEPTED`
 
 Formula SHA-256: `88bf31f510089b4209b1ffcf1c15b39fef60548209875334f084888316e9028e`
 
@@ -10,7 +10,7 @@ Input: `RBVM_DECISION_INPUT_SNAPSHOT_V3`
 
 Output: `RBVM Relative Risk Index`, `0.00 .. 100.00`
 
-This document is the first numeric Formula proposal after the approved Formula-readiness decisions and Stage 8 golden-case corpus. It defines a transparent relative index for one canonical Finding. It does **not** define Priority, Treatment, SLA, remediation deadlines, financial loss, or exploitation probability.
+This document defines the accepted numeric Formula V1 after the approved Formula-readiness decisions and Stage 8 golden-case corpus. It defines a transparent relative index for one canonical Finding. It does **not** define Priority, Treatment, SLA, remediation deadlines, financial loss, or exploitation probability.
 
 ## 1. Classification of this contract
 
@@ -266,17 +266,18 @@ Formula V1 does not calculate or emit:
 
 Those remain separate later contracts.
 
-## 10. Acceptance boundary
+## 10. Runtime acceptance boundary
 
-This Stage 9 proposal is acceptable only when executable verification proves:
+The accepted Formula contract is implemented by the pure evaluator `io.rbvm.decision.RbvmFormulaV1`. Runtime acceptance requires executable verification to prove:
 
 - exact Formula canonical bytes reproduce the declared SHA;
 - all Stage 8 terminal/state cases preserve their result state and reason;
 - all six material-sensitivity pairs are strictly increasing;
 - EPSS percentile, Environment, and Business Owner exclusion pairs remain exactly equal;
 - the all-adverse profile dominates the base profile;
-- the newly resolved cross-dimension trade-offs reproduce the frozen Formula V1 expected results;
+- the resolved cross-dimension trade-offs reproduce the frozen Formula V1 expected results;
 - repeated evaluation is decimal-deterministic;
-- Formula arithmetic does not use any field excluded by the readiness decisions.
+- Formula arithmetic does not use any field excluded by the readiness decisions;
+- the evaluator accepts only exact resolved `RBVM_DECISION_INPUT_SNAPSHOT_V3` inputs and does not query current state or select evidence.
 
-Runtime persistence, API/UI exposure, Priority, Treatment, and SLA are outside this contract increment.
+The Java runtime currently returns an ephemeral Formula result with Formula identity, Decision Input identity, final state/value, and visible factor contributions. Durable result persistence, canonical result/explanation serialization, API/UI exposure, Priority, Treatment, and SLA remain outside this increment.
