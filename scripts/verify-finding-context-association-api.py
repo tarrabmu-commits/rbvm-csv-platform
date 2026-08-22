@@ -175,6 +175,8 @@ if composed_openapi.get("openapi") != "3.1.2":
     raise AssertionError("Composed V21 OpenAPI must declare 3.1.2")
 if composed_openapi.get("security") != [{"bearerAuth": []}]:
     raise AssertionError("Composed V21 OpenAPI must retain default bearer security")
+if composed_openapi.get("info", {}).get("version") != base_openapi.get("info", {}).get("version"):
+    raise AssertionError("Composed V21 OpenAPI version must match the published base contract")
 base_paths = set(base_openapi.get("paths", {}))
 composed_paths = set(composed_openapi.get("paths", {}))
 if composed_paths != base_paths | expected_paths:
@@ -187,8 +189,18 @@ for path, item in composed_openapi["paths"].items():
     reference = item.get("$ref")
     if not reference:
         raise AssertionError(f"Composed path {path} must be a source-contract reference")
-    expected_source = "./finding-context-association-v1.openapi.yaml" if path in expected_paths else "./openapi.yaml"
-    if not reference.startswith(expected_source + "#/paths/"):
+    source_name = "finding-context-association-v1.openapi.yaml" if path in expected_paths else "openapi.yaml"
+    expected_prefix = f"./{source_name}#/paths/"
+    if not reference.startswith(expected_prefix):
         raise AssertionError(f"Composed path {path} references the wrong source contract")
+    pointer = reference[len(expected_prefix):]
+    resolved_path = pointer.replace("~1", "/").replace("~0", "~")
+    if resolved_path != path:
+        raise AssertionError(
+            f"Composed path {path} resolves to a different source path {resolved_path}"
+        )
+    source_document = openapi if path in expected_paths else base_openapi
+    if resolved_path not in source_document.get("paths", {}):
+        raise AssertionError(f"Composed path {path} resolves to a missing source path")
 
 print("Finding context association API checks: PASS")
