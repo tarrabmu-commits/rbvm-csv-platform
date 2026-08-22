@@ -1,0 +1,504 @@
+openapi: 3.1.2
+info:
+  title: RBVM Finding Context Association API Fragment
+  version: 0.23.2
+  description: >-
+    Exact V21 HTTP contract for explicit customer-confirmed associations between a canonical
+    Finding and either one stable Network Reachability scope or one normalized Business Service.
+    Missing history is NEVER_ASSESSED; UNLINKED is an explicit customer decision. These routes
+    do not infer associations and do not derive Risk, Priority, Formula, or SLA conclusions.
+servers:
+  - url: http://127.0.0.1:8080/api/v1
+security:
+  - bearerAuth: []
+paths:
+  /findings/{findingId}/reachability-links:
+    parameters:
+      - $ref: '#/components/parameters/FindingId'
+    get:
+      operationId: listFindingReachabilityLinks
+      summary: List current explicit reachability-scope association decisions for a Finding
+      description: >-
+        Returns only streams that have an explicit current event. A scope with no event remains
+        NEVER_ASSESSED and is not fabricated as an UNLINKED row.
+      parameters:
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/AfterEventId'
+      responses:
+        '200':
+          description: Current explicit reachability-link page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FindingReachabilityLinkPage' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Problem' }
+
+  /findings/{findingId}/reachability-links/current:
+    parameters:
+      - $ref: '#/components/parameters/FindingId'
+    get:
+      operationId: getFindingReachabilityLinkCurrent
+      summary: Read one exact reachability-scope association state
+      description: >-
+        The target identity is supplied by query parameters for reads. If the exact stream has
+        never been assessed, currentLink is null, associationState is NEVER_ASSESSED, and the
+        response carries a deterministic strong revision-0 ETag bound to the Finding and exact scope.
+      parameters:
+        - $ref: '#/components/parameters/OriginScope'
+        - $ref: '#/components/parameters/OriginLabel'
+        - $ref: '#/components/parameters/TransportProtocol'
+        - $ref: '#/components/parameters/TargetPort'
+      responses:
+        '200':
+          description: Current exact reachability-scope association state
+          headers:
+            ETag:
+              description: Strong target-bound validator, including deterministic revision 0
+              schema: { type: string, pattern: '^"frs-r[0-9]+-[a-f0-9]{64}"$' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FindingReachabilityLinkCurrent' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Problem' }
+    post:
+      operationId: reviseFindingReachabilityLinkCurrent
+      summary: Append or replay one explicit customer-confirmed reachability-scope decision
+      description: >-
+        The POST route accepts no query parameters. The complete target identity and LINKED or
+        UNLINKED state are supplied in the JSON body. changedBy is never accepted from the client;
+        the server derives it from the authenticated OPERATOR principal. A strong If-Match from an
+        exact current-state GET is required. Exact network retries are replay-safe.
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FindingReachabilityLinkRevisionRequest' }
+      responses:
+        '200':
+          description: Explicit decision appended or exact request replayed
+          headers:
+            ETag:
+              schema: { type: string, pattern: '^"frs-r[1-9][0-9]*-[a-f0-9]{64}"$' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FindingReachabilityLinkMutationCurrent' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/InsufficientRole' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '412': { $ref: '#/components/responses/Problem' }
+        '413': { $ref: '#/components/responses/Problem' }
+        '415': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+        '428': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Problem' }
+
+  /findings/{findingId}/reachability-links/revisions:
+    parameters:
+      - $ref: '#/components/parameters/FindingId'
+    get:
+      operationId: listFindingReachabilityLinkRevisions
+      summary: Read immutable history for one exact reachability-scope association stream
+      parameters:
+        - $ref: '#/components/parameters/OriginScope'
+        - $ref: '#/components/parameters/OriginLabel'
+        - $ref: '#/components/parameters/TransportProtocol'
+        - $ref: '#/components/parameters/TargetPort'
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/BeforeRevision'
+      responses:
+        '200':
+          description: Immutable reachability association history, newest first
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FindingReachabilityLinkHistoryPage' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Problem' }
+
+  /findings/{findingId}/business-service-links:
+    parameters:
+      - $ref: '#/components/parameters/FindingId'
+    get:
+      operationId: listFindingBusinessServiceLinks
+      summary: List current explicit business-service association decisions for a Finding
+      description: >-
+        Returns only service streams with an explicit current event. Absence is not converted to
+        UNLINKED, UNKNOWN, low impact, or any scoring conclusion.
+      parameters:
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/AfterEventId'
+      responses:
+        '200':
+          description: Current explicit business-service link page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FindingBusinessServiceLinkPage' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Problem' }
+
+  /findings/{findingId}/business-service-links/current:
+    parameters:
+      - $ref: '#/components/parameters/FindingId'
+    get:
+      operationId: getFindingBusinessServiceLinkCurrent
+      summary: Read one exact business-service association state
+      description: >-
+        The service is normalized by the server. A never-assessed exact service returns
+        currentLink null, associationState NEVER_ASSESSED, and a deterministic strong revision-0
+        ETag bound to the Finding and normalized service.
+      parameters:
+        - $ref: '#/components/parameters/BusinessService'
+      responses:
+        '200':
+          description: Current exact business-service association state
+          headers:
+            ETag:
+              description: Strong target-bound validator, including deterministic revision 0
+              schema: { type: string, pattern: '^"fbs-r[0-9]+-[a-f0-9]{64}"$' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FindingBusinessServiceLinkCurrent' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Problem' }
+    post:
+      operationId: reviseFindingBusinessServiceLinkCurrent
+      summary: Append or replay one explicit customer-confirmed business-service decision
+      description: >-
+        The POST route accepts no query parameters. The complete normalized service target and
+        LINKED or UNLINKED state are supplied in the JSON body. changedBy is server-derived from
+        the authenticated OPERATOR principal. A strong If-Match from the exact current-state GET
+        is required and exact network retries are replay-safe.
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FindingBusinessServiceLinkRevisionRequest' }
+      responses:
+        '200':
+          description: Explicit decision appended or exact request replayed
+          headers:
+            ETag:
+              schema: { type: string, pattern: '^"fbs-r[1-9][0-9]*-[a-f0-9]{64}"$' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FindingBusinessServiceLinkCurrent' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/InsufficientRole' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '412': { $ref: '#/components/responses/Problem' }
+        '413': { $ref: '#/components/responses/Problem' }
+        '415': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+        '428': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Problem' }
+
+  /findings/{findingId}/business-service-links/revisions:
+    parameters:
+      - $ref: '#/components/parameters/FindingId'
+    get:
+      operationId: listFindingBusinessServiceLinkRevisions
+      summary: Read immutable history for one exact business-service association stream
+      parameters:
+        - $ref: '#/components/parameters/BusinessService'
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/BeforeRevision'
+      responses:
+        '200':
+          description: Immutable business-service association history, newest first
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FindingBusinessServiceLinkHistoryPage' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Problem' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-api-key
+  parameters:
+    FindingId:
+      name: findingId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    PageLimit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+    AfterEventId:
+      name: afterEventId
+      in: query
+      schema: { type: string, format: uuid }
+    BeforeRevision:
+      name: beforeRevision
+      in: query
+      schema: { type: integer, minimum: 1 }
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: Exactly one strong target-bound ETag returned by an exact current-state GET
+      schema: { type: string }
+    OriginScope:
+      name: originScope
+      in: query
+      required: true
+      schema: { $ref: '#/components/schemas/FindingReachabilityOriginScope' }
+    OriginLabel:
+      name: originLabel
+      in: query
+      required: true
+      schema: { type: string, minLength: 1, maxLength: 256 }
+    TransportProtocol:
+      name: transportProtocol
+      in: query
+      required: true
+      schema: { $ref: '#/components/schemas/FindingReachabilityTransportProtocol' }
+    TargetPort:
+      name: targetPort
+      in: query
+      description: Required for TCP/UDP; absent for ICMP; optional for OTHER/UNKNOWN
+      schema: { type: integer, minimum: 1, maximum: 65535 }
+    BusinessService:
+      name: businessService
+      in: query
+      required: true
+      schema: { type: string, minLength: 1, maxLength: 256 }
+
+  schemas:
+    AssociationState:
+      type: string
+      enum: [NEVER_ASSESSED, LINKED, UNLINKED]
+    FindingContextLinkStatus:
+      type: string
+      enum: [LINKED, UNLINKED]
+    FindingReachabilityOriginScope:
+      type: string
+      enum: [INTERNET, EXTERNAL_PARTNER, INTERNAL_ENTERPRISE, LOCAL_SEGMENT, OTHER, UNKNOWN]
+    FindingReachabilityTransportProtocol:
+      type: string
+      enum: [TCP, UDP, ICMP, OTHER, UNKNOWN]
+
+    FindingReachabilityTarget:
+      type: object
+      additionalProperties: false
+      required: [originScope, originLabel, transportProtocol, targetPort]
+      properties:
+        originScope: { $ref: '#/components/schemas/FindingReachabilityOriginScope' }
+        originLabel: { type: string, minLength: 1, maxLength: 256 }
+        transportProtocol: { $ref: '#/components/schemas/FindingReachabilityTransportProtocol' }
+        targetPort: { type: [integer, 'null'], minimum: 1, maximum: 65535 }
+
+    FindingReachabilityLinkEvent:
+      type: object
+      additionalProperties: false
+      required: [eventId, findingId, revision, linkStatus, originScope, originLabel, transportProtocol, targetPort, linkMethod, evidenceSha256, changedBy, changeNote, recordedAt]
+      properties:
+        eventId: { type: string, format: uuid }
+        findingId: { type: string, format: uuid }
+        revision: { type: integer, minimum: 1 }
+        linkStatus: { $ref: '#/components/schemas/FindingContextLinkStatus' }
+        originScope: { $ref: '#/components/schemas/FindingReachabilityOriginScope' }
+        originLabel: { type: string, minLength: 1, maxLength: 256 }
+        transportProtocol: { $ref: '#/components/schemas/FindingReachabilityTransportProtocol' }
+        targetPort: { type: [integer, 'null'], minimum: 1, maximum: 65535 }
+        linkMethod: { const: CUSTOMER_CONFIRMED }
+        evidenceSha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+        changedBy: { type: string, minLength: 1, maxLength: 256 }
+        changeNote: { type: string }
+        recordedAt: { type: string, format: date-time }
+
+    FindingReachabilityLinkCurrent:
+      type: object
+      additionalProperties: false
+      required: [findingId, target, associationState, currentLink]
+      properties:
+        findingId: { type: string, format: uuid }
+        target: { $ref: '#/components/schemas/FindingReachabilityTarget' }
+        associationState: { $ref: '#/components/schemas/AssociationState' }
+        currentLink:
+          oneOf:
+            - { $ref: '#/components/schemas/FindingReachabilityLinkEvent' }
+            - { type: 'null' }
+
+    FindingReachabilityLinkMutationCurrent:
+      type: object
+      additionalProperties: false
+      required: [findingId, associationState, currentLink]
+      properties:
+        findingId: { type: string, format: uuid }
+        associationState:
+          type: string
+          enum: [LINKED, UNLINKED]
+        currentLink: { $ref: '#/components/schemas/FindingReachabilityLinkEvent' }
+
+    FindingReachabilityLinkPage:
+      type: object
+      additionalProperties: false
+      required: [findingId, links, nextAfterEventId]
+      properties:
+        findingId: { type: string, format: uuid }
+        links:
+          type: array
+          maxItems: 500
+          items: { $ref: '#/components/schemas/FindingReachabilityLinkEvent' }
+        nextAfterEventId: { type: [string, 'null'], format: uuid }
+
+    FindingReachabilityLinkHistoryPage:
+      type: object
+      additionalProperties: false
+      required: [findingId, target, revisions, nextBeforeRevision]
+      properties:
+        findingId: { type: string, format: uuid }
+        target: { $ref: '#/components/schemas/FindingReachabilityTarget' }
+        revisions:
+          type: array
+          maxItems: 500
+          items: { $ref: '#/components/schemas/FindingReachabilityLinkEvent' }
+        nextBeforeRevision: { type: [integer, 'null'], minimum: 1 }
+
+    FindingReachabilityLinkRevisionRequest:
+      type: object
+      additionalProperties: false
+      required: [linkStatus, originScope, originLabel, transportProtocol]
+      properties:
+        linkStatus: { $ref: '#/components/schemas/FindingContextLinkStatus' }
+        originScope: { $ref: '#/components/schemas/FindingReachabilityOriginScope' }
+        originLabel: { type: string, minLength: 1, maxLength: 256 }
+        transportProtocol: { $ref: '#/components/schemas/FindingReachabilityTransportProtocol' }
+        targetPort: { type: [integer, 'null'], minimum: 1, maximum: 65535 }
+        changeNote: { type: [string, 'null'] }
+      allOf:
+        - if:
+            properties: { transportProtocol: { enum: [TCP, UDP] } }
+            required: [transportProtocol]
+          then:
+            required: [targetPort]
+            properties: { targetPort: { type: integer, minimum: 1, maximum: 65535 } }
+        - if:
+            properties: { transportProtocol: { const: ICMP } }
+            required: [transportProtocol]
+          then:
+            properties: { targetPort: { type: 'null' } }
+
+    FindingBusinessServiceLinkEvent:
+      type: object
+      additionalProperties: false
+      required: [eventId, findingId, revision, linkStatus, businessService, linkMethod, evidenceSha256, changedBy, changeNote, recordedAt]
+      properties:
+        eventId: { type: string, format: uuid }
+        findingId: { type: string, format: uuid }
+        revision: { type: integer, minimum: 1 }
+        linkStatus: { $ref: '#/components/schemas/FindingContextLinkStatus' }
+        businessService: { type: string, minLength: 1, maxLength: 256 }
+        linkMethod: { const: CUSTOMER_CONFIRMED }
+        evidenceSha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+        changedBy: { type: string, minLength: 1, maxLength: 256 }
+        changeNote: { type: string }
+        recordedAt: { type: string, format: date-time }
+
+    FindingBusinessServiceLinkCurrent:
+      type: object
+      additionalProperties: false
+      required: [findingId, businessService, associationState, currentLink]
+      properties:
+        findingId: { type: string, format: uuid }
+        businessService: { type: string, minLength: 1, maxLength: 256 }
+        associationState: { $ref: '#/components/schemas/AssociationState' }
+        currentLink:
+          oneOf:
+            - { $ref: '#/components/schemas/FindingBusinessServiceLinkEvent' }
+            - { type: 'null' }
+
+    FindingBusinessServiceLinkPage:
+      type: object
+      additionalProperties: false
+      required: [findingId, links, nextAfterEventId]
+      properties:
+        findingId: { type: string, format: uuid }
+        links:
+          type: array
+          maxItems: 500
+          items: { $ref: '#/components/schemas/FindingBusinessServiceLinkEvent' }
+        nextAfterEventId: { type: [string, 'null'], format: uuid }
+
+    FindingBusinessServiceLinkHistoryPage:
+      type: object
+      additionalProperties: false
+      required: [findingId, businessService, revisions, nextBeforeRevision]
+      properties:
+        findingId: { type: string, format: uuid }
+        businessService: { type: string, minLength: 1, maxLength: 256 }
+        revisions:
+          type: array
+          maxItems: 500
+          items: { $ref: '#/components/schemas/FindingBusinessServiceLinkEvent' }
+        nextBeforeRevision: { type: [integer, 'null'], minimum: 1 }
+
+    FindingBusinessServiceLinkRevisionRequest:
+      type: object
+      additionalProperties: false
+      required: [linkStatus, businessService]
+      properties:
+        linkStatus: { $ref: '#/components/schemas/FindingContextLinkStatus' }
+        businessService: { type: string, minLength: 1, maxLength: 256 }
+        changeNote: { type: [string, 'null'] }
+
+    Problem:
+      type: object
+      required: [type, title, status, detail, correlationId]
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer, minimum: 400, maximum: 599 }
+        detail: { type: string }
+        correlationId: { type: string, format: uuid }
+
+  responses:
+    AuthenticationRequired:
+      description: Missing, expired, or invalid bearer API key
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    InsufficientRole:
+      description: Authenticated identity lacks the required role
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    RateLimited:
+      description: Request rate limit exceeded
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Problem:
+      description: Request could not be completed
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
