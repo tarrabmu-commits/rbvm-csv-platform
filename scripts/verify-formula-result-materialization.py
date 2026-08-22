@@ -97,13 +97,14 @@ for marker in (
 
 for marker in (
     'FORMULA_RESULT_MATERIALIZATION_V1',
+    'RBVM_FORMULA_RESULT_MATERIALIZATION_API_V1',
     'exact already-persisted `RBVM_DECISION_INPUT_SNAPSHOT_V3` identity',
     'inputSnapshotSha256',
     'There is no call to `DecisionInputSnapshotBuilder`',
     'INSERTED',
     'REPLAYED',
     'RESULT_CONFLICT',
-    'does **not** publish a Formula materialization HTTP write route',
+    'Operator HTTP transport',
     'Priority',
     'Treatment',
     'SLA',

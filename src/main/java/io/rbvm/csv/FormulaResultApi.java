@@ -4,6 +4,9 @@ import io.rbvm.decision.RbvmDecisionInputSnapshot.BindingReference;
 import io.rbvm.decision.RbvmDecisionInputSnapshot.EvidenceReference;
 import io.rbvm.decision.RbvmFormulaV1Explanation;
 import io.rbvm.decision.RbvmFormulaV1Explanation.DimensionExplanation;
+import io.rbvm.postgres.DefaultFormulaResultMaterializer;
+import io.rbvm.postgres.FormulaResultInstallResult;
+import io.rbvm.postgres.FormulaResultMaterializationResult;
 import io.rbvm.postgres.FormulaResultReplayVerifier;
 import io.rbvm.postgres.FormulaResultStore;
 import io.rbvm.postgres.StoredFormulaResult;
@@ -11,19 +14,23 @@ import io.rbvm.postgres.StoredFormulaResult;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
 /**
- * Read-only contract logic for immutable, replay-verified RBVM Formula results.
+ * Exact-identity contract logic for immutable, replay-verified RBVM Formula results.
  *
- * <p>This API exposes only exact persisted Formula identities. It never chooses a "latest" result,
- * rebuilds a Decision Input, re-selects current evidence, derives Priority/Treatment/SLA, or treats
- * a terminal result as numeric risk.</p>
+ * <p>The public read contract exposes only exact persisted Formula identities. The separate
+ * materialization command accepts only one exact already-persisted Decision Input V3 SHA. Neither
+ * path chooses a "latest" result, rebuilds a Decision Input, re-selects current evidence, derives
+ * Priority/Treatment/SLA, or treats a terminal result as numeric risk.</p>
  */
 public final class FormulaResultApi {
     public static final String CONTRACT_ID = "RBVM_FORMULA_RESULT_API_V1";
+    public static final String MATERIALIZATION_CONTRACT_ID =
+            "RBVM_FORMULA_RESULT_MATERIALIZATION_API_V1";
 
     private final FormulaResultStore results;
     private final FormulaResultReplayVerifier replayVerifier;
@@ -63,6 +70,60 @@ public final class FormulaResultApi {
                         "No persisted Formula result matches the requested input and Formula identity"
                 ));
         return response(stored);
+    }
+
+    /**
+     * Explicit Formula V1 command from one exact already-persisted Decision Input V3 SHA identity.
+     */
+    public Response materializeByInputSnapshotSha256(String inputSnapshotSha256) throws IOException {
+        String snapshotSha = requireSha(inputSnapshotSha256, "inputSnapshotSha256");
+        FormulaResultMaterializationResult materialized;
+        try {
+            materialized = replayVerifier.materializeExactSnapshot(snapshotSha);
+        } catch (DefaultFormulaResultMaterializer.SnapshotNotFoundException exception) {
+            throw new ApiProblem(
+                    404,
+                    "DECISION_INPUT_SNAPSHOT_NOT_FOUND",
+                    "No persisted Decision Input snapshot has the requested exact identity"
+            );
+        } catch (DefaultFormulaResultMaterializer.UnsupportedSnapshotContractException exception) {
+            throw new ApiProblem(
+                    422,
+                    "FORMULA_MATERIALIZATION_REQUIRES_DECISION_INPUT_V3",
+                    "Formula V1 materialization accepts only a persisted Decision Input Snapshot V3"
+            );
+        } catch (DefaultFormulaResultMaterializer.ResultConflictException exception) {
+            throw new ApiProblem(
+                    409,
+                    "FORMULA_RESULT_CONFLICT",
+                    "A conflicting Formula result is already persisted for this exact Decision Input"
+            );
+        }
+
+        FormulaResultInstallResult.Status installStatus = materialized.installResult().status();
+        StoredFormulaResult stored = materialized.storedResult();
+        int status = installStatus == FormulaResultInstallResult.Status.INSERTED ? 201 : 200;
+        String explanationSha = stored.explanationSha256();
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("contractId", MATERIALIZATION_CONTRACT_ID);
+        body.put("materializationStatus", installStatus.name());
+        body.put("inputSnapshotSha256", stored.inputSnapshotSha256());
+        body.put("resultId", stored.id().toString());
+        body.put("formulaId", stored.formulaId());
+        body.put("formulaVersion", stored.formulaVersion());
+        body.put("formulaSha256", stored.formulaSha256());
+        body.put("resultState", stored.resultState().name());
+        body.put("reasonCodes", stored.reasonCodes());
+        body.put("relativeRiskIndex", decimal(stored.relativeRiskIndex()));
+        body.put("explanationSha256", explanationSha);
+        body.put("replayVerified", true);
+        body.put("persistedAt", stored.persistedAt().toString());
+
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("ETag", strongEtag(explanationSha));
+        headers.put("Location", "/api/v1/formula-results/" + explanationSha);
+        return new Response(status, headers, body);
     }
 
     private Response response(StoredFormulaResult stored) throws IOException {
@@ -179,7 +240,9 @@ public final class FormulaResultApi {
                 throw new IllegalArgumentException("status must be an HTTP status code");
             }
             headers = Map.copyOf(Objects.requireNonNull(headers, "headers"));
-            body = Map.copyOf(Objects.requireNonNull(body, "body"));
+            body = Collections.unmodifiableMap(
+                    new LinkedHashMap<>(Objects.requireNonNull(body, "body"))
+            );
         }
     }
 
