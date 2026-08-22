@@ -96,6 +96,20 @@ def verify_exporter():
                 ],
                 "canonical CVE export must be normalized, unique, and deterministic",
             )
+
+            rejected = subprocess.run(
+                ["python3", str(EXPORTER), str(output), "--api-base", "http://example.com"],
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env={**os.environ, "RBVM_INTELLIGENCE_API_KEY": "must-not-leak"},
+            )
+            require(rejected.returncode != 0, "remote plaintext HTTP must be rejected before a request")
+            require(
+                "remote RBVM API endpoints must use HTTPS" in rejected.stderr,
+                "remote plaintext rejection must explain the HTTPS requirement",
+            )
         require(len(Handler.requests) == 2, "exporter did not follow Cases API pagination")
         require(Handler.requests[0].get("limit") == ["100"], "exporter must request the bounded page size")
         require(Handler.requests[1].get("cursor") == ["page-2"], "exporter lost the pagination cursor")
@@ -107,8 +121,10 @@ def verify_exporter():
 
 def verify_handoff():
     wrapper = WRAPPER.read_text(encoding="utf-8")
+    exporter = EXPORTER.read_text(encoding="utf-8")
     service = SERVICE.read_text(encoding="utf-8")
     require("export-current-cves.py" in wrapper, "refresh wrapper must derive canonical CVEs")
+    require("build_opener(NoRedirects)" in exporter, "canonical API reads must not follow redirects")
     require(
         'RBVM_CVSS_INPUT="$input"' in wrapper
         and 'RBVM_EPSS_INPUT="$input"' in wrapper
