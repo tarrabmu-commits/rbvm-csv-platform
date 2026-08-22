@@ -36,7 +36,8 @@ for source, name in services.items():
         "epss": "scheduled-epss-refresh.sh",
         "kev": "scheduled-cisa-kev-refresh.sh",
     }[source]
-    if "ExecStart=" in service and f"scripts/{legacy}" in service:
+    exec_lines = [line.strip() for line in service.splitlines() if line.strip().startswith("ExecStart=")]
+    if any(f"scripts/{legacy}" in line for line in exec_lines):
         raise AssertionError(f"{name}: must not run the static-input source script directly")
     if "canonical-intelligence-refresh" not in service:
         raise AssertionError(f"{name}: canonical-CVE staging path must be writable")
@@ -48,11 +49,26 @@ examples = (
 )
 for name in examples:
     example = (DEPLOY / name).read_text(encoding="utf-8")
-    if "current-wazuh" in example or "RBVM_CVSS_INPUT=" in example \
-            or "RBVM_EPSS_INPUT=" in example or "RBVM_KEV_INPUT=" in example:
+    active = "\n".join(
+        line.strip() for line in example.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    )
+    if "current-wazuh" in active or "RBVM_CVSS_INPUT=" in active \
+            or "RBVM_EPSS_INPUT=" in active or "RBVM_KEV_INPUT=" in active:
         raise AssertionError(f"{name}: deployed source refresh must not pin a static CVE input")
-    if "RBVM_API_BASE_URL=" not in example:
+    if "RBVM_API_BASE_URL=" not in active:
         raise AssertionError(f"{name}: canonical Cases API base must be explicit")
+
+umbrella_service = (SYSTEMD / "rbvm-intelligence-refresh.service").read_text(encoding="utf-8")
+for path in (
+    "canonical-intelligence-refresh",
+    "rbvm-platform/cvss-v31",
+    ".cache/rbvm-platform/cvss-v31",
+    "rbvm-platform/epss",
+    "rbvm-platform/cisa-kev",
+):
+    if path not in umbrella_service:
+        raise AssertionError(f"umbrella service sandbox missing writable path {path!r}")
 
 umbrella = (SYSTEMD / "rbvm-intelligence-refresh.timer").read_text(encoding="utf-8")
 source_timers = (
