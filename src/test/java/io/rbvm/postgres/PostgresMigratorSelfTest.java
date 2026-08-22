@@ -17,7 +17,7 @@ import java.util.Locale;
 import java.util.Map;
 
 public final class PostgresMigratorSelfTest {
-    private static final int LATEST_SCHEMA_VERSION = 22;
+    private static final int LATEST_SCHEMA_VERSION = 23;
 
     private PostgresMigratorSelfTest() {
     }
@@ -82,6 +82,7 @@ public final class PostgresMigratorSelfTest {
         assert database.executedSql.stream().anyMatch(sql -> sql.contains("RBVM_DECISION_INPUT_SNAPSHOT_V3"));
         assert database.executedSql.stream().anyMatch(sql -> sql.contains("FINDING_REACHABILITY_SCOPE_LINK_EVENT"));
         assert database.executedSql.stream().anyMatch(sql -> sql.contains("FINDING_BUSINESS_SERVICE_LINK_EVENT"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.formula_result"));
 
         long observationCreates = count(database, "CREATE TABLE rbvm.observation (");
         long operationalFindingCreates = count(database, "CREATE VIEW rbvm.operational_finding");
@@ -112,6 +113,7 @@ public final class PostgresMigratorSelfTest {
         long findingBusinessServiceLinkCreates = count(
                 database, "CREATE TABLE rbvm.finding_business_service_link_event");
         long v3ContractAlterations = count(database, "RBVM_DECISION_INPUT_SNAPSHOT_V3");
+        long formulaResultCreates = count(database, "CREATE TABLE rbvm.formula_result");
 
         assert migrator.migrate() == LATEST_SCHEMA_VERSION;
         assert database.commits == LATEST_SCHEMA_VERSION : "replay must not reapply migrations";
@@ -144,6 +146,7 @@ public final class PostgresMigratorSelfTest {
         assert count(database, "CREATE TABLE rbvm.finding_business_service_link_event")
                 == findingBusinessServiceLinkCreates;
         assert count(database, "RBVM_DECISION_INPUT_SNAPSHOT_V3") == v3ContractAlterations;
+        assert count(database, "CREATE TABLE rbvm.formula_result") == formulaResultCreates;
         assert database.advisoryLocks == 2;
         assert database.advisoryUnlocks == 2;
     }
