@@ -2,8 +2,6 @@ package io.rbvm.postgres;
 
 import io.rbvm.decision.RbvmDecisionInputSnapshot;
 import io.rbvm.decision.RbvmFormulaV1;
-import io.rbvm.decision.RbvmFormulaV1Explanation;
-import io.rbvm.decision.RbvmResolvedDecisionInput;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -13,7 +11,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 
-/** Live PostgreSQL coverage for V23 Formula-result persistence and exact historical replay. */
+/** Live PostgreSQL coverage for V23 Formula-result materialization, persistence, and replay. */
 public final class PostgresV23FormulaResultLiveSelfTest {
     private PostgresV23FormulaResultLiveSelfTest() {
     }
@@ -64,39 +62,45 @@ public final class PostgresV23FormulaResultLiveSelfTest {
                 runtimeConnections,
                 schemaVersion
         );
-        RbvmResolvedDecisionInput resolved = resolver.resolve(snapshot);
-        RbvmFormulaV1.FormulaResult formulaResult = RbvmFormulaV1.evaluate(resolved);
-        RbvmFormulaV1Explanation explanation = RbvmFormulaV1Explanation.from(
-                resolved,
-                formulaResult
-        );
-
         PostgresFormulaResultStore formulaResults = new PostgresFormulaResultStore(
                 runtimeConnections,
                 false
         );
-        FormulaResultInstallResult inserted = formulaResults.install(explanation);
-        require(inserted.status() == FormulaResultInstallResult.Status.INSERTED,
-                "first Formula result install must append exactly one row");
-        FormulaResultInstallResult replayed = formulaResults.install(explanation);
-        require(replayed.status() == FormulaResultInstallResult.Status.REPLAYED,
-                "exact Formula result retry must replay without a second row");
-
-        StoredFormulaResult stored = formulaResults
-                .findByExplanationSha256(explanation.canonicalSha256())
-                .orElseThrow();
-        require(stored.inputSnapshotSha256().equals(snapshot.snapshotSha256()),
-                "stored Formula result must retain exact input snapshot identity");
-        require(stored.formulaSha256().equals(RbvmFormulaV1.FORMULA_SHA256),
-                "stored Formula result must retain accepted Formula V1 identity");
-        require(stored.explanationSha256().equals(explanation.canonicalSha256()),
-                "stored Formula result must retain canonical explanation identity");
-
         FormulaResultReplayVerifier replayVerifier = new FormulaResultReplayVerifier(
                 formulaResults,
                 decisionInputs,
                 resolver
         );
+        DefaultFormulaResultMaterializer materializer = new DefaultFormulaResultMaterializer(
+                decisionInputs,
+                resolver,
+                formulaResults,
+                replayVerifier
+        );
+
+        FormulaResultMaterializationResult inserted = materializer.materialize(snapshotSha);
+        require(inserted.installResult().status() == FormulaResultInstallResult.Status.INSERTED,
+                "first production Formula materialization must append exactly one row");
+        require(inserted.explanation().inputSnapshotSha256().equals(snapshot.snapshotSha256()),
+                "materialization must evaluate only the exact persisted Decision Input identity");
+
+        FormulaResultMaterializationResult replayed = materializer.materialize(snapshotSha);
+        require(replayed.installResult().status() == FormulaResultInstallResult.Status.REPLAYED,
+                "exact Formula materialization retry must replay without a second row");
+        require(replayed.explanation().canonicalSha256()
+                        .equals(inserted.explanation().canonicalSha256()),
+                "exact materialization replay must preserve canonical explanation identity");
+
+        StoredFormulaResult stored = formulaResults
+                .findByExplanationSha256(inserted.explanation().canonicalSha256())
+                .orElseThrow();
+        require(stored.inputSnapshotSha256().equals(snapshot.snapshotSha256()),
+                "stored Formula result must retain exact input snapshot identity");
+        require(stored.formulaSha256().equals(RbvmFormulaV1.FORMULA_SHA256),
+                "stored Formula result must retain accepted Formula V1 identity");
+        require(stored.explanationSha256().equals(inserted.explanation().canonicalSha256()),
+                "stored Formula result must retain canonical explanation identity");
+
         replayVerifier.verify(stored);
         replayVerifier.verifyBySnapshotAndFormula(
                 snapshot.snapshotSha256(),
@@ -105,11 +109,12 @@ public final class PostgresV23FormulaResultLiveSelfTest {
 
         proveAppendOnly(runtimeConnections);
         require(formulaRowCount(runtimeConnections) == 1,
-                "Formula result retries must not create duplicate rows");
+                "Formula materialization retries must not create duplicate rows");
 
         System.out.println(
-                "PostgresV23FormulaResultLiveSelfTest: PASS schema=23 formula_result=PASS "
-                        + "decision_v3_append_only=PASS idempotency=PASS replay=PASS append_only=PASS"
+                "PostgresV23FormulaResultLiveSelfTest: PASS schema=23 materialization=PASS "
+                        + "formula_result=PASS decision_v3_append_only=PASS idempotency=PASS "
+                        + "replay=PASS append_only=PASS"
         );
     }
 
