@@ -1,6 +1,7 @@
 package io.rbvm.postgres;
 
 import io.rbvm.decision.RbvmDecisionInputSnapshot;
+import io.rbvm.decision.RbvmDecisionMethodologyPolicy;
 import io.rbvm.decision.RbvmFormulaV1;
 
 import java.lang.reflect.InvocationTargetException;
@@ -11,7 +12,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 
-/** Live PostgreSQL coverage for V23 Formula-result materialization, persistence, and replay. */
+/** Live PostgreSQL coverage for V23 Decision Input transport data and Formula replay. */
 public final class PostgresV23FormulaResultLiveSelfTest {
     private PostgresV23FormulaResultLiveSelfTest() {
     }
@@ -58,6 +59,63 @@ public final class PostgresV23FormulaResultLiveSelfTest {
         RbvmDecisionInputSnapshot snapshot = decisionInputs.findBySha256(snapshotSha).orElseThrow();
         require(snapshot.isV3(), "persisted Formula input must be Decision Input V3");
 
+        PostgresDecisionMethodologyPolicyStore methodologyPolicies =
+                new PostgresDecisionMethodologyPolicyStore(runtimeConnections, false);
+        PostgresDecisionInputHistoryReader historyReader = new PostgresDecisionInputHistoryReader(
+                runtimeConnections,
+                decisionInputs,
+                schemaVersion
+        );
+        PostgresDecisionMethodologyCatalog methodologyCatalog =
+                new PostgresDecisionMethodologyCatalog(
+                        runtimeConnections,
+                        methodologyPolicies,
+                        schemaVersion
+                );
+        DecisionInputRuntimeAccess.SnapshotHistoryPage history = historyReader.history(
+                snapshot.findingId(),
+                100,
+                null,
+                null
+        );
+        require(history.snapshots().stream().anyMatch(item ->
+                        item.snapshotSha256().equals(snapshot.snapshotSha256())),
+                "Decision Input history must expose the exact persisted V3 snapshot");
+        DecisionInputRuntimeAccess.MethodologyPage catalog = methodologyCatalog.list(100, null);
+        RbvmDecisionMethodologyPolicy methodology = catalog.methodologies().stream()
+                .filter(item -> item.revision() == snapshot.methodologyRevision())
+                .findFirst()
+                .orElseThrow(() -> new AssertionError(
+                        "Decision Methodology catalog must expose the snapshot policy revision"
+                ));
+        require(methodology.policySha256().equals(snapshot.methodologyPolicySha256()),
+                "Methodology catalog revision must retain exact policy SHA identity");
+
+        PostgresDecisionInputSnapshotBuilder decisionBuilder =
+                new PostgresDecisionInputSnapshotBuilder(
+                        runtimeConnections,
+                        methodologyPolicies,
+                        schemaVersion
+                );
+        DecisionInputRuntimeAccess decisionRuntime = new DecisionInputRuntimeAccess(
+                methodologyPolicies,
+                decisionInputs,
+                new DefaultDecisionInputSnapshotMaterializer(decisionBuilder, decisionInputs),
+                historyReader,
+                methodologyCatalog
+        );
+        DecisionInputSnapshotMaterializationResult decisionReplay = decisionRuntime.materialize(
+                snapshot.findingId(),
+                snapshot.methodologyRevision(),
+                snapshot.methodologyPolicySha256(),
+                snapshot.evaluatedAt()
+        );
+        require(decisionReplay.installResult().status()
+                        == DecisionInputSnapshotInstallResult.Status.REPLAYED,
+                "exact Decision Input operator retry must replay the immutable snapshot");
+        require(decisionReplay.snapshot().snapshotSha256().equals(snapshot.snapshotSha256()),
+                "Decision Input operator replay must preserve exact canonical snapshot identity");
+
         PostgresDecisionInputEvidenceResolver resolver = new PostgresDecisionInputEvidenceResolver(
                 runtimeConnections,
                 schemaVersion
@@ -69,7 +127,8 @@ public final class PostgresV23FormulaResultLiveSelfTest {
         FormulaResultReplayVerifier replayVerifier = new FormulaResultReplayVerifier(
                 formulaResults,
                 decisionInputs,
-                resolver
+                resolver,
+                decisionRuntime
         );
         DefaultFormulaResultMaterializer materializer = new DefaultFormulaResultMaterializer(
                 decisionInputs,
@@ -112,9 +171,10 @@ public final class PostgresV23FormulaResultLiveSelfTest {
                 "Formula materialization retries must not create duplicate rows");
 
         System.out.println(
-                "PostgresV23FormulaResultLiveSelfTest: PASS schema=23 materialization=PASS "
-                        + "formula_result=PASS decision_v3_append_only=PASS idempotency=PASS "
-                        + "replay=PASS append_only=PASS"
+                "PostgresV23FormulaResultLiveSelfTest: PASS schema=23 decision_history=PASS "
+                        + "methodology_catalog=PASS decision_materialization_replay=PASS "
+                        + "materialization=PASS formula_result=PASS decision_v3_append_only=PASS "
+                        + "idempotency=PASS replay=PASS append_only=PASS"
         );
     }
 

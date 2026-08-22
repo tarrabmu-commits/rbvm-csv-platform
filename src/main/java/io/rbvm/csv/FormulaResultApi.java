@@ -18,6 +18,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Exact-identity contract logic for immutable, replay-verified RBVM Formula results.
@@ -34,6 +35,7 @@ public final class FormulaResultApi {
 
     private final FormulaResultStore results;
     private final FormulaResultReplayVerifier replayVerifier;
+    private final Optional<DecisionInputApi> decisionInputs;
 
     public FormulaResultApi(
             FormulaResultStore results,
@@ -41,6 +43,11 @@ public final class FormulaResultApi {
     ) {
         this.results = Objects.requireNonNull(results, "results");
         this.replayVerifier = Objects.requireNonNull(replayVerifier, "replayVerifier");
+        this.decisionInputs = replayVerifier.decisionInputRuntime().map(DecisionInputApi::new);
+    }
+
+    Optional<DecisionInputApi> decisionInputs() {
+        return decisionInputs;
     }
 
     /** Exact immutable lookup by canonical explanation SHA-256 identity. */

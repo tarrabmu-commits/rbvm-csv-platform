@@ -9,6 +9,7 @@ import io.rbvm.decision.RbvmResolvedDecisionInput;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Replays one persisted Formula result only from its immutable Decision Input V3 provenance.
@@ -22,15 +23,47 @@ public final class FormulaResultReplayVerifier {
     private final FormulaResultStore formulaResults;
     private final DecisionInputSnapshotStore decisionInputs;
     private final DecisionInputEvidenceResolver evidenceResolver;
+    private final Optional<DecisionInputRuntimeAccess> decisionInputRuntime;
 
     public FormulaResultReplayVerifier(
             FormulaResultStore formulaResults,
             DecisionInputSnapshotStore decisionInputs,
             DecisionInputEvidenceResolver evidenceResolver
     ) {
+        this(formulaResults, decisionInputs, evidenceResolver, Optional.empty());
+    }
+
+    public FormulaResultReplayVerifier(
+            FormulaResultStore formulaResults,
+            DecisionInputSnapshotStore decisionInputs,
+            DecisionInputEvidenceResolver evidenceResolver,
+            DecisionInputRuntimeAccess decisionInputRuntime
+    ) {
+        this(
+                formulaResults,
+                decisionInputs,
+                evidenceResolver,
+                Optional.of(Objects.requireNonNull(decisionInputRuntime, "decisionInputRuntime"))
+        );
+    }
+
+    private FormulaResultReplayVerifier(
+            FormulaResultStore formulaResults,
+            DecisionInputSnapshotStore decisionInputs,
+            DecisionInputEvidenceResolver evidenceResolver,
+            Optional<DecisionInputRuntimeAccess> decisionInputRuntime
+    ) {
         this.formulaResults = Objects.requireNonNull(formulaResults, "formulaResults");
         this.decisionInputs = Objects.requireNonNull(decisionInputs, "decisionInputs");
         this.evidenceResolver = Objects.requireNonNull(evidenceResolver, "evidenceResolver");
+        this.decisionInputRuntime = Objects.requireNonNull(
+                decisionInputRuntime,
+                "decisionInputRuntime"
+        );
+    }
+
+    public Optional<DecisionInputRuntimeAccess> decisionInputRuntime() {
+        return decisionInputRuntime;
     }
 
     public StoredFormulaResult verifyByExplanationSha256(String explanationSha256)

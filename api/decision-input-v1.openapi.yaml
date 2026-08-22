@@ -1,0 +1,542 @@
+openapi: 3.0.3
+info:
+  title: RBVM Decision Input API V1
+  version: 1.0.0
+  description: >-
+    Exact-identity transport for immutable RBVM Decision Input snapshots and installed
+    Decision Methodology policies. History/catalog ordering exists only for pagination;
+    this API defines no latest, current, preferred, priority, SLA, or treatment selector.
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/decision-input-snapshots/{snapshotSha256}:
+    get:
+      operationId: getDecisionInputSnapshotBySha256
+      summary: Read one exact persisted Decision Input snapshot
+      description: Historical V1/V2 and current V3 immutable snapshots remain readable by exact SHA.
+      parameters:
+        - name: snapshotSha256
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Sha256'
+      responses:
+        '200':
+          description: Exact immutable snapshot
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotResponse'
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '503': { $ref: '#/components/responses/Problem' }
+  /api/v1/findings/{findingId}/decision-input-snapshots:
+    get:
+      operationId: listDecisionInputSnapshotHistory
+      summary: Read immutable Decision Input snapshot history for one Finding
+      description: >-
+        Results are ordered by evaluatedAt descending and snapshot SHA descending solely
+        for deterministic keyset pagination. No returned row is designated latest/current.
+      parameters:
+        - name: findingId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+        - name: beforeEvaluatedAt
+          in: query
+          required: false
+          description: Must be supplied together with beforeSnapshotSha256.
+          schema:
+            type: string
+            format: date-time
+        - name: beforeSnapshotSha256
+          in: query
+          required: false
+          description: Must be supplied together with beforeEvaluatedAt.
+          schema:
+            $ref: '#/components/schemas/Sha256'
+      responses:
+        '200':
+          description: Immutable snapshot history page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotHistoryResponse'
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '503': { $ref: '#/components/responses/Problem' }
+  /api/v1/decision-input-materializations:
+    post:
+      operationId: materializeDecisionInputSnapshot
+      summary: Build and persist one Decision Input V3 snapshot from explicit identity inputs
+      description: >-
+        Requires OPERATOR. The command accepts an explicit Finding, exact registered
+        methodology revision/SHA, and exact evaluation instant. It never selects a current
+        Finding, methodology, evaluation time, or evidence source winner on behalf of the caller.
+        A successful materialization always returns RBVM_DECISION_INPUT_SNAPSHOT_V3.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MaterializationRequest'
+      responses:
+        '200':
+          description: Exact immutable V3 snapshot replayed idempotently
+          headers:
+            ETag:
+              schema: { type: string }
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterializationResponse'
+        '201':
+          description: Exact immutable V3 snapshot inserted
+          headers:
+            ETag:
+              schema: { type: string }
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterializationResponse'
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '415': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+        '503': { $ref: '#/components/responses/Problem' }
+  /api/v1/decision-methodologies:
+    get:
+      operationId: listDecisionMethodologies
+      summary: Read installed Decision Methodology identities
+      description: Revision order is pagination-only and carries no precedence or preference.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+        - name: afterRevision
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Installed methodology catalog page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MethodologyCatalogResponse'
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '503': { $ref: '#/components/responses/Problem' }
+  /api/v1/decision-methodologies/{revision}:
+    get:
+      operationId: getDecisionMethodologyByRevision
+      summary: Read one exact installed Decision Methodology revision
+      parameters:
+        - name: revision
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Exact installed methodology
+          headers:
+            ETag:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MethodologyResponse'
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '503': { $ref: '#/components/responses/Problem' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  responses:
+    Problem:
+      description: RFC-style API problem response
+      content:
+        application/problem+json:
+          schema:
+            type: object
+            additionalProperties: true
+  schemas:
+    Sha256:
+      type: string
+      pattern: '^[a-f0-9]{64}$'
+    MaterializationRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - findingId
+        - methodologyRevision
+        - methodologyPolicySha256
+        - evaluatedAt
+      properties:
+        findingId:
+          type: string
+          format: uuid
+        methodologyRevision:
+          type: integer
+          minimum: 1
+        methodologyPolicySha256:
+          $ref: '#/components/schemas/Sha256'
+        evaluatedAt:
+          type: string
+          format: date-time
+    MaterializationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - contractId
+        - materializationStatus
+        - snapshot
+      properties:
+        contractId:
+          type: string
+          enum: [RBVM_DECISION_INPUT_MATERIALIZATION_API_V1]
+        materializationStatus:
+          type: string
+          enum: [INSERTED, REPLAYED]
+        snapshot:
+          allOf:
+            - $ref: '#/components/schemas/Snapshot'
+          description: Always RBVM_DECISION_INPUT_SNAPSHOT_V3 for this mutation contract.
+    SnapshotResponse:
+      type: object
+      additionalProperties: false
+      required: [contractId, snapshot]
+      properties:
+        contractId:
+          type: string
+          enum: [RBVM_DECISION_INPUT_API_V1]
+        snapshot:
+          $ref: '#/components/schemas/Snapshot'
+    SnapshotHistoryResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - contractId
+        - findingId
+        - snapshots
+        - nextBeforeEvaluatedAt
+        - nextBeforeSnapshotSha256
+      properties:
+        contractId:
+          type: string
+          enum: [RBVM_DECISION_INPUT_API_V1]
+        findingId:
+          type: string
+          format: uuid
+        snapshots:
+          type: array
+          items:
+            $ref: '#/components/schemas/SnapshotSummary'
+        nextBeforeEvaluatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        nextBeforeSnapshotSha256:
+          allOf:
+            - $ref: '#/components/schemas/Sha256'
+          nullable: true
+    Snapshot:
+      type: object
+      additionalProperties: false
+      required:
+        - contractId
+        - semantics
+        - snapshotSha256
+        - findingId
+        - methodologyRevision
+        - methodologyPolicySha256
+        - evaluatedAt
+        - canonicalPayloadFormat
+        - canonicalPayloadBase64
+        - dimensions
+      properties:
+        contractId:
+          type: string
+          enum:
+            - RBVM_DECISION_INPUT_SNAPSHOT_V1
+            - RBVM_DECISION_INPUT_SNAPSHOT_V2
+            - RBVM_DECISION_INPUT_SNAPSHOT_V3
+        semantics:
+          type: string
+          enum:
+            - FINDING_SCOPED_POLICY_BOUND_EVIDENCE_REFERENCE_SNAPSHOT
+            - FINDING_SCOPED_POLICY_BOUND_TYPED_EVIDENCE_REFERENCE_SNAPSHOT
+            - FINDING_SCOPED_POLICY_BOUND_TYPED_ASSOCIATION_PROVENANCE_SNAPSHOT
+        snapshotSha256:
+          $ref: '#/components/schemas/Sha256'
+        findingId:
+          type: string
+          format: uuid
+        methodologyRevision:
+          type: integer
+          minimum: 1
+        methodologyPolicySha256:
+          $ref: '#/components/schemas/Sha256'
+        evaluatedAt:
+          type: string
+          format: date-time
+        canonicalPayloadFormat:
+          type: string
+          enum:
+            - RBVM_DECISION_INPUT_SNAPSHOT_CANONICAL_BINARY_V1
+            - RBVM_DECISION_INPUT_SNAPSHOT_CANONICAL_BINARY_V2
+            - RBVM_DECISION_INPUT_SNAPSHOT_CANONICAL_BINARY_V3
+        canonicalPayloadBase64:
+          type: string
+          format: byte
+        dimensions:
+          type: array
+          minItems: 7
+          maxItems: 7
+          items:
+            $ref: '#/components/schemas/Dimension'
+    SnapshotSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - contractId
+        - snapshotSha256
+        - findingId
+        - methodologyRevision
+        - methodologyPolicySha256
+        - evaluatedAt
+        - dimensionStates
+      properties:
+        contractId:
+          type: string
+          enum:
+            - RBVM_DECISION_INPUT_SNAPSHOT_V1
+            - RBVM_DECISION_INPUT_SNAPSHOT_V2
+            - RBVM_DECISION_INPUT_SNAPSHOT_V3
+        snapshotSha256:
+          $ref: '#/components/schemas/Sha256'
+        findingId:
+          type: string
+          format: uuid
+        methodologyRevision:
+          type: integer
+        methodologyPolicySha256:
+          $ref: '#/components/schemas/Sha256'
+        evaluatedAt:
+          type: string
+          format: date-time
+        dimensionStates:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/DimensionState'
+    DimensionState:
+      type: string
+      enum: [PRESENT, MISSING, AMBIGUOUS, STALE]
+    Dimension:
+      type: object
+      additionalProperties: false
+      required: [dimension, state, evidenceReferences]
+      properties:
+        dimension:
+          type: string
+          enum:
+            - APPLICABILITY
+            - TECHNICAL_SEVERITY
+            - KNOWN_EXPLOITATION
+            - EXPLOITATION_PROBABILITY
+            - ASSET_CONTEXT
+            - NETWORK_REACHABILITY
+            - BUSINESS_MISSION_IMPACT
+        state:
+          $ref: '#/components/schemas/DimensionState'
+        evidenceReferences:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceReference'
+    EvidenceReference:
+      type: object
+      additionalProperties: false
+      required:
+        - nativeEvidenceKind
+        - evidenceId
+        - evidenceSha256
+        - evidenceSource
+        - observedAt
+        - binding
+      properties:
+        nativeEvidenceKind:
+          type: string
+        evidenceId:
+          type: string
+          format: uuid
+        evidenceSha256:
+          $ref: '#/components/schemas/Sha256'
+        evidenceSource:
+          type: string
+        observedAt:
+          type: string
+          format: date-time
+        binding:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/BindingReference'
+    BindingReference:
+      type: object
+      additionalProperties: false
+      required: [bindingKind, bindingId, bindingSha256, bindingSource, recordedAt]
+      properties:
+        bindingKind:
+          type: string
+          enum:
+            - SCANNER_MANAGED_ASSET_LINK_EVENT
+            - FINDING_REACHABILITY_SCOPE_LINK_EVENT
+            - FINDING_BUSINESS_SERVICE_LINK_EVENT
+        bindingId:
+          type: string
+          format: uuid
+        bindingSha256:
+          $ref: '#/components/schemas/Sha256'
+        bindingSource:
+          type: string
+        recordedAt:
+          type: string
+          format: date-time
+    MethodologyResponse:
+      type: object
+      additionalProperties: false
+      required: [contractId, methodology]
+      properties:
+        contractId:
+          type: string
+          enum: [RBVM_DECISION_METHODOLOGY_CATALOG_API_V1]
+        methodology:
+          $ref: '#/components/schemas/Methodology'
+    MethodologyCatalogResponse:
+      type: object
+      additionalProperties: false
+      required: [contractId, methodologies, nextAfterRevision, orderingSemantics]
+      properties:
+        contractId:
+          type: string
+          enum: [RBVM_DECISION_METHODOLOGY_CATALOG_API_V1]
+        methodologies:
+          type: array
+          items:
+            $ref: '#/components/schemas/Methodology'
+        nextAfterRevision:
+          type: integer
+          nullable: true
+          minimum: 1
+        orderingSemantics:
+          type: string
+          enum: [REVISION_ASCENDING_FOR_PAGINATION_ONLY_NO_PRECEDENCE_OR_PREFERENCE]
+    Methodology:
+      type: object
+      additionalProperties: false
+      required:
+        - contractId
+        - semantics
+        - revision
+        - policySha256
+        - subjectScope
+        - missingEvidenceHandling
+        - ambiguityHandling
+        - legacyPriorityHandling
+        - canonicalPayloadFormat
+        - canonicalPayloadBase64
+        - evidencePolicies
+      properties:
+        contractId:
+          type: string
+          enum: [RBVM_DECISION_METHODOLOGY_V1]
+        semantics:
+          type: string
+          enum: [FINDING_SCOPED_EXPLICIT_EVIDENCE_SELECTION_POLICY]
+        revision:
+          type: integer
+          minimum: 1
+        policySha256:
+          $ref: '#/components/schemas/Sha256'
+        subjectScope:
+          type: string
+          enum: [FINDING]
+        missingEvidenceHandling:
+          type: string
+          enum: [PRESERVE_UNKNOWN]
+        ambiguityHandling:
+          type: string
+          enum: [PRESERVE_AMBIGUOUS]
+        legacyPriorityHandling:
+          type: string
+          enum: [EXCLUDE_LEGACY_PRIORITY_TIER]
+        canonicalPayloadFormat:
+          type: string
+          enum: [RBVM_DECISION_METHODOLOGY_CANONICAL_BINARY_V1]
+        canonicalPayloadBase64:
+          type: string
+          format: byte
+        evidencePolicies:
+          type: array
+          minItems: 7
+          maxItems: 7
+          items:
+            $ref: '#/components/schemas/EvidenceSelectionPolicy'
+    EvidenceSelectionPolicy:
+      type: object
+      additionalProperties: false
+      required:
+        - dimension
+        - sourceSelectionMode
+        - sourceAllowlist
+        - freshnessMode
+        - maximumAgeSeconds
+      properties:
+        dimension:
+          type: string
+        sourceSelectionMode:
+          type: string
+          enum: [ALL_SOURCES, EXPLICIT_ALLOWLIST]
+        sourceAllowlist:
+          type: array
+          items: { type: string }
+        freshnessMode:
+          type: string
+          enum: [NO_AGE_LIMIT, MAX_AGE_SECONDS]
+        maximumAgeSeconds:
+          type: integer
+          nullable: true
+          minimum: 1

@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
-/** Discovers replay-verified Formula Result read/materialization capabilities from PostgreSQL V23+. */
+/** Discovers replay-verified Formula Result capabilities from PostgreSQL V23+. */
 public final class FormulaResultRuntimeFactory {
     private static final int REQUIRED_SCHEMA_VERSION = 23;
 
@@ -32,6 +32,12 @@ public final class FormulaResultRuntimeFactory {
             return Optional.empty();
         }
 
+        DecisionInputRuntimeAccess decisionInputs = DecisionInputRuntimeFactory
+                .fromEnvironment(environment)
+                .orElseThrow(() -> new IOException(
+                        "Decision Input workflow is unavailable despite PostgreSQL V23 Formula runtime"
+                ));
+
         FormulaResultStore results = new PostgresFormulaResultStore(connections, false);
         DecisionInputSnapshotStore snapshots = new PostgresDecisionInputSnapshotStore(
                 connections,
@@ -42,7 +48,8 @@ public final class FormulaResultRuntimeFactory {
         FormulaResultReplayVerifier replayVerifier = new FormulaResultReplayVerifier(
                 results,
                 snapshots,
-                evidenceResolver
+                evidenceResolver,
+                decisionInputs
         );
         FormulaResultMaterializer materializer = new DefaultFormulaResultMaterializer(
                 snapshots,
@@ -50,18 +57,25 @@ public final class FormulaResultRuntimeFactory {
                 results,
                 replayVerifier
         );
-        return Optional.of(new Runtime(results, replayVerifier, materializer));
+        return Optional.of(new Runtime(
+                results,
+                replayVerifier,
+                materializer,
+                decisionInputs
+        ));
     }
 
     public record Runtime(
             FormulaResultStore results,
             FormulaResultReplayVerifier replayVerifier,
-            FormulaResultMaterializer materializer
+            FormulaResultMaterializer materializer,
+            DecisionInputRuntimeAccess decisionInputs
     ) {
         public Runtime {
             results = Objects.requireNonNull(results, "results");
             replayVerifier = Objects.requireNonNull(replayVerifier, "replayVerifier");
             materializer = Objects.requireNonNull(materializer, "materializer");
+            decisionInputs = Objects.requireNonNull(decisionInputs, "decisionInputs");
         }
     }
 }
