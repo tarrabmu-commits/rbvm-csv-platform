@@ -4,10 +4,13 @@ import io.rbvm.domain.CasePage;
 import io.rbvm.domain.CaseQuery;
 import io.rbvm.domain.DomainCatalog;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -30,24 +33,28 @@ public final class PostgresEvidenceAwareCatalogLiveSelfTest {
     public static void main(String[] args) throws Exception {
         PostgresProjectionSettings settings = PostgresProjectionSettings.fromEnvironment(System.getenv());
         require(settings.enabled(), "PostgreSQL settings must be enabled");
-        JdbcConnectionFactory connections = new DriverManagerConnectionFactory(
+        JdbcConnectionFactory ownerConnections = new DriverManagerConnectionFactory(
                 settings.jdbcUrl(), settings.user(), settings.password());
-        int schemaVersion = new PostgresMigrator(connections).installedVersion();
+        int schemaVersion = new PostgresMigrator(ownerConnections).installedVersion();
         require(schemaVersion >= 12, "dedicated intelligence views require PostgreSQL V12+");
 
-        Target target = target(connections);
+        Target target = target(ownerConnections);
+        installRuntimeRole(ownerConnections);
+        setRuntimePassword(ownerConnections);
+        JdbcConnectionFactory runtimeConnections = new DriverManagerConnectionFactory(
+                settings.jdbcUrl(), "rbvm_runtime", "rbvm-live-test");
         DomainCatalog catalog = new PostgresEvidenceAwareCatalog(
-                new PostgresReadCatalog(connections), connections);
+                new PostgresReadCatalog(runtimeConnections), runtimeConnections);
 
         Map<String, Object> before = findCase(catalog, target.cveId());
         Map<String, Object> beforeIntel = intelligence(before);
-        verifyFamilyState(connections, target, beforeIntel,
+        verifyFamilyState(runtimeConnections, target, beforeIntel,
                 "rbvm.current_cvss_v31_base_evidence", "cvssEvidenceState", "cvssBaseScore");
-        verifyFamilyState(connections, target, beforeIntel,
+        verifyFamilyState(runtimeConnections, target, beforeIntel,
                 "rbvm.current_epss_evidence", "epssEvidenceState", "epssProbability");
-        verifyKevState(connections, target, beforeIntel);
+        verifyKevState(runtimeConnections, target, beforeIntel);
 
-        seedTwoAdditionalKevSources(connections, target);
+        seedTwoAdditionalKevSources(ownerConnections, target);
         Map<String, Object> ambiguous = findCase(catalog, target.cveId());
         Map<String, Object> ambiguousIntel = intelligence(ambiguous);
         require("AMBIGUOUS".equals(ambiguousIntel.get("kevEvidenceState")),
@@ -66,7 +73,8 @@ public final class PostgresEvidenceAwareCatalogLiveSelfTest {
 
         System.out.println(
                 "PostgresEvidenceAwareCatalogLiveSelfTest: PASS dedicated_reads=PASS "
-                        + "missing_present_ambiguous=PASS no_hidden_precedence=PASS kev_filter=PASS");
+                        + "runtime_role=PASS missing_present_ambiguous=PASS "
+                        + "no_hidden_precedence=PASS kev_filter=PASS");
     }
 
     private static void verifyFamilyState(
@@ -173,6 +181,19 @@ public final class PostgresEvidenceAwareCatalogLiveSelfTest {
                         rows.getObject(2, UUID.class),
                         rows.getString(3));
             }
+        }
+    }
+
+    private static void installRuntimeRole(JdbcConnectionFactory connections) throws Exception {
+        String script = Files.readString(Path.of("db/security/runtime-role.sql"));
+        try (Connection connection = connections.open(); Statement statement = connection.createStatement()) {
+            statement.execute(script);
+        }
+    }
+
+    private static void setRuntimePassword(JdbcConnectionFactory connections) throws SQLException {
+        try (Connection connection = connections.open(); Statement statement = connection.createStatement()) {
+            statement.execute("ALTER ROLE rbvm_runtime PASSWORD 'rbvm-live-test'");
         }
     }
 
