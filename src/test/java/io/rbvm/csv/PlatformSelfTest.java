@@ -68,6 +68,7 @@ public final class PlatformSelfTest {
         DerivedRiskResultReplayVerifierSelfTest.main(args);
         DefaultDerivedRiskResultMaterializerSelfTest.main(args);
         FormulaResultApiSelfTest.main(args);
+        DerivedRiskResultApiSelfTest.main(args);
         DecisionInputApiSelfTest.main(args);
         DomainCatalogSelfTest.main(args);
         ApiSecuritySelfTest.main(args);
