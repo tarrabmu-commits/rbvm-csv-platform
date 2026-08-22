@@ -85,6 +85,7 @@ for needle in (
 for needle in (
     'PostgresV22LiveSelfTest.class',
     '"exerciseV3"',
+    '"proveAppendOnlyPrivileges"',
     'schemaVersion',
 ):
     if needle not in v23_live:
