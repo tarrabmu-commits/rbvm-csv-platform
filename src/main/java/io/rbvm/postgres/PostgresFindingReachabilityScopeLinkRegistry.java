@@ -21,7 +21,6 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.text.Normalizer;
 import java.time.Clock;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -358,7 +357,7 @@ public final class PostgresFindingReachabilityScopeLinkRegistry
                 FROM rbvm.current_finding_reachability_scope_link
                 WHERE tenant_id = ? AND finding_id = ?
                   AND origin_scope = ? AND origin_label_normalized = ?
-                  AND transport_protocol = ? AND target_port_key = ?
+                  AND transport_protocol = ? AND COALESCE(target_port, 0) = ?
                 """)) {
             statement.setObject(1, tenantId);
             statement.setObject(2, findingId);
