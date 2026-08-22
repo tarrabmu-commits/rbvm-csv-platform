@@ -63,7 +63,34 @@ function patchDrawer(){
     if(['KEV listed','Not listed in KEV','Listed','Not listed','Unknown','Ambiguous'].includes(text)){setValue(element,intel);break}
   }
 }
-function patch(){patchTables();patchDrawer()}
+function coverage(predicate){
+  const values=[...byCve.values()];
+  if(!values.length)return null;
+  return Math.round(values.filter(predicate).length*100/values.length);
+}
+function setMetric(name,value,newLabel=null){
+  for(const metric of document.querySelectorAll('.metric')){
+    const labelNode=metric.querySelector('.metric-label');
+    if((labelNode?.textContent||'').trim()!==name)continue;
+    const valueNode=metric.querySelector('.metric-value');if(valueNode)valueNode.textContent=String(value);
+    if(newLabel)labelNode.textContent=newLabel;
+  }
+}
+function patchCoverage(){
+  if(!byCve.size)return;
+  const cvss=coverage(x=>x.cvssEvidenceState==='PRESENT'&&x.cvssBaseScore!=null);
+  const epss=coverage(x=>x.epssEvidenceState==='PRESENT'&&x.epssProbability!=null);
+  const kev=coverage(x=>x.kevEvidenceState==='PRESENT'&&typeof x.knownExploited==='boolean');
+  const listed=[...byCve.values()].filter(x=>x.kevEvidenceState==='PRESENT'&&x.knownExploited===true).length;
+  setMetric('Known exploited CVEs',listed);
+  setMetric('CVSS available',`${cvss}%`);
+  setMetric('EPSS available',`${epss}%`);
+  setMetric('CVSS coverage',`${cvss}%`);
+  setMetric('EPSS coverage',`${epss}%`);
+  setMetric('KEV assessed',`${kev}%`);
+  setMetric('Findings evaluated',byCve.size,'CVEs evaluated');
+}
+function patch(){patchTables();patchDrawer();patchCoverage()}
 new MutationObserver(schedule).observe(document.documentElement,{childList:true,subtree:true});
 window.addEventListener('DOMContentLoaded',schedule);
 })();
