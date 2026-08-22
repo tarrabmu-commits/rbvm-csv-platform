@@ -12,7 +12,6 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.Base64;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -185,6 +184,8 @@ public final class FormulaResultApi {
     }
 
     public static final class ApiProblem extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+
         private final int status;
         private final String code;
 
