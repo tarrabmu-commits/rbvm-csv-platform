@@ -60,6 +60,7 @@ public final class PlatformSelfTest {
         FormulaResultReplayVerifierSelfTest.main(args);
         DefaultFormulaResultMaterializerSelfTest.main(args);
         FormulaResultApiSelfTest.main(args);
+        DecisionInputApiSelfTest.main(args);
         DomainCatalogSelfTest.main(args);
         ApiSecuritySelfTest.main(args);
         CsvHttpSelfTest.main(args);
