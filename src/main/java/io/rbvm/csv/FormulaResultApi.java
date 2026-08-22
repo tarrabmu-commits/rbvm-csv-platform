@@ -14,6 +14,7 @@ import io.rbvm.postgres.StoredFormulaResult;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -239,7 +240,9 @@ public final class FormulaResultApi {
                 throw new IllegalArgumentException("status must be an HTTP status code");
             }
             headers = Map.copyOf(Objects.requireNonNull(headers, "headers"));
-            body = Map.copyOf(Objects.requireNonNull(body, "body"));
+            body = Collections.unmodifiableMap(
+                    new LinkedHashMap<>(Objects.requireNonNull(body, "body"))
+            );
         }
     }
 
