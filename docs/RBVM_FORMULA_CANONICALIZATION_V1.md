@@ -6,7 +6,7 @@ Canonical payload format: `RBVM_FORMULA_CANONICAL_BINARY_V1`
 
 Deterministic explanation payload format: `RBVM_FORMULA_EXPLANATION_CANONICAL_BINARY_V1`
 
-This contract defines the byte-level identity envelope for the future `RBVM_FORMULA_V1`. It does **not** define Formula weights, thresholds, mappings, transforms, or a scoring equation.
+This contract defines the byte-level identity envelope for the accepted `RBVM_FORMULA_V1`. It does **not** define Formula weights, thresholds, mappings, transforms, or a scoring equation; those semantics live in the separately versioned Formula artifact whose exact canonical bytes are covered by the Formula SHA.
 
 ## 1. Formula SHA identity
 
@@ -143,7 +143,7 @@ UI prose and localization are derived views and are excluded from canonical expl
 
 ## 8. Replay invariants
 
-Stage 8 and Formula implementation tests must prove:
+Formula implementation, persistence, and replay tests must prove:
 
 - parsing and serializing the same Formula semantics reproduces byte-identical canonical payload bytes;
 - source JSON/YAML/Markdown field order cannot change Formula SHA;
@@ -151,10 +151,12 @@ Stage 8 and Formula implementation tests must prove:
 - changing any result-affecting constant/rule/order changes Formula SHA;
 - changing only display/localized prose does not change Formula SHA;
 - exact Decision Input + exact Formula produces deterministic canonical explanation semantics;
-- a Formula version/SHA change creates a distinct result identity even if a sample numeric output happens to be equal.
+- a Formula version/SHA change creates a distinct result identity even if a sample numeric output happens to be equal;
+- a persisted Formula result is replayed from its exact immutable Decision Input snapshot and captured evidence/binding references, never from current-state re-selection;
+- replay regenerates the canonical explanation and requires byte-identical explanation content and SHA.
 
 ## 9. Boundary
 
-This contract closes Formula identity/canonicalization readiness only.
+This contract defines Formula and explanation canonical identity only. It does not itself define persistence tables, API representation, UI presentation, Priority, Treatment, SLA, remediation deadlines, or workflow policy.
 
-It does not authorize `RBVM_FORMULA_V1` runtime implementation before the versioned Stage 8 golden-case and invariant suite is approved.
+The accepted Formula V1 runtime and V23 persistence layer consume this identity contract without changing its canonical semantics. Durable Formula-result storage must retain the exact Formula identity and canonical explanation bytes and remain bound to the exact Decision Input V3 snapshot used for evaluation. Downstream Priority, Treatment, SLA, and remediation policy remain separate contracts.
