@@ -140,6 +140,22 @@ def verify_handoff():
     require("scheduled-cvss-v31-refresh.sh" in wrapper, "canonical wrapper must invoke CVSS v3.1 refresh")
     require("scheduled-epss-refresh.sh" in wrapper, "canonical wrapper must invoke FIRST EPSS refresh")
     require("scheduled-cisa-kev-refresh.sh" in wrapper, "canonical wrapper must invoke CISA KEV refresh")
+
+    # A source-level PARTIAL or SKIPPED is operationally meaningful and must not be
+    # overwritten by an unconditional umbrella PASS. Nonzero source failures are
+    # already fatal through set -euo pipefail.
+    for key in ("cvss_v31_refresh", "epss_refresh", "cisa_kev_refresh"):
+        require(f"source_state \"$staging/" in wrapper and key in wrapper,
+                f"umbrella refresh must capture {key} state")
+    require('PASS|PARTIAL|SKIPPED' in wrapper,
+            "umbrella refresh must validate the source-state vocabulary")
+    require('aggregate="PARTIAL"' in wrapper,
+            "umbrella refresh must degrade when any source is not PASS")
+    require('canonical_intelligence_refresh=%s unique_cves=%s cvss=%s epss=%s kev=%s' in wrapper,
+            "umbrella result must expose each source state")
+    require('canonical_intelligence_refresh=PASS unique_cves=' not in wrapper,
+            "umbrella refresh must not emit an unconditional PASS")
+
     require(
         "scheduled-canonical-intelligence-refresh.sh" in service,
         "umbrella systemd service must use the canonical evidence refresh",
