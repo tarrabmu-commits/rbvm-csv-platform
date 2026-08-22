@@ -171,7 +171,8 @@ public final class CsvDecisionInputHttpSelfTest {
                             + EVALUATED_AT.toString().replace(":", "%3A"))
             );
             assert incompleteCursor.statusCode() == 400 : incompleteCursor.body();
-            assert incompleteCursor.body().contains("BEFORE EVALUATED AT AND BEFORE SNAPSHOT SHA256");
+            assert incompleteCursor.body().contains("INVALID DECISION INPUT HISTORY QUERY")
+                    : incompleteCursor.body();
 
             HttpResponse<String> queryOnExact = get(
                     client,
