@@ -70,7 +70,7 @@ A future CVSS v4.0 evidence family, if added, must be a separate native evidence
 
 ## 5. CISA KEV input
 
-The valid categorical values are:
+The valid categorical values for numeric Formula evaluation are:
 
 - `LISTED`
 - `NOT_LISTED`
@@ -79,7 +79,11 @@ The valid categorical values are:
 
 `NOT_LISTED` is valid evidence of absence from that complete validated snapshot only. It does not mean not exploitable and is not equivalent to a zero threat value.
 
-A missing KEV dimension never becomes `NOT_LISTED`.
+The canonical KEV evidence family also has `UNKNOWN`. `PRESENT + UNKNOWN` is not a neutral categorical value and returns:
+
+`NON_COMPUTABLE: KEV_VALUE_UNKNOWN`
+
+A missing KEV dimension never becomes `NOT_LISTED` or `UNKNOWN`; it remains subject to the dimension-level `KNOWN_EXPLOITATION_MISSING` gate.
 
 ## 6. FIRST EPSS input
 
@@ -256,6 +260,7 @@ Stage 8 golden cases must cover at least these reason families:
 - `<DIMENSION>_MISSING`
 - `<DIMENSION>_STALE`
 - `<DIMENSION>_AMBIGUOUS`
+- `KEV_VALUE_UNKNOWN`
 - `BUSINESS_CRITICALITY_UNKNOWN`
 - `REACHABILITY_MULTI_SUBGRAIN`
 - `REACHABILITY_VALUE_UNKNOWN`
