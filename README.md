@@ -87,9 +87,18 @@ Current Decision Input semantics preserve `PRESENT / MISSING / AMBIGUOUS / STALE
 
 `RBVM_FORMULA_V1` consumes only one exact resolved `RBVM_DECISION_INPUT_SNAPSHOT_V3`. It produces `COMPUTED`, `NOT_APPLICABLE`, or `NON_COMPUTABLE`; only `COMPUTED` carries the dimensionless `RBVM Relative Risk Index` on `0.00 .. 100.00`. `RBVM_FORMULA_EXPLANATION_CANONICAL_BINARY_V1` deterministically binds that result to the exact Formula identity, snapshot, Finding, methodology, native evidence references, association events, dimension states, normalized Formula values, contributions, and terminal reason code.
 
-PostgreSQL V23 persists that exact Formula result and canonical explanation append-only. The row is foreign-key bound to the exact persisted Decision Input V3 identity; exact retries replay, conflicting result content for the same snapshot/Formula identity is rejected, and historical verification reloads the persisted snapshot, resolves only its captured native evidence/bindings, re-evaluates Formula V1, regenerates the explanation, and requires byte-identical canonical explanation content. Formula HTTP/API exposure and UI presentation are not implemented yet.
+PostgreSQL V23 persists that exact Formula result and canonical explanation append-only. The row is foreign-key bound to the exact persisted Decision Input V3 identity; exact retries replay, conflicting result content for the same snapshot/Formula identity is rejected, and historical verification reloads the persisted snapshot, resolves only its captured native evidence/bindings, re-evaluates Formula V1, regenerates the explanation, and requires byte-identical canonical explanation content.
 
-See [`docs/DECISION_INPUT_V3.md`](docs/DECISION_INPUT_V3.md) for the immutable Decision Input boundary, [`docs/RBVM_FORMULA_V1.md`](docs/RBVM_FORMULA_V1.md) for the accepted Formula contract, and [`docs/RBVM_FORMULA_CANONICALIZATION_V1.md`](docs/RBVM_FORMULA_CANONICALIZATION_V1.md) for canonical Formula/explanation identity.
+The read-only `RBVM_FORMULA_RESULT_API_V1` transport exposes only exact persisted identities and replay-verifies every successful response:
+
+```text
+GET /api/v1/formula-results/{explanationSha256}
+GET /api/v1/formula-results?inputSnapshotSha256={sha256}&formulaSha256={sha256}
+```
+
+The Formula Result runtime requires PostgreSQL schema V23+, is Viewer-protected before capability lookup, and deliberately has no `latest` selector. Browser presentation and production Formula-result materialization from an exact persisted Decision Input V3 identity are not implemented yet.
+
+See [`docs/DECISION_INPUT_V3.md`](docs/DECISION_INPUT_V3.md) for the immutable Decision Input boundary, [`docs/RBVM_FORMULA_V1.md`](docs/RBVM_FORMULA_V1.md) for the accepted Formula contract, [`docs/RBVM_FORMULA_CANONICALIZATION_V1.md`](docs/RBVM_FORMULA_CANONICALIZATION_V1.md) for canonical Formula/explanation identity, and [`docs/FORMULA_RESULT_API_V1.md`](docs/FORMULA_RESULT_API_V1.md) for exact replay-verified Formula Result reads.
 
 ## External intelligence refresh
 
@@ -197,6 +206,7 @@ The platform includes:
 - Canonical `RBVM_FORMULA_V1` identity plus a deterministic pure evaluator over resolved Decision Input V3.
 - Deterministic `RBVM_FORMULA_EXPLANATION_CANONICAL_BINARY_V1` bytes and SHA-256 identity for exact Formula result provenance/replay semantics.
 - Append-only Formula V1 result/explanation persistence with exact Decision Input V3 binding and deterministic historical replay verification.
+- Viewer-protected, exact-identity Formula Result HTTP/API reads with replay verification and no implicit current/latest selection.
 - TLS `verify-full` support, backup/restore tooling, readiness/liveness, metrics, and reconciliation health.
 - Backend API-key/RBAC capability for hardened deployments.
 - Reproducible JAR, SHA-256 checksum, SPDX 2.3 SBOM, CodeQL, and GitHub build/release verification.
@@ -222,7 +232,7 @@ Formula V1 is an explicit, versioned RBVM policy for a relative risk result. Pri
 
 ## Verification
 
-The repository verification pipeline includes Java/domain/API/SQL/web/script checks, Formula V1 contract/runtime/canonical-explanation/persistence/replay checks, Frontend System V2 structural checks, reproducible distribution verification, PostgreSQL integration coverage, and CodeQL.
+The repository verification pipeline includes Java/domain/API/SQL/web/script checks, Formula V1 contract/runtime/canonical-explanation/persistence/replay checks, Formula Result API/HTTP/runtime/OpenAPI checks, Frontend System V2 structural checks, reproducible distribution verification, PostgreSQL integration coverage, and CodeQL.
 
 Frontend V2 itself is additionally guarded for:
 
@@ -236,6 +246,6 @@ Frontend V2 itself is additionally guarded for:
 
 ## Formula implementation and roadmap boundary
 
-Formula-readiness semantics, canonicalization, the Stage 8 golden-case corpus, the canonical `RBVM_FORMULA_V1` artifact, the pure Java evaluator, deterministic canonical explanation identity, and append-only Formula-result persistence/replay are implemented and verified. Formula evaluation consumes exactly one resolved `RBVM_DECISION_INPUT_SNAPSHOT_V3`, preserves terminal `NOT_APPLICABLE / NON_COMPUTABLE` behavior, rejects missing/stale/ambiguous required evidence, applies only the accepted SHA-bound mappings/weights, reproduces the frozen numeric examples, and produces replay-stable explanation bytes bound to exact evidence and association provenance.
+Formula-readiness semantics, canonicalization, the Stage 8 golden-case corpus, the canonical `RBVM_FORMULA_V1` artifact, the pure Java evaluator, deterministic canonical explanation identity, append-only Formula-result persistence/replay, and exact replay-verified read transport are implemented and verified. Formula evaluation consumes exactly one resolved `RBVM_DECISION_INPUT_SNAPSHOT_V3`, preserves terminal `NOT_APPLICABLE / NON_COMPUTABLE` behavior, rejects missing/stale/ambiguous required evidence, applies only the accepted SHA-bound mappings/weights, reproduces the frozen numeric examples, and produces replay-stable explanation bytes bound to exact evidence and association provenance.
 
-The next Formula-layer increment is explicit API/UI exposure of the persisted Formula result and explanation. Priority, Treatment, SLA, remediation deadlines, and workflow policy remain separate later contracts and must not be hidden inside Formula V1.
+The next Formula-layer increment is a production materialization path that evaluates and installs a Formula result from one exact already-persisted Decision Input V3 identity without re-selecting current evidence. Browser presentation can then consume the exact read API. Priority, Treatment, SLA, remediation deadlines, and workflow policy remain separate later contracts and must not be hidden inside Formula V1.

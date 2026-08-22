@@ -38,6 +38,7 @@ import io.rbvm.postgres.CvssV31Importer;
 import io.rbvm.postgres.EpssEvidenceReader;
 import io.rbvm.postgres.EpssImportResult;
 import io.rbvm.postgres.EpssImporter;
+import io.rbvm.postgres.FormulaResultRuntimeFactory;
 import io.rbvm.postgres.NetworkReachabilityEvidenceReader;
 import io.rbvm.postgres.NetworkReachabilityImportResult;
 import io.rbvm.postgres.NetworkReachabilityImporter;
@@ -119,6 +120,7 @@ public final class CsvPlatformServer implements AutoCloseable {
     private final Optional<ManagedAssetHttpRouter> managedAssetRouter;
     private Optional<ScannerManagedAssetLinkHttpRouter> scannerManagedAssetLinkRouter;
     private Optional<FindingContextAssociationHttpRouter> findingContextAssociationRouter = Optional.empty();
+    private Optional<FormulaResultHttpRouter> formulaResultRouter = Optional.empty();
     private final Instant startedAt = Instant.now();
     private final AtomicLong requestsTotal = new AtomicLong();
     private final AtomicLong problemsTotal = new AtomicLong();
@@ -695,6 +697,16 @@ public final class CsvPlatformServer implements AutoCloseable {
         ));
     }
 
+    /** Enable the replay-verified V23 Formula Result read API before the server is started. */
+    public void enableFormulaResultApi(FormulaResultApi api) {
+        if (formulaResultRouter.isPresent()) {
+            throw new IllegalStateException("Formula Result API is already enabled");
+        }
+        formulaResultRouter = Optional.of(new FormulaResultHttpRouter(
+                Objects.requireNonNull(api, "api")
+        ));
+    }
+
     public void start() {
         server.start();
     }
@@ -868,6 +880,25 @@ public final class CsvPlatformServer implements AutoCloseable {
                 associations.routeAuthorized(exchange, method, principal);
                 return;
             }
+            if (FormulaResultHttpRouter.inNamespace(path)) {
+                if (!FormulaResultHttpRouter.handles(path)) {
+                    throw new HttpProblem(
+                            404,
+                            "NOT_FOUND",
+                            "The requested Formula result route does not exist"
+                    );
+                }
+                ApiRole requiredRole = FormulaResultHttpRouter.requiredRole(exchange, method);
+                AuthPrincipal principal = authorize(exchange, requiredRole);
+                FormulaResultHttpRouter formulaResults = formulaResultRouter.orElseThrow(() ->
+                        new HttpProblem(
+                                503,
+                                "FORMULA_RESULT_PERSISTENCE_UNAVAILABLE",
+                                "Formula Result API requires PostgreSQL schema version 23 or newer"
+                        ));
+                formulaResults.routeAuthorized(exchange, method, principal);
+                return;
+            }
             if ("/api/v1/cases".equals(path)) {
                 requireMethod(exchange, method, "GET");
                 authorize(exchange, ApiRole.VIEWER);
@@ -1001,6 +1032,9 @@ public final class CsvPlatformServer implements AutoCloseable {
             }
 
             throw new HttpProblem(404, "NOT_FOUND", "The requested route does not exist");
+        } catch (FormulaResultApi.ApiProblem problem) {
+            problemsTotal.incrementAndGet();
+            sendProblem(exchange, problem.status(), problem.code(), problem.getMessage(), correlationId);
         } catch (ManagedAssetApi.ApiProblem problem) {
             problemsTotal.incrementAndGet();
             sendProblem(exchange, problem.status(), problem.code(), problem.getMessage(), correlationId);
@@ -1090,6 +1124,10 @@ public final class CsvPlatformServer implements AutoCloseable {
                 "readEnabled", findingContextAssociationRouter.isPresent(),
                 "writeEnabled", findingContextAssociationRouter.isPresent(),
                 "historyReadEnabled", findingContextAssociationRouter.isPresent()
+        ));
+        health.put("formulaResults", Map.of(
+                "readEnabled", formulaResultRouter.isPresent(),
+                "replayVerified", formulaResultRouter.isPresent()
         ));
         return health;
     }
@@ -1983,6 +2021,9 @@ public final class CsvPlatformServer implements AutoCloseable {
                 + "# TYPE rbvm_finding_context_association_api_enabled gauge\n"
                 + "rbvm_finding_context_association_api_enabled "
                 + (findingContextAssociationRouter.isPresent() ? 1 : 0) + "\n"
+                + "# TYPE rbvm_formula_result_api_enabled gauge\n"
+                + "rbvm_formula_result_api_enabled "
+                + (formulaResultRouter.isPresent() ? 1 : 0) + "\n"
                 + "# TYPE rbvm_process_uptime_seconds gauge\n"
                 + "rbvm_process_uptime_seconds " + uptime + "\n"
                 + "# TYPE rbvm_imports_stored gauge\n"
@@ -2027,6 +2068,8 @@ public final class CsvPlatformServer implements AutoCloseable {
         RuntimeComponents runtime = CanonicalProjectionFactory.runtimeFromEnvironment(System.getenv());
         Optional<CanonicalProjectionFactory.FindingContextAssociationRuntime> associationRuntime =
                 CanonicalProjectionFactory.findingContextAssociationRuntimeFromEnvironment(System.getenv());
+        Optional<FormulaResultRuntimeFactory.Runtime> formulaResultRuntime =
+                FormulaResultRuntimeFactory.fromEnvironment(System.getenv());
         ApiKeyAuthenticator authenticator = ApiKeyAuthenticator.fromEnvironment(System.getenv());
         RequestRateLimiter rateLimiter = RequestRateLimiter.fromEnvironment(System.getenv());
         CanonicalProjection canonicalProjection = runtime.canonicalProjection();
@@ -2059,6 +2102,9 @@ public final class CsvPlatformServer implements AutoCloseable {
         associationRuntime.ifPresent(context -> application.enableFindingContextAssociationApi(
                 context.reachabilityLinks(),
                 context.businessServiceLinks()
+        ));
+        formulaResultRuntime.ifPresent(context -> application.enableFormulaResultApi(
+                new FormulaResultApi(context.results(), context.replayVerifier())
         ));
         Runtime.getRuntime().addShutdownHook(new Thread(application::close, "rbvm-shutdown"));
         application.start();
@@ -2094,6 +2140,8 @@ public final class CsvPlatformServer implements AutoCloseable {
                 + (runtime.scannerManagedAssetLinkRegistry().isPresent() ? "ENABLED" : "DISABLED"));
         System.out.println("Finding Context Association API: "
                 + (associationRuntime.isPresent() ? "ENABLED" : "DISABLED"));
+        System.out.println("Formula Result API: "
+                + (formulaResultRuntime.isPresent() ? "ENABLED" : "DISABLED"));
         System.out.println("API authentication: "
                 + (authenticator.enabled() ? "API_KEY" : "DISABLED"));
         new CountDownLatch(1).await();

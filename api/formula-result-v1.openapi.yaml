@@ -1,0 +1,307 @@
+openapi: 3.0.3
+info:
+  title: RBVM Formula Result API V1
+  version: 1.0.0
+  description: >-
+    Read-only exact-identity transport for already-persisted RBVM Formula V1 results.
+    Every successful result is deterministically replay-verified from its exact immutable
+    Decision Input V3 provenance. This API does not select a latest result and does not
+    derive Priority, Treatment, SLA, remediation deadlines, or ranking.
+paths:
+  /api/v1/formula-results/{explanationSha256}:
+    get:
+      summary: Read one Formula result by canonical explanation SHA-256
+      operationId: getFormulaResultByExplanationSha256
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: explanationSha256
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Sha256'
+      responses:
+        '200':
+          description: Exact persisted and replay-verified Formula result
+          headers:
+            ETag:
+              description: Strong immutable identity derived from the canonical explanation SHA-256
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormulaResultResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /api/v1/formula-results:
+    get:
+      summary: Read one Formula result by exact Decision Input and Formula identities
+      operationId: getFormulaResultByInputSnapshotAndFormula
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: inputSnapshotSha256
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/Sha256'
+        - name: formulaSha256
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/Sha256'
+      responses:
+        '200':
+          description: Exact persisted and replay-verified Formula result
+          headers:
+            ETag:
+              description: Strong immutable identity derived from the canonical explanation SHA-256
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormulaResultResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Sha256:
+      type: string
+      pattern: '^[a-f0-9]{64}$'
+    FormulaResultResponse:
+      type: object
+      required: [contractId, result, explanation]
+      properties:
+        contractId:
+          type: string
+          enum: [RBVM_FORMULA_RESULT_API_V1]
+        result:
+          $ref: '#/components/schemas/FormulaResult'
+        explanation:
+          $ref: '#/components/schemas/FormulaExplanation'
+      additionalProperties: false
+    FormulaResult:
+      type: object
+      required:
+        - resultId
+        - inputSnapshotSha256
+        - findingId
+        - evaluatedAt
+        - methodologyRevision
+        - methodologyPolicySha256
+        - formulaId
+        - formulaVersion
+        - formulaSha256
+        - resultState
+        - reasonCodes
+        - relativeRiskIndex
+        - persistedAt
+      properties:
+        resultId:
+          type: string
+          format: uuid
+        inputSnapshotSha256:
+          $ref: '#/components/schemas/Sha256'
+        findingId:
+          type: string
+          format: uuid
+        evaluatedAt:
+          type: string
+          format: date-time
+        methodologyRevision:
+          type: integer
+          minimum: 1
+        methodologyPolicySha256:
+          $ref: '#/components/schemas/Sha256'
+        formulaId:
+          type: string
+          enum: [RBVM_FORMULA_V1]
+        formulaVersion:
+          type: integer
+          enum: [1]
+        formulaSha256:
+          $ref: '#/components/schemas/Sha256'
+        resultState:
+          type: string
+          enum: [COMPUTED, NOT_APPLICABLE, NON_COMPUTABLE]
+        reasonCodes:
+          type: array
+          items:
+            type: string
+        relativeRiskIndex:
+          type: string
+          nullable: true
+          pattern: '^[0-9]+(?:\.[0-9]+)?$'
+          description: >-
+            Dimensionless RBVM Relative Risk Index. Null for terminal NOT_APPLICABLE
+            and NON_COMPUTABLE results. It is not probability, financial loss, Priority, or SLA.
+        persistedAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+    FormulaExplanation:
+      type: object
+      required: [payloadFormat, sha256, canonicalPayloadBase64, replayVerified, dimensions]
+      properties:
+        payloadFormat:
+          type: string
+          enum: [RBVM_FORMULA_EXPLANATION_CANONICAL_BINARY_V1]
+        sha256:
+          $ref: '#/components/schemas/Sha256'
+        canonicalPayloadBase64:
+          type: string
+          format: byte
+        replayVerified:
+          type: boolean
+          enum: [true]
+        dimensions:
+          type: array
+          items:
+            $ref: '#/components/schemas/DimensionExplanation'
+      additionalProperties: false
+    DimensionExplanation:
+      type: object
+      required:
+        - dimension
+        - state
+        - normalizedValue
+        - appliedFactorOrTransformId
+        - weightedContribution
+        - evidenceReferences
+      properties:
+        dimension:
+          type: string
+        state:
+          type: string
+          enum: [PRESENT, MISSING, STALE, AMBIGUOUS]
+        normalizedValue:
+          type: string
+          nullable: true
+        appliedFactorOrTransformId:
+          type: string
+          nullable: true
+        weightedContribution:
+          type: string
+          nullable: true
+          pattern: '^[0-9]+(?:\.[0-9]+)?$'
+        evidenceReferences:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceReference'
+      additionalProperties: false
+    EvidenceReference:
+      type: object
+      required:
+        - nativeEvidenceKind
+        - evidenceId
+        - evidenceSha256
+        - evidenceSource
+        - observedAt
+        - binding
+      properties:
+        nativeEvidenceKind:
+          type: string
+        evidenceId:
+          type: string
+          format: uuid
+        evidenceSha256:
+          $ref: '#/components/schemas/Sha256'
+        evidenceSource:
+          type: string
+        observedAt:
+          type: string
+          format: date-time
+        binding:
+          allOf:
+            - $ref: '#/components/schemas/BindingReference'
+          nullable: true
+      additionalProperties: false
+    BindingReference:
+      type: object
+      required: [bindingKind, bindingId, bindingSha256, bindingSource, recordedAt]
+      properties:
+        bindingKind:
+          type: string
+          enum:
+            - SCANNER_MANAGED_ASSET_LINK_EVENT
+            - FINDING_REACHABILITY_SCOPE_LINK_EVENT
+            - FINDING_BUSINESS_SERVICE_LINK_EVENT
+        bindingId:
+          type: string
+          format: uuid
+        bindingSha256:
+          $ref: '#/components/schemas/Sha256'
+        bindingSource:
+          type: string
+        recordedAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+    Problem:
+      type: object
+      required: [type, title, status, detail, correlationId]
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        correlationId:
+          type: string
+      additionalProperties: false
+  responses:
+    BadRequest:
+      description: Invalid exact identity or query shape
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: Authentication is required when API-key mode is enabled
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: Authenticated identity does not have Viewer permission
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: Exact Formula result identity does not exist
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unavailable:
+      description: Formula Result runtime requires PostgreSQL schema V23 or newer
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
