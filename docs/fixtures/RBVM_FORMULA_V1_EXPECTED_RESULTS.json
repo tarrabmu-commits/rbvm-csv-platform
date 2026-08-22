@@ -1,0 +1,29 @@
+{
+  "contractId": "RBVM_FORMULA_V1_EXPECTED_RESULTS",
+  "formulaId": "RBVM_FORMULA_V1",
+  "formulaVersion": 1,
+  "formulaSha256": "88bf31f510089b4209b1ffcf1c15b39fef60548209875334f084888316e9028e",
+  "goldenCaseContractId": "RBVM_FORMULA_GOLDEN_CASES_V1",
+  "outputScale": 2,
+  "computedOutputs": {
+    "BASE_PROFILE": "45.00",
+    "GC-ALL-ADVERSE": "95.60",
+    "GC-CRITICAL-NOT-LISTED-LOW-EPSS": "49.80",
+    "GC-MEDIUM-KEV-HIGH-EPSS": "70.00",
+    "GC-HIGH-TECH-LOW-IMPACT-ISOLATED": "27.50",
+    "GC-LOWER-TECH-MISSION-REACHABLE": "60.00",
+    "GC-BUSINESS-IMPACT-MULTI-DIMENSION-SAME-SERVICE": "48.75"
+  },
+  "resolvedTradeoffs": [
+    {
+      "higher": "GC-MEDIUM-KEV-HIGH-EPSS",
+      "lower": "GC-CRITICAL-NOT-LISTED-LOW-EPSS",
+      "relation": "GREATER_THAN"
+    },
+    {
+      "higher": "GC-LOWER-TECH-MISSION-REACHABLE",
+      "lower": "GC-HIGH-TECH-LOW-IMPACT-ISOLATED",
+      "relation": "GREATER_THAN"
+    }
+  ]
+}
