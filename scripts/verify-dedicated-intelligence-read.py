@@ -23,6 +23,7 @@ for needle in (
     'return count == 0 ? "MISSING" : count == 1 ? "PRESENT" : "AMBIGUOUS"',
     'result.put("kevStatus", kev.isEmpty() ? "UNKNOWN"',
     '"DEDICATED_CURRENT_EVIDENCE_NO_HIDDEN_SOURCE_PRECEDENCE"',
+    "new java.io.UncheckedIOException(",
 ):
     if needle not in catalog:
         raise AssertionError(f"dedicated intelligence catalog missing {needle!r}")
@@ -40,10 +41,17 @@ if "installedVersion >= 12" not in factory or "new PostgresEvidenceAwareCatalog(
 
 for needle in (
     "DEDICATED_INTELLIGENCE_PRESENTATION_V1",
+    "headers.indexOf('KEV')",
     "kevEvidenceState==='AMBIGUOUS'",
     "kevEvidenceState==='MISSING'",
     "return'UNKNOWN'",
     "no source precedence was applied",
+    "function coverage(predicate)",
+    "setMetric('Known exploited CVEs',listed)",
+    "setMetric('CVSS coverage',`${cvss}%`)",
+    "setMetric('EPSS coverage',`${epss}%`)",
+    "setMetric('KEV assessed',`${kev}%`)",
+    "setMetric('Findings evaluated',byCve.size,'CVEs evaluated')",
 ):
     if needle not in ui:
         raise AssertionError(f"dedicated intelligence UI missing {needle!r}")
