@@ -6,6 +6,9 @@ RBVM_API_BASE_URL=http://127.0.0.1:8080
 # the service ReadWritePaths for your chosen locations.
 RBVM_KEV_KEEP=14
 
+# Legacy static RBVM_KEV_INPUT=/path/to/cves.csv is intentionally not used by this service.
+# The source-specific scheduled script still accepts RBVM_KEV_INPUT for controlled/manual runs.
+
 # Optional only for a hardened/authenticated API deployment. The source-specific key wins;
 # otherwise RBVM_INTELLIGENCE_API_KEY can be shared with the canonical CVE read.
 # RBVM_INTELLIGENCE_API_KEY=from-a-secret-manager
