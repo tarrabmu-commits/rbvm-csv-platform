@@ -1,6 +1,6 @@
 (()=>{'use strict';
 const CONTRACT='DEDICATED_INTELLIGENCE_PRESENTATION_V1';
-const previousFetch=window.fetch.bind(window),byCve=new Map();let queued=false;
+const previousFetch=window.fetch.bind(window),byCve=new Map();let queued=false,expectedCves=null,summaryRequested=false;
 document.documentElement.dataset.intelligenceUiContract=CONTRACT;
 
 function remember(item){
@@ -10,18 +10,32 @@ function remember(item){
   const intel=item.vulnerabilityIntelligence;
   if(intel&&typeof intel==='object')byCve.set(cve,intel);
 }
-function observePayload(payload){
+function observePayload(payload,path=''){
   if(!payload||typeof payload!=='object')return;
-  if(Array.isArray(payload.cases))payload.cases.forEach(remember);
+  if(path==='/api/v1/catalog/summary'&&Number.isSafeInteger(payload.vulnerabilities)&&payload.vulnerabilities>=0){
+    expectedCves=payload.vulnerabilities;
+  }
+  if(Array.isArray(payload.cases)){
+    payload.cases.forEach(remember);
+    ensureSummary();
+  }
   if(payload.cveId)remember(payload);
   schedule();
+}
+function ensureSummary(){
+  if(summaryRequested||Number.isSafeInteger(expectedCves))return;
+  summaryRequested=true;
+  previousFetch('/api/v1/catalog/summary',{cache:'no-store'}).then(response=>{
+    if(!response.ok)return null;
+    return response.json();
+  }).then(payload=>{if(payload)observePayload(payload,'/api/v1/catalog/summary')}).catch(()=>{});
 }
 window.fetch=async(input,options)=>{
   const response=await previousFetch(input,options);
   try{
     const url=new URL(typeof input==='string'?input:input.url,location.href);
-    if(response.ok&&(url.pathname==='/api/v1/cases'||/^\/api\/v1\/cases\/[a-f0-9]{64}$/.test(url.pathname))){
-      response.clone().json().then(observePayload).catch(()=>{});
+    if(response.ok&&(url.pathname==='/api/v1/cases'||url.pathname==='/api/v1/catalog/summary'||/^\/api\/v1\/cases\/[a-f0-9]{64}$/.test(url.pathname))){
+      response.clone().json().then(payload=>observePayload(payload,url.pathname)).catch(()=>{});
     }
   }catch(_){}
   return response;
@@ -68,16 +82,23 @@ function coverage(predicate){
   if(!values.length)return null;
   return Math.round(values.filter(predicate).length*100/values.length);
 }
-function setMetric(name,value,newLabel=null){
+function setMetric(name,value,newLabel=null,meta=null){
   for(const metric of document.querySelectorAll('.metric')){
     const labelNode=metric.querySelector('.metric-label');
     if((labelNode?.textContent||'').trim()!==name)continue;
     const valueNode=metric.querySelector('.metric-value');if(valueNode)valueNode.textContent=String(value);
     if(newLabel)labelNode.textContent=newLabel;
+    if(meta){const metaNode=metric.querySelector('.metric-meta');if(metaNode)metaNode.textContent=meta;}
   }
 }
 function patchCoverage(){
-  if(!byCve.size)return;
+  if(!byCve.size||!Number.isSafeInteger(expectedCves))return;
+  if(byCve.size!==expectedCves){
+    for(const name of ['CVSS available','EPSS available','CVSS coverage','EPSS coverage','KEV assessed'])setMetric(name,'—',null,'Full canonical CVE set not loaded');
+    setMetric('Known exploited CVEs','—',null,'Full canonical CVE set not loaded');
+    setMetric('Findings evaluated',`${byCve.size}/${expectedCves}`,'CVEs loaded','Coverage withheld until the full canonical CVE set is loaded');
+    return;
+  }
   const cvss=coverage(x=>x.cvssEvidenceState==='PRESENT'&&x.cvssBaseScore!=null);
   const epss=coverage(x=>x.epssEvidenceState==='PRESENT'&&x.epssProbability!=null);
   const kev=coverage(x=>x.kevEvidenceState==='PRESENT'&&typeof x.knownExploited==='boolean');
