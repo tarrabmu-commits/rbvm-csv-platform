@@ -39,6 +39,8 @@ assert "RbvmDerivedRiskMethodologyCatalog" in store
 assert "RESULT_CONFLICT" in store
 assert "decision_input_snapshot" in store
 assert "RBVM_DECISION_INPUT_SNAPSHOT_V3" in store or "V3_ID" in store
+assert "implemented.equals(supplied)" in store
+assert "definition does not match the implemented identity" in store
 assert "formula_result" not in store, "derived persistence must not reuse Formula V1 table"
 
 assert "DecisionInputEvidenceResolver" in replay
@@ -64,7 +66,14 @@ for marker in [
 ]:
     assert marker in live, f"missing live V24 proof marker: {marker}"
 
-for forbidden in ["Priority", "SLA", "Treatment"]:
-    assert f"does not introduce {forbidden}" in doc or forbidden in doc
+for marker in [
+    "does not introduce HTTP transport",
+    "methodology preference",
+    "cross-methodology averaging",
+    "Priority",
+    "Treatment",
+    "SLA",
+]:
+    assert marker in doc, f"derived persistence boundary missing documentation marker: {marker}"
 
 print("Derived risk result persistence structural checks: PASS")
