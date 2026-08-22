@@ -10,6 +10,7 @@ import io.rbvm.decision.RbvmDecisionMethodologyPolicySelfTest;
 import io.rbvm.decision.RbvmResolvedDecisionInputSelfTest;
 import io.rbvm.postgres.DecisionInputSnapshotMaterializerSelfTest;
 import io.rbvm.postgres.DecisionRuntimeFactorySelfTest;
+import io.rbvm.postgres.FindingContextAssociationRuntimeSelfTest;
 import io.rbvm.postgres.PostgresDecisionInputEvidenceResolverSelfTest;
 import io.rbvm.postgres.PostgresDecisionInputSnapshotBuilderSelfTest;
 import io.rbvm.postgres.PostgresDecisionInputSnapshotStoreSelfTest;
@@ -65,6 +66,7 @@ public final class PlatformSelfTest {
         PostgresFoundationSelfTest.main(args);
         PostgresManagedAssetRegistrySelfTest.main(args);
         PostgresScannerManagedAssetLinkRegistrySelfTest.main(args);
+        FindingContextAssociationRuntimeSelfTest.main(args);
         PostgresDecisionMethodologyPolicyStoreSelfTest.main(args);
         PostgresDecisionInputSnapshotStoreSelfTest.main(args);
         PostgresDecisionInputSnapshotBuilderSelfTest.main(args);
