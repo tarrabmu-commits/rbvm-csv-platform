@@ -1,7 +1,20 @@
-RBVM_INTEL_INPUT=/var/lib/rbvm-platform/current-wazuh-v2.csv
-RBVM_INTEL_OUTPUT_DIR=/var/lib/rbvm-platform/intelligence
-RBVM_INTEL_CACHE_DIR=/var/cache/rbvm-platform/intelligence
-RBVM_INTEL_KEEP=14
-RBVM_INTEL_OFFLINE=false
+# The umbrella refresh derives its CVE set from the current canonical Cases API.
+RBVM_API_BASE_URL=http://127.0.0.1:8080
+# Set only when the API endpoint requires authentication.
+# RBVM_INTELLIGENCE_API_KEY=from-a-secret-manager
+
+RBVM_INTELLIGENCE_WORK_DIR=/var/lib/rbvm-platform/canonical-intelligence-refresh
+
+RBVM_CVSS_OUTPUT_DIR=/var/lib/rbvm-platform/cvss-v31
+RBVM_CVSS_CACHE_DIR=/var/cache/rbvm-platform/cvss-v31
+RBVM_CVSS_KEEP=14
+RBVM_CVSS_OFFLINE=false
+
+RBVM_EPSS_OUTPUT_DIR=/var/lib/rbvm-platform/epss
+RBVM_EPSS_KEEP=14
+
+RBVM_KEV_OUTPUT_DIR=/var/lib/rbvm-platform/cisa-kev
+RBVM_KEV_KEEP=14
+
 # NVD_API_KEY is optional. When present it is sent only in the NVD apiKey header.
 # NVD_API_KEY=from-a-secret-manager
