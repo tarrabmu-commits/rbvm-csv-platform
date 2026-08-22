@@ -9,6 +9,7 @@ import io.rbvm.decision.RbvmDecisionInputSnapshotSelfTest;
 import io.rbvm.decision.RbvmDecisionInputSnapshotV2SelfTest;
 import io.rbvm.decision.RbvmDecisionInputSnapshotV3SelfTest;
 import io.rbvm.decision.RbvmDecisionMethodologyPolicySelfTest;
+import io.rbvm.decision.RbvmDerivedRiskCanonicalResultSelfTest;
 import io.rbvm.decision.RbvmFormulaV1ExplanationSelfTest;
 import io.rbvm.decision.RbvmFormulaV1SelfTest;
 import io.rbvm.decision.RbvmResolvedDecisionInputSelfTest;
@@ -59,6 +60,7 @@ public final class PlatformSelfTest {
         RbvmFormulaV1SelfTest.main(args);
         RbvmFormulaV1ExplanationSelfTest.main(args);
         DerivedRiskMethodologiesSelfTest.main(args);
+        RbvmDerivedRiskCanonicalResultSelfTest.main(args);
         FormulaResultReplayVerifierSelfTest.main(args);
         DefaultFormulaResultMaterializerSelfTest.main(args);
         FormulaResultApiSelfTest.main(args);
