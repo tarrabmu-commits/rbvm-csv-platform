@@ -2,7 +2,9 @@
 
 `RBVM_DECISION_METHODOLOGY_V1` defines the policy boundary between the completed independent Evidence Foundation and any later RBVM decision formula.
 
-This increment does **not** calculate risk, priority, remediation SLA, treatment, monetary loss, or an aggregate impact score. It defines which evidence is eligible to become a decision input and makes missing, ambiguous, stale, and legacy behavior explicit before any formula is introduced.
+This increment does **not** calculate risk, priority, remediation SLA, treatment, monetary loss, or an aggregate impact score. It defines source/freshness evidence-selection policy and makes missing, ambiguous, stale, and legacy behavior explicit before any formula is introduced.
+
+> **Decision Input V3 clarification:** source/freshness selection is applied only after Finding-context eligibility has been established. For Network Reachability and Business/Mission Impact, matching the Finding asset is necessary but not sufficient. An explicit customer-confirmed Finding association must first admit the exact Reachability scope or Business Service. This clarification does not change the V1 methodology canonical payload, fields, revision, or SHA-256 semantics; association provenance is a separate Decision Input binding layer.
 
 ## Contract
 
@@ -42,19 +44,33 @@ Constructing a policy with a supplied SHA that does not match these canonical by
 
 ## Why the grain is Finding_ID
 
-The independent evidence dimensions converge without hidden aggregation at the canonical finding grain:
+The independent evidence dimensions converge without hidden Case aggregation at the canonical Finding grain:
 
-| Evidence dimension | Native scope | Finding join |
+| Evidence dimension | Native scope | Finding eligibility/join |
 |---|---|---|
 | Applicability | Finding | direct `Finding_ID` |
 | Technical Severity / CVSS | CVE | finding CVE |
 | Known Exploitation / KEV | CVE | finding CVE |
 | Exploitation Probability / EPSS | CVE | finding CVE |
-| Asset Context | Asset | finding asset |
-| Network Reachability | Asset + origin + endpoint | finding asset |
-| Business/Mission Impact | Asset + Business Service + dimension | finding asset |
+| Asset Context | Asset / explicitly linked Managed Asset | finding asset and, for Managed Asset context, exact scanner↔managed-asset binding |
+| Network Reachability | Asset + origin + endpoint | finding asset **and exact effective Finding↔Reachability Scope association** |
+| Business/Mission Impact | Asset + Business Service + dimension | finding asset **and exact effective Finding↔Business Service association** |
 
 A Case can contain multiple component-level findings for the same asset+CVE. Case-level roll-up therefore remains a later explicit policy layer. V1 must not silently collapse finding-scoped Applicability or multiple scoped Reachability/Impact observations into one Case verdict.
+
+### Association eligibility is before source selection
+
+For Decision Input V3, the two scoped context families use this ordering:
+
+1. resolve the canonical Finding and scanner asset;
+2. resolve append-only Finding association history as-of the explicit evaluation time;
+3. retain only effective `LINKED` Reachability scopes / Business Services;
+4. match native evidence on the same scanner asset and exact associated target/service;
+5. apply this methodology's source allowlist, per-source history reduction, freshness, and ambiguity rules.
+
+The association event is binding provenance, not replacement evidence. A link does not fabricate `REACHABLE`, an impact level, or any other native value. `UNLINKED` and never-assessed association state both prevent an unrelated native row from entering the candidate set; neither creates negative evidence.
+
+The association contract/version/event identifiers are recorded by the Decision Input snapshot rather than added to the methodology policy payload. Therefore this eligibility layer does **not** create a hidden source winner and does **not** require a methodology revision/SHA change when the source/freshness policy itself is unchanged.
 
 ## Required evidence policies
 
@@ -68,16 +84,16 @@ Every methodology artifact must contain one `EvidenceSelectionPolicy` for each o
 6. `NETWORK_REACHABILITY`
 7. `BUSINESS_MISSION_IMPACT`
 
-Omitting a dimension is invalid. Explicit policy is required even when the intended behavior is to retain all current sources without an age limit.
+Omitting a dimension is invalid. Explicit policy is required even when the intended behavior is to retain all eligible sources without an age limit.
 
 ## Source selection
 
 Each dimension chooses one of two source-selection modes:
 
-- `ALL_SOURCES`: all admissible current evidence remains available to the later decision-input snapshot;
-- `EXPLICIT_ALLOWLIST`: only exact source identifiers in the policy are admissible.
+- `ALL_SOURCES`: all admissible **and context-eligible** evidence remains available to the decision-input snapshot;
+- `EXPLICIT_ALLOWLIST`: only exact source identifiers in the policy are admissible after context eligibility has been established.
 
-An allowlist is a filter, **not source precedence**. If more than one allowed source supplies usable evidence, both remain. V1 has no source winner and no ordering that silently selects one source.
+An allowlist is a filter, **not source precedence**. If more than one allowed source supplies usable evidence for an eligible sub-grain, both remain. V1 has no source winner and no ordering that silently selects one source.
 
 The platform preserves source identifiers exactly after surrounding whitespace removal. It does not lowercase or otherwise reinterpret an evidence source in the methodology policy. Canonical lexicographic sorting is used only to make set-equivalent allowlists hash identically; it does not create precedence.
 
@@ -86,18 +102,20 @@ The platform preserves source identifiers exactly after surrounding whitespace r
 Freshness is an evidence-eligibility rule, not a risk weight:
 
 - `NO_AGE_LIMIT`: the policy does not reject evidence by age;
-- `MAX_AGE_SECONDS`: evidence older than the explicit positive maximum age will later be classified as stale by the decision-input builder.
+- `MAX_AGE_SECONDS`: evidence older than the explicit positive maximum age is classified as stale by the decision-input builder.
 
-The methodology contract does not specify a default freshness window. A future decision-input snapshot must evaluate age relative to an explicit evaluation time and record which observed-at timestamp was used.
+The methodology contract does not specify a default freshness window. A decision-input snapshot evaluates age relative to an explicit evaluation time and records which observed-at timestamp was used.
 
 ## Missing and ambiguous evidence
 
 V1 deliberately provides only these behaviors:
 
-- missing evidence remains `UNKNOWN`;
+- missing evidence remains `UNKNOWN`/`MISSING` at the appropriate contract boundary;
 - multiple admissible sources that cannot be reduced without an explicit later rule remain `AMBIGUOUS`.
 
 Missing CVSS is not zero. Missing EPSS is not probability zero. Missing KEV is not `NOT_LISTED`. Missing Reachability is not `NOT_REACHABLE`. Missing Business Impact is not `LOW`, `NEGLIGIBLE`, or `UNKNOWN` evidence fabricated as a row.
+
+Likewise, absence of a Finding-context association is not evidence that a target is unreachable or a service has low impact. It means the scoped native evidence is not eligible for that Finding under the current binding provenance.
 
 ## Legacy priority policy
 
@@ -123,15 +141,18 @@ This contract contains no:
 - attack-path score;
 - Business Criticality -> Business Impact conversion;
 - CVSS + KEV + EPSS + Applicability + Asset Context + Reachability + Business Impact combination formula;
-- Case-level aggregation.
+- Case-level aggregation;
+- automatic Finding↔Reachability or Finding↔Business Service inference.
 
-## Next increments
+## Implementation layering
 
-The next implementation stages should remain separate and auditable:
+The current implementation keeps these layers separate and auditable:
 
-1. **Decision policy persistence**: immutable versioned policy artifact with canonical SHA-256 provenance.
-2. **Decision input snapshot**: one immutable snapshot per `Finding_ID + policy revision + evaluation time`, containing selected evidence references and explicit `PRESENT|MISSING|AMBIGUOUS|STALE` state per dimension.
-3. **Formula contract**: only after input snapshots are stable, define and test how selected evidence becomes an RBVM decision signal.
-4. **Decision persistence/API**: record methodology version, input snapshot, output, explanation, and any later Case roll-up/treatment policy.
+1. immutable/versioned Decision Methodology policy with canonical SHA-256 provenance;
+2. explicit Finding-context association histories for scoped context eligibility;
+3. immutable Decision Input snapshots, with V3 recording exact association-event bindings for Reachability and Business/Mission Impact;
+4. exact native evidence resolution from snapshot UUID/SHA/source/time plus binding provenance;
+5. a future Formula Contract that may consume only the explicit resolved Decision Input contract;
+6. later Decision persistence/API and separate Priority/Treatment/SLA policy layers.
 
-This sequencing ensures a future score can explain exactly which evidence, policy revision, freshness rule, and source-selection rule produced it.
+This sequencing ensures a future result can explain exactly which native evidence, association event, policy revision, freshness rule, and source-selection rule produced its input state.
