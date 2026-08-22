@@ -5,6 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG = ROOT / "src/main/java/io/rbvm/postgres/PostgresEvidenceAwareCatalog.java"
+SUMMARY = ROOT / "src/main/java/io/rbvm/postgres/PostgresDedicatedIntelligenceSummaryCatalog.java"
 FACTORY = ROOT / "src/main/java/io/rbvm/postgres/CanonicalProjectionFactory.java"
 WEB = ROOT / "src/main/resources/web"
 HOSTS = (
@@ -13,6 +14,7 @@ HOSTS = (
 )
 
 catalog = CATALOG.read_text(encoding="utf-8")
+summary = SUMMARY.read_text(encoding="utf-8")
 factory = FACTORY.read_text(encoding="utf-8")
 ui = (WEB / "rbvm-intelligence-ui.js").read_text(encoding="utf-8")
 
@@ -24,6 +26,8 @@ for needle in (
     'result.put("kevStatus", kev.isEmpty() ? "UNKNOWN"',
     '"DEDICATED_CURRENT_EVIDENCE_NO_HIDDEN_SOURCE_PRECEDENCE"',
     "new java.io.UncheckedIOException(",
+    "new PostgresDedicatedIntelligenceSummaryCatalog(delegate, connections)",
+    "summaryCatalog.replaceSummary(page.summary())",
 ):
     if needle not in catalog:
         raise AssertionError(f"dedicated intelligence catalog missing {needle!r}")
@@ -35,6 +39,20 @@ for forbidden in (
 ):
     if forbidden in catalog:
         raise AssertionError(f"dedicated intelligence catalog must not read legacy field {forbidden!r}")
+
+for needle in (
+    "rbvm.current_cvss_v31_base_evidence",
+    "rbvm.current_epss_evidence",
+    "rbvm.current_cisa_kev_evidence",
+    "kev_source_count = 1 AND kev_listed_count = 1",
+    "base.vulnerabilityIntelligence().priorityDistribution()",
+    "VulnerabilityIntelligenceSummary.FRESHNESS_WINDOW",
+):
+    if needle not in summary:
+        raise AssertionError(f"dedicated intelligence summary missing {needle!r}")
+for forbidden in ("v.known_exploited", "v.intelligence_observed_at"):
+    if forbidden in summary:
+        raise AssertionError(f"dedicated summary must not read legacy field {forbidden!r}")
 
 if "installedVersion >= 12" not in factory or "new PostgresEvidenceAwareCatalog(readCatalog, connections)" not in factory:
     raise AssertionError("PostgreSQL V12+ runtime must install the dedicated intelligence read projection")
