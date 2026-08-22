@@ -11,9 +11,12 @@ RUNTIME = (ROOT / "src/main/java/io/rbvm/postgres/DecisionInputRuntimeFactory.ja
 FORMULA_RUNTIME = (ROOT / "src/main/java/io/rbvm/postgres/FormulaResultRuntimeFactory.java").read_text(encoding="utf-8")
 ACCESS = (ROOT / "src/main/java/io/rbvm/postgres/DecisionInputRuntimeAccess.java").read_text(encoding="utf-8")
 SELF_TEST = (ROOT / "src/test/java/io/rbvm/csv/DecisionInputApiSelfTest.java").read_text(encoding="utf-8")
+HTTP_SELF_TEST = (ROOT / "src/test/java/io/rbvm/csv/CsvDecisionInputHttpSelfTest.java").read_text(encoding="utf-8")
 PLATFORM = (ROOT / "src/test/java/io/rbvm/csv/PlatformSelfTest.java").read_text(encoding="utf-8")
+LIVE = (ROOT / "src/test/java/io/rbvm/postgres/PostgresV23FormulaResultLiveSelfTest.java").read_text(encoding="utf-8")
 DOC = (ROOT / "docs/DECISION_INPUT_API_V1.md").read_text(encoding="utf-8")
-OPENAPI = yaml.safe_load((ROOT / "api/decision-input-v1.openapi.yaml").read_text(encoding="utf-8"))
+OPENAPI_PATH = ROOT / "api/decision-input-v1.openapi.yaml"
+OPENAPI = yaml.safe_load(OPENAPI_PATH.read_text(encoding="utf-8"))
 
 
 def require(condition: bool, message: str) -> None:
@@ -124,8 +127,39 @@ for marker in (
     'UNKNOWN_DECISION_INPUT_MATERIALIZATION_FIELDS',
 ):
     require(marker in SELF_TEST, f"Decision Input API self-test missing proof {marker!r}")
+
+for marker in (
+    'exposesExactReadsHistoryCatalogAndExplicitMaterialization',
+    'rejectsHiddenSelectorsAndWrongMethods',
+    'requiresOperatorBeforeDecisionInputCapabilityLookup',
+    'inserted.statusCode() == 201',
+    'replay.statusCode() == 200',
+    'hidden.statusCode() == 400',
+    'wrongMethod.statusCode() == 405',
+    'unauthenticated.statusCode() == 401',
+    'viewer.statusCode() == 403',
+    'operator.statusCode() == 503',
+    'DECISION INPUT RUNTIME UNAVAILABLE',
+):
+    require(marker in HTTP_SELF_TEST,
+            f"Decision Input HTTP self-test missing proof {marker!r}")
+
 require('DecisionInputApiSelfTest.main(args);' in PLATFORM,
         'Decision Input API self-test must run in PlatformSelfTest')
+require('CsvDecisionInputHttpSelfTest.main(args);' in PLATFORM,
+        'Decision Input HTTP self-test must run in PlatformSelfTest')
+
+for marker in (
+    'PostgresDecisionInputHistoryReader',
+    'PostgresDecisionMethodologyCatalog',
+    'DecisionInputRuntimeAccess decisionRuntime',
+    'DecisionInputSnapshotInstallResult.Status.REPLAYED',
+    'decisionReplay.snapshot().snapshotSha256().equals(snapshot.snapshotSha256())',
+    'decision_history=PASS',
+    'methodology_catalog=PASS',
+    'decision_materialization_replay=PASS',
+):
+    require(marker in LIVE, f"V23 live suite missing Decision Input proof {marker!r}")
 
 require(OPENAPI.get('openapi') == '3.0.3', 'Decision Input OpenAPI must declare 3.0.3')
 paths = OPENAPI.get('paths', {})
@@ -162,7 +196,7 @@ methodology_parameters = {
 require(methodology_parameters == {'limit', 'afterRevision'},
         'Methodology catalog must expose only pagination selectors')
 
-openapi_text = (ROOT / 'api/decision-input-v1.openapi.yaml').read_text(encoding='utf-8').lower()
+openapi_text = OPENAPI_PATH.read_text(encoding='utf-8').lower()
 for forbidden in ('latest:', 'current:', 'preferred:', 'prioritytier', 'sladays', 'treatmentdecision'):
     require(forbidden not in openapi_text,
             f'Decision Input OpenAPI contains forbidden selector/field {forbidden!r}')
