@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[1]
 reach = (ROOT / "src/main/java/io/rbvm/csv/FindingReachabilityScopeLinkApi.java").read_text(encoding="utf-8")
 business = (ROOT / "src/main/java/io/rbvm/csv/FindingBusinessServiceLinkApi.java").read_text(encoding="utf-8")
@@ -10,6 +12,9 @@ factory = (ROOT / "src/main/java/io/rbvm/postgres/CanonicalProjectionFactory.jav
 test = (ROOT / "src/test/java/io/rbvm/csv/FindingContextAssociationApiSelfTest.java").read_text(encoding="utf-8")
 http_test = (ROOT / "src/test/java/io/rbvm/csv/CsvFindingContextAssociationHttpSelfTest.java").read_text(encoding="utf-8")
 platform_test = (ROOT / "src/test/java/io/rbvm/csv/PlatformSelfTest.java").read_text(encoding="utf-8")
+openapi_path = ROOT / "api/finding-context-association-v1.openapi.yaml"
+openapi_text = openapi_path.read_text(encoding="utf-8")
+openapi = yaml.safe_load(openapi_text)
 
 for name, text, prefix in (
     ("reachability API", reach, "frs"),
@@ -109,5 +114,59 @@ for needle in (
 
 if "CsvFindingContextAssociationHttpSelfTest.main(args);" not in platform_test:
     raise AssertionError("PlatformSelfTest must execute the Finding-context socket proof")
+
+if openapi.get("openapi") != "3.1.2":
+    raise AssertionError("Finding-context OpenAPI must declare 3.1.2")
+if openapi.get("security") != [{"bearerAuth": []}]:
+    raise AssertionError("Finding-context OpenAPI must protect operations by default")
+
+expected_paths = {
+    "/findings/{findingId}/reachability-links",
+    "/findings/{findingId}/reachability-links/current",
+    "/findings/{findingId}/reachability-links/revisions",
+    "/findings/{findingId}/business-service-links",
+    "/findings/{findingId}/business-service-links/current",
+    "/findings/{findingId}/business-service-links/revisions",
+}
+if set(openapi.get("paths", {})) != expected_paths:
+    raise AssertionError("Finding-context OpenAPI path set does not match the V1 router contract")
+
+operation_ids = []
+for path, item in openapi["paths"].items():
+    for method, operation in item.items():
+        if method not in {"get", "post"}:
+            continue
+        operation_id = operation.get("operationId")
+        if not operation_id:
+            raise AssertionError(f"{method.upper()} {path} lacks operationId")
+        operation_ids.append(operation_id)
+if len(operation_ids) != 8 or len(operation_ids) != len(set(operation_ids)):
+    raise AssertionError("Finding-context OpenAPI must expose eight unique operations")
+
+for path in (
+    "/findings/{findingId}/reachability-links/current",
+    "/findings/{findingId}/business-service-links/current",
+):
+    post = openapi["paths"][path]["post"]
+    parameters = post.get("parameters", [])
+    if not any(p.get("$ref") == "#/components/parameters/IfMatch" for p in parameters):
+        raise AssertionError(f"POST {path} must require If-Match")
+    responses = post.get("responses", {})
+    for status in {"200", "400", "401", "403", "404", "412", "413", "415", "422", "428", "429", "503"}:
+        if status not in responses:
+            raise AssertionError(f"POST {path} lacks response {status}")
+
+request_schemas = openapi["components"]["schemas"]
+for name in ("ReachabilityRevisionRequest", "BusinessServiceRevisionRequest"):
+    properties = request_schemas[name].get("properties", {})
+    if "changedBy" in properties:
+        raise AssertionError(f"{name} must not accept changedBy")
+
+for needle in ("NEVER_ASSESSED", "CUSTOMER_CONFIRMED", "UNLINKED"):
+    if needle not in openapi_text:
+        raise AssertionError(f"Finding-context OpenAPI is missing {needle}")
+for forbidden in ("riskScore", "priorityTier", "slaDays", "autoLink", "autoMatch"):
+    if forbidden in openapi_text:
+        raise AssertionError(f"Finding-context OpenAPI must not introduce {forbidden}")
 
 print("Finding context association API checks: PASS")
