@@ -1,0 +1,197 @@
+openapi: 3.0.3
+info:
+  title: RBVM Formula Result Materialization API V1
+  version: 1.0.0
+  description: >-
+    Operator-only exact-snapshot command that materializes RBVM Formula V1 from one
+    already-persisted RBVM_DECISION_INPUT_SNAPSHOT_V3 SHA-256 identity. The command does
+    not build a Decision Input, select current/latest evidence, accept Formula parameters,
+    or derive Priority, Treatment, SLA, remediation deadlines, or ranking.
+paths:
+  /api/v1/formula-result-materializations/{inputSnapshotSha256}:
+    post:
+      summary: Materialize Formula V1 from one exact persisted Decision Input V3
+      operationId: materializeFormulaResultByInputSnapshotSha256
+      description: >-
+        Requires Operator permission. The path SHA is the only materialization selector.
+        Query parameters and request bodies are rejected. A successful response has already
+        passed deterministic historical replay verification.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: inputSnapshotSha256
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Sha256'
+      responses:
+        '201':
+          description: Formula result was appended for the exact snapshot/Formula identity
+          headers:
+            ETag:
+              description: Strong immutable identity derived from the canonical explanation SHA-256
+              schema:
+                type: string
+            Location:
+              description: Exact read-only Formula Result API location
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterializationResponse'
+        '200':
+          description: Exact deterministic materialization was replayed without a duplicate row
+          headers:
+            ETag:
+              description: Strong immutable identity derived from the canonical explanation SHA-256
+              schema:
+                type: string
+            Location:
+              description: Exact read-only Formula Result API location
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterializationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Sha256:
+      type: string
+      pattern: '^[a-f0-9]{64}$'
+    MaterializationResponse:
+      type: object
+      required:
+        - contractId
+        - materializationStatus
+        - inputSnapshotSha256
+        - resultId
+        - formulaId
+        - formulaVersion
+        - formulaSha256
+        - resultState
+        - reasonCodes
+        - relativeRiskIndex
+        - explanationSha256
+        - replayVerified
+        - persistedAt
+      properties:
+        contractId:
+          type: string
+          enum: [RBVM_FORMULA_RESULT_MATERIALIZATION_API_V1]
+        materializationStatus:
+          type: string
+          enum: [INSERTED, REPLAYED]
+        inputSnapshotSha256:
+          $ref: '#/components/schemas/Sha256'
+        resultId:
+          type: string
+          format: uuid
+        formulaId:
+          type: string
+          enum: [RBVM_FORMULA_V1]
+        formulaVersion:
+          type: integer
+          enum: [1]
+        formulaSha256:
+          $ref: '#/components/schemas/Sha256'
+        resultState:
+          type: string
+          enum: [COMPUTED, NOT_APPLICABLE, NON_COMPUTABLE]
+        reasonCodes:
+          type: array
+          items:
+            type: string
+        relativeRiskIndex:
+          type: string
+          nullable: true
+          pattern: '^[0-9]+(?:\.[0-9]+)?$'
+          description: >-
+            Dimensionless RBVM Relative Risk Index. Null for terminal NOT_APPLICABLE and
+            NON_COMPUTABLE results. It is not probability, financial loss, Priority, or SLA.
+        explanationSha256:
+          $ref: '#/components/schemas/Sha256'
+        replayVerified:
+          type: boolean
+          enum: [true]
+        persistedAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+    Problem:
+      type: object
+      required: [type, title, status, detail, correlationId]
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        correlationId:
+          type: string
+      additionalProperties: false
+  responses:
+    BadRequest:
+      description: Invalid SHA identity, query parameter, or request body
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: Authentication is required when API-key mode is enabled
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: Authenticated identity does not have Operator permission
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: Exact persisted Decision Input snapshot identity does not exist
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: Persisted Formula content conflicts with deterministic materialization output
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unprocessable:
+      description: Persisted snapshot exists but is not Decision Input Snapshot V3
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unavailable:
+      description: Formula Result runtime requires PostgreSQL schema V23 or newer
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
