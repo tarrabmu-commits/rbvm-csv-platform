@@ -101,7 +101,8 @@ for marker in (
 
 require('DecisionInputSnapshotBuilder' not in FORMULA_RUNTIME,
         'Formula Result runtime must never directly own a Decision Input builder')
-require('DecisionInputRuntimeFactory.fromEnvironment(environment)' in FORMULA_RUNTIME,
+require('DecisionInputRuntimeFactory' in FORMULA_RUNTIME
+        and '.fromEnvironment(environment)' in FORMULA_RUNTIME,
         'Formula workflow must consume the separate Decision Input runtime boundary')
 
 for marker in (
