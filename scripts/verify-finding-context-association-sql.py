@@ -11,31 +11,41 @@ runtime = " ".join(
 ).upper()
 migrator = (ROOT / "src/main/java/io/rbvm/postgres/PostgresMigrator.java").read_text(encoding="utf-8")
 
+# Compact forms deliberately ignore whitespace-only SQL formatting differences while retaining
+# punctuation, identifiers, literals, and ordering as semantic assertions.
+compact_sql = "".join(sql.split())
+compact_runtime = "".join(runtime.split())
+
 for needle in (
     "CREATE TABLE RBVM.FINDING_REACHABILITY_SCOPE_LINK_EVENT",
     "CREATE TABLE RBVM.FINDING_BUSINESS_SERVICE_LINK_EVENT",
-    "REFERENCES RBVM.EXPOSURE(TENANT_ID, ID)",
-    "LINK_STATUS IN ('LINKED', 'UNLINKED')",
-    "LINK_METHOD = 'CUSTOMER_CONFIRMED'",
-    "TARGET_PORT_KEY INTEGER GENERATED ALWAYS AS (COALESCE(TARGET_PORT, 0)) STORED",
-    "TRANSPORT_PROTOCOL IN ('TCP', 'UDP', 'ICMP', 'OTHER', 'UNKNOWN')",
-    "ORIGIN_SCOPE IN ( 'INTERNET', 'EXTERNAL_PARTNER', 'INTERNAL_ENTERPRISE', 'LOCAL_SEGMENT', 'OTHER', 'UNKNOWN' )",
     "CREATE VIEW RBVM.CURRENT_FINDING_REACHABILITY_SCOPE_LINK",
     "CREATE VIEW RBVM.ACTIVE_FINDING_REACHABILITY_SCOPE_LINK",
     "CREATE VIEW RBVM.CURRENT_FINDING_BUSINESS_SERVICE_LINK",
     "CREATE VIEW RBVM.ACTIVE_FINDING_BUSINESS_SERVICE_LINK",
-    "WHERE LINK_STATUS = 'LINKED'",
 ):
     if needle not in sql:
         raise AssertionError(f"V21 finding-context migration missing {needle!r}")
 
 for needle in (
-    "UNIQUE ( TENANT_ID, FINDING_ID, ORIGIN_SCOPE, ORIGIN_LABEL_NORMALIZED, TRANSPORT_PROTOCOL, TARGET_PORT_KEY, REVISION )",
-    "UNIQUE ( TENANT_ID, FINDING_ID, BUSINESS_SERVICE_NORMALIZED, REVISION )",
-    "ORDER BY TENANT_ID, FINDING_ID, ORIGIN_SCOPE, ORIGIN_LABEL_NORMALIZED, TRANSPORT_PROTOCOL, TARGET_PORT_KEY, REVISION DESC",
-    "ORDER BY TENANT_ID, FINDING_ID, BUSINESS_SERVICE_NORMALIZED, REVISION DESC",
+    "REFERENCESRBVM.EXPOSURE(TENANT_ID,ID)",
+    "LINK_STATUSIN('LINKED','UNLINKED')",
+    "LINK_METHOD='CUSTOMER_CONFIRMED'",
+    "TARGET_PORT_KEYINTEGERGENERATEDALWAYSAS(COALESCE(TARGET_PORT,0))STORED",
+    "TRANSPORT_PROTOCOLIN('TCP','UDP','ICMP','OTHER','UNKNOWN')",
+    "ORIGIN_SCOPEIN('INTERNET','EXTERNAL_PARTNER','INTERNAL_ENTERPRISE','LOCAL_SEGMENT','OTHER','UNKNOWN')",
+    "WHERELINK_STATUS='LINKED'",
 ):
-    if needle not in sql:
+    if needle not in compact_sql:
+        raise AssertionError(f"V21 finding-context semantic invariant missing {needle!r}")
+
+for needle in (
+    "UNIQUE(TENANT_ID,FINDING_ID,ORIGIN_SCOPE,ORIGIN_LABEL_NORMALIZED,TRANSPORT_PROTOCOL,TARGET_PORT_KEY,REVISION)",
+    "UNIQUE(TENANT_ID,FINDING_ID,BUSINESS_SERVICE_NORMALIZED,REVISION)",
+    "ORDERBYTENANT_ID,FINDING_ID,ORIGIN_SCOPE,ORIGIN_LABEL_NORMALIZED,TRANSPORT_PROTOCOL,TARGET_PORT_KEY,REVISIONDESC",
+    "ORDERBYTENANT_ID,FINDING_ID,BUSINESS_SERVICE_NORMALIZED,REVISIONDESC",
+):
+    if needle not in compact_sql:
         raise AssertionError(f"V21 finding-context stream invariant missing {needle!r}")
 
 for forbidden in (
@@ -66,11 +76,9 @@ for relation in (
     "RBVM.FINDING_REACHABILITY_SCOPE_LINK_EVENT",
     "RBVM.FINDING_BUSINESS_SERVICE_LINK_EVENT",
 ):
-    for operation in ("UPDATE", "DELETE", "TRUNCATE"):
-        marker = f"REVOKE UPDATE, DELETE, TRUNCATE ON {relation} FROM RBVM_RUNTIME"
-        if marker not in runtime:
-            raise AssertionError(f"runtime append-only guard missing for {relation}")
-        break
+    marker = f"REVOKEUPDATE,DELETE,TRUNCATEON{relation}FROMRBVM_RUNTIME"
+    if marker not in compact_runtime:
+        raise AssertionError(f"runtime append-only guard missing for {relation}")
 
 if 'new Migration(21, "V21__finding_context_association.sql")' not in migrator:
     raise AssertionError("PostgresMigrator does not register V21 finding-context association")
