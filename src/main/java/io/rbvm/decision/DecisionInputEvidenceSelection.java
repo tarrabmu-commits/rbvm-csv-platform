@@ -1,5 +1,6 @@
 package io.rbvm.decision;
 
+import io.rbvm.decision.RbvmDecisionInputSnapshot.BindingKind;
 import io.rbvm.decision.RbvmDecisionInputSnapshot.BindingReference;
 import io.rbvm.decision.RbvmDecisionInputSnapshot.DimensionState;
 import io.rbvm.decision.RbvmDecisionInputSnapshot.EvidenceReference;
@@ -213,15 +214,7 @@ public final class DecisionInputEvidenceSelection {
             }
             evidenceSource = requireText(evidenceSource, "evidenceSource", 256);
             observedAt = Objects.requireNonNull(observedAt, "observedAt");
-            if (nativeEvidenceKind == NativeEvidenceKind.MANAGED_ASSET_REVISION) {
-                Objects.requireNonNull(
-                        bindingReference,
-                        "managed asset revision candidate requires bindingReference"
-                );
-            } else if (bindingReference != null) {
-                throw new IllegalArgumentException(
-                        "bindingReference is only supported for managed asset revision candidates");
-            }
+            validateBinding(nativeEvidenceKind, bindingReference);
         }
 
         private EvidenceReference toEvidenceReference() {
@@ -234,6 +227,51 @@ public final class DecisionInputEvidenceSelection {
                     observedAt,
                     bindingReference
             );
+        }
+
+        private static void validateBinding(
+                NativeEvidenceKind nativeEvidenceKind,
+                BindingReference bindingReference
+        ) {
+            switch (nativeEvidenceKind) {
+                case MANAGED_ASSET_REVISION -> requireBinding(
+                        bindingReference,
+                        BindingKind.SCANNER_MANAGED_ASSET_LINK_EVENT,
+                        "managed asset revision candidate requires scanner-managed-asset binding"
+                );
+                case NETWORK_REACHABILITY_EVIDENCE -> {
+                    if (bindingReference != null
+                            && bindingReference.bindingKind()
+                            != BindingKind.FINDING_REACHABILITY_SCOPE_LINK_EVENT) {
+                        throw new IllegalArgumentException(
+                                "network reachability candidate binding must be a Finding reachability-scope link event");
+                    }
+                }
+                case BUSINESS_IMPACT_EVIDENCE -> {
+                    if (bindingReference != null
+                            && bindingReference.bindingKind()
+                            != BindingKind.FINDING_BUSINESS_SERVICE_LINK_EVENT) {
+                        throw new IllegalArgumentException(
+                                "business impact candidate binding must be a Finding business-service link event");
+                    }
+                }
+                default -> {
+                    if (bindingReference != null) {
+                        throw new IllegalArgumentException(
+                                "bindingReference is not supported for this candidate kind");
+                    }
+                }
+            }
+        }
+
+        private static void requireBinding(
+                BindingReference bindingReference,
+                BindingKind expectedKind,
+                String message
+        ) {
+            if (bindingReference == null || bindingReference.bindingKind() != expectedKind) {
+                throw new IllegalArgumentException(message);
+            }
         }
     }
 
