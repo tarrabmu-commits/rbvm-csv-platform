@@ -4,35 +4,41 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 AUTH_FROM_ENV=false
-case "${1:-}" in
-  "")
-    ;;
-  --auth-from-env)
-    AUTH_FROM_ENV=true
-    shift
-    ;;
-  --help|-h)
-    cat <<'EOF'
-Usage: ./scripts/run-server.sh [--auth-from-env]
+PRINT_AUTH_MODE=false
+
+usage() {
+  cat <<'EOF'
+Usage: ./scripts/run-server.sh [--auth-from-env] [--print-auth-mode]
 
 Default local mode forces RBVM_AUTH_MODE=DISABLED so the browser UI works without
 an in-app bearer token. Use --auth-from-env only for an intentional hardened/auth
 test; in that mode RBVM_AUTH_MODE and RBVM_API_KEYS_FILE are read from the shell.
-EOF
-    exit 0
-    ;;
-  *)
-    printf 'Unknown argument: %s\n' "$1" >&2
-    printf 'Usage: ./scripts/run-server.sh [--auth-from-env]\n' >&2
-    exit 2
-    ;;
-esac
 
-if [[ $# -ne 0 ]]; then
-  printf 'Unexpected arguments: %s\n' "$*" >&2
-  printf 'Usage: ./scripts/run-server.sh [--auth-from-env]\n' >&2
-  exit 2
-fi
+--print-auth-mode prints the effective launcher authentication mode and exits
+before compilation. It is intended for diagnostics and repository verification.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --auth-from-env)
+      AUTH_FROM_ENV=true
+      ;;
+    --print-auth-mode)
+      PRINT_AUTH_MODE=true
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      printf 'Unknown argument: %s\n' "$1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
 
 if [[ "$AUTH_FROM_ENV" == false ]]; then
   # Frontend System V2 intentionally has no browser token field. This launcher is
@@ -40,6 +46,11 @@ if [[ "$AUTH_FROM_ENV" == false ]]; then
   # not accidentally make the local SPA unusable.
   export RBVM_AUTH_MODE=DISABLED
   unset RBVM_API_KEYS_FILE || true
+fi
+
+if [[ "$PRINT_AUTH_MODE" == true ]]; then
+  printf '%s\n' "${RBVM_AUTH_MODE:-DISABLED}"
+  exit 0
 fi
 
 "$ROOT_DIR/scripts/compile.sh"
