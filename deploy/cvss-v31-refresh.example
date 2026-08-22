@@ -1,9 +1,9 @@
 # Source-only systemd refresh derives CVEs from the current canonical Cases API.
 RBVM_API_BASE_URL=http://127.0.0.1:8080
-RBVM_INTELLIGENCE_WORK_DIR=/var/lib/rbvm-platform/canonical-intelligence-refresh
 
-RBVM_CVSS_OUTPUT_DIR=/var/lib/rbvm-platform/cvss-v31
-RBVM_CVSS_CACHE_DIR=/var/cache/rbvm-platform/cvss-v31
+# The supplied user service is sandboxed for the default per-user work/output/cache paths.
+# Leave RBVM_INTELLIGENCE_WORK_DIR, RBVM_CVSS_OUTPUT_DIR, and RBVM_CVSS_CACHE_DIR unset
+# unless you also update the service ReadWritePaths for your chosen locations.
 RBVM_CVSS_KEEP=14
 RBVM_CVSS_OFFLINE=false
 
