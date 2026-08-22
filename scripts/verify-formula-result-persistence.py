@@ -46,7 +46,7 @@ for forbidden in (
 
 for marker in (
     "TRANSACTION_SERIALIZABLE",
-    "PG_ADVISORY_XACT_LOCK",
+    "pg_advisory_xact_lock",
     "requireExactDecisionInput",
     "RbvmDecisionInputSnapshot.V3_ID",
     "explanation.canonicalSha256()",
@@ -66,7 +66,7 @@ require("must not carry a numeric risk index" in MODEL,
         "terminal Formula results must remain non-numeric")
 
 for marker in (
-    "decisionInputs.findBySha256",
+    ".findBySha256(stored.inputSnapshotSha256())",
     "evidenceResolver.resolve(snapshot)",
     "RbvmFormulaV1.evaluate(resolved)",
     "RbvmFormulaV1Explanation.from",
