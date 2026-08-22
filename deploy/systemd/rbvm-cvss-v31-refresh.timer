@@ -1,5 +1,6 @@
 [Unit]
-Description=Daily RBVM NVD CVSS v3.1 refresh schedule
+Description=Daily RBVM canonical-CVE NVD CVSS v3.1 source-only schedule
+Conflicts=rbvm-intelligence-refresh.timer
 
 [Timer]
 OnCalendar=daily

@@ -1,5 +1,6 @@
 [Unit]
-Description=Daily RBVM FIRST EPSS refresh schedule
+Description=Daily RBVM canonical-CVE FIRST EPSS source-only schedule
+Conflicts=rbvm-intelligence-refresh.timer
 
 [Timer]
 OnCalendar=daily

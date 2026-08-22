@@ -1,5 +1,6 @@
 [Unit]
-Description=Daily RBVM vulnerability intelligence refresh schedule
+Description=Daily RBVM canonical vulnerability intelligence refresh schedule
+Conflicts=rbvm-cvss-v31-refresh.timer rbvm-epss-refresh.timer rbvm-cisa-kev-refresh.timer
 
 [Timer]
 OnCalendar=daily

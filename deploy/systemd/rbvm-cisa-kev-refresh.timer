@@ -1,5 +1,6 @@
 [Unit]
-Description=Daily RBVM CISA KEV refresh schedule
+Description=Daily RBVM canonical-CVE CISA KEV source-only schedule
+Conflicts=rbvm-intelligence-refresh.timer
 
 [Timer]
 OnCalendar=daily
