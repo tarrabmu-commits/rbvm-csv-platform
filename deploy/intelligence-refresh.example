@@ -1,7 +1,11 @@
 # The umbrella refresh derives its CVE set from the current canonical Cases API.
 RBVM_API_BASE_URL=http://127.0.0.1:8080
-# Set only when the API endpoint requires authentication.
+# Set only when the API endpoint requires authentication. The umbrella credential is reused by
+# the canonical CVE read and all three HTTP importers unless a narrower source-specific key is set.
 # RBVM_INTELLIGENCE_API_KEY=from-a-secret-manager
+# RBVM_CVSS_API_KEY=optional-source-specific-override
+# RBVM_EPSS_API_KEY=optional-source-specific-override
+# RBVM_KEV_API_KEY=optional-source-specific-override
 
 RBVM_INTELLIGENCE_WORK_DIR=/var/lib/rbvm-platform/canonical-intelligence-refresh
 
