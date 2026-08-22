@@ -1,15 +1,35 @@
 package io.rbvm.csv;
 
 import io.rbvm.decision.RbvmDecisionInputSnapshot;
+import io.rbvm.decision.RbvmDecisionInputSnapshot.BindingKind;
+import io.rbvm.decision.RbvmDecisionInputSnapshot.BindingReference;
 import io.rbvm.decision.RbvmDecisionInputSnapshot.DimensionInput;
 import io.rbvm.decision.RbvmDecisionInputSnapshot.DimensionState;
 import io.rbvm.decision.RbvmDecisionInputSnapshot.EvidenceReference;
+import io.rbvm.decision.RbvmDecisionInputSnapshot.NativeEvidenceKind;
 import io.rbvm.decision.RbvmDecisionMethodologyPolicy.EvidenceDimension;
 import io.rbvm.decision.RbvmFormulaV1;
 import io.rbvm.decision.RbvmFormulaV1Explanation;
 import io.rbvm.decision.RbvmResolvedDecisionInput;
 import io.rbvm.decision.RbvmResolvedDecisionInput.ApplicabilityEvidenceValue;
 import io.rbvm.decision.RbvmResolvedDecisionInput.ApplicabilityStatus;
+import io.rbvm.decision.RbvmResolvedDecisionInput.AssetContextEvidenceValue;
+import io.rbvm.decision.RbvmResolvedDecisionInput.BusinessCriticality;
+import io.rbvm.decision.RbvmResolvedDecisionInput.BusinessMissionImpactEvidenceValue;
+import io.rbvm.decision.RbvmResolvedDecisionInput.Environment;
+import io.rbvm.decision.RbvmResolvedDecisionInput.ExploitationProbabilityEvidenceValue;
+import io.rbvm.decision.RbvmResolvedDecisionInput.ImpactDimension;
+import io.rbvm.decision.RbvmResolvedDecisionInput.ImpactLevel;
+import io.rbvm.decision.RbvmResolvedDecisionInput.ImpactMethod;
+import io.rbvm.decision.RbvmResolvedDecisionInput.KevStatus;
+import io.rbvm.decision.RbvmResolvedDecisionInput.KnownExploitationEvidenceValue;
+import io.rbvm.decision.RbvmResolvedDecisionInput.NetworkReachabilityEvidenceValue;
+import io.rbvm.decision.RbvmResolvedDecisionInput.OriginScope;
+import io.rbvm.decision.RbvmResolvedDecisionInput.ReachabilityMethod;
+import io.rbvm.decision.RbvmResolvedDecisionInput.ReachabilityStatus;
+import io.rbvm.decision.RbvmResolvedDecisionInput.ResolvedEvidence;
+import io.rbvm.decision.RbvmResolvedDecisionInput.TechnicalSeverityEvidenceValue;
+import io.rbvm.decision.RbvmResolvedDecisionInput.TransportProtocol;
 import io.rbvm.postgres.DecisionInputSnapshotInstallResult;
 import io.rbvm.postgres.DecisionInputSnapshotStore;
 import io.rbvm.postgres.FormulaResultInstallResult;
@@ -18,7 +38,10 @@ import io.rbvm.postgres.FormulaResultStore;
 import io.rbvm.postgres.StoredFormulaResult;
 
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Base64;
 import java.util.EnumMap;
 import java.util.List;
@@ -39,13 +62,14 @@ public final class FormulaResultApiSelfTest {
     public static void main(String[] args) throws Exception {
         returnsReplayVerifiedExactResultByExplanationIdentity();
         returnsReplayVerifiedExactResultBySnapshotAndFormulaIdentity();
+        returnsComputedDecimalsAndExactBindingProvenance();
         rejectsInvalidAndMissingIdentities();
         failsClosedWhenHistoricalReplayDoesNotMatchStorage();
         System.out.println("FormulaResultApiSelfTest: PASS");
     }
 
     private static void returnsReplayVerifiedExactResultByExplanationIdentity() throws Exception {
-        Fixture fixture = fixture();
+        Fixture fixture = terminalFixture();
         FormulaResultApi api = api(fixture, fixture.stored(), fixture.resolved());
 
         FormulaResultApi.Response response = api.getByExplanationSha256(
@@ -78,10 +102,7 @@ public final class FormulaResultApiSelfTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> dimensions =
                 (List<Map<String, Object>>) explanation.get("dimensions");
-        Map<String, Object> applicability = dimensions.stream()
-                .filter(item -> item.get("dimension").equals("APPLICABILITY"))
-                .findFirst()
-                .orElseThrow();
+        Map<String, Object> applicability = dimension(dimensions, "APPLICABILITY");
         assert applicability.get("state").equals("PRESENT");
         assert applicability.get("normalizedValue").equals("NOT_APPLICABLE");
         @SuppressWarnings("unchecked")
@@ -97,7 +118,7 @@ public final class FormulaResultApiSelfTest {
 
     private static void returnsReplayVerifiedExactResultBySnapshotAndFormulaIdentity()
             throws Exception {
-        Fixture fixture = fixture();
+        Fixture fixture = terminalFixture();
         FormulaResultApi api = api(fixture, fixture.stored(), fixture.resolved());
         FormulaResultApi.Response response = api.getByInputSnapshotAndFormula(
                 fixture.snapshot().snapshotSha256(),
@@ -111,8 +132,49 @@ public final class FormulaResultApiSelfTest {
         assert result.get("evaluatedAt").equals(EVALUATED_AT.toString());
     }
 
+    private static void returnsComputedDecimalsAndExactBindingProvenance() throws Exception {
+        Fixture fixture = computedFixture();
+        FormulaResultApi api = api(fixture, fixture.stored(), fixture.resolved());
+        FormulaResultApi.Response response = api.getByExplanationSha256(
+                fixture.explanation().canonicalSha256()
+        );
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) response.body().get("result");
+        assert result.get("resultState").equals("COMPUTED");
+        assert result.get("relativeRiskIndex").equals("45.00") : result;
+        assert result.get("reasonCodes").equals(List.of());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> explanation = (Map<String, Object>) response.body().get("explanation");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> dimensions =
+                (List<Map<String, Object>>) explanation.get("dimensions");
+
+        Map<String, Object> severity = dimension(dimensions, "TECHNICAL_SEVERITY");
+        assert severity.get("normalizedValue").equals("0.65") : severity;
+        assert severity.get("appliedFactorOrTransformId").equals("CVSS_V31_BASE") : severity;
+        assert severity.get("weightedContribution").equals("0.13") : severity;
+
+        Map<String, Object> reachability = dimension(dimensions, "NETWORK_REACHABILITY");
+        assert reachability.get("normalizedValue").equals("1") : reachability;
+        assert reachability.get("weightedContribution").equals("0.15") : reachability;
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> references =
+                (List<Map<String, Object>>) reachability.get("evidenceReferences");
+        assert references.size() == 1;
+        @SuppressWarnings("unchecked")
+        Map<String, Object> binding = (Map<String, Object>) references.get(0).get("binding");
+        BindingReference expectedBinding = fixture.reachabilityReference().bindingReference();
+        assert binding.get("bindingKind").equals("FINDING_REACHABILITY_SCOPE_LINK_EVENT");
+        assert binding.get("bindingId").equals(expectedBinding.bindingId().toString());
+        assert binding.get("bindingSha256").equals(expectedBinding.bindingSha256());
+        assert binding.get("bindingSource").equals(expectedBinding.bindingSource());
+        assert binding.get("recordedAt").equals(expectedBinding.recordedAt().toString());
+    }
+
     private static void rejectsInvalidAndMissingIdentities() throws Exception {
-        Fixture fixture = fixture();
+        Fixture fixture = terminalFixture();
         FormulaResultApi api = api(fixture, fixture.stored(), fixture.resolved());
 
         boolean invalid = false;
@@ -147,7 +209,7 @@ public final class FormulaResultApiSelfTest {
     }
 
     private static void failsClosedWhenHistoricalReplayDoesNotMatchStorage() throws Exception {
-        Fixture fixture = fixture();
+        Fixture fixture = terminalFixture();
         StoredFormulaResult drifted = new StoredFormulaResult(
                 fixture.stored().id(),
                 fixture.stored().inputSnapshotSha256(),
@@ -177,6 +239,16 @@ public final class FormulaResultApiSelfTest {
         assert failedClosed : "Formula Result API must never expose replay-invalid storage";
     }
 
+    private static Map<String, Object> dimension(
+            List<Map<String, Object>> dimensions,
+            String dimension
+    ) {
+        return dimensions.stream()
+                .filter(item -> item.get("dimension").equals(dimension))
+                .findFirst()
+                .orElseThrow();
+    }
+
     private static FormulaResultApi api(
             Fixture fixture,
             StoredFormulaResult stored,
@@ -192,7 +264,7 @@ public final class FormulaResultApiSelfTest {
         return new FormulaResultApi(formulaStore, verifier);
     }
 
-    private static Fixture fixture() {
+    private static Fixture terminalFixture() {
         EvidenceReference applicabilityReference = new EvidenceReference(
                 EvidenceDimension.APPLICABILITY,
                 UUID.fromString("92222222-2222-4222-8222-222222222222"),
@@ -224,7 +296,7 @@ public final class FormulaResultApiSelfTest {
                 dimensions
         );
 
-        EnumMap<EvidenceDimension, List<RbvmResolvedDecisionInput.ResolvedEvidence>> evidence =
+        EnumMap<EvidenceDimension, List<ResolvedEvidence>> evidence =
                 new EnumMap<>(EvidenceDimension.class);
         for (EvidenceDimension dimension : EvidenceDimension.values()) {
             evidence.put(dimension, List.of());
@@ -238,16 +310,175 @@ public final class FormulaResultApiSelfTest {
                 ))
         );
         RbvmResolvedDecisionInput resolved = new RbvmResolvedDecisionInput(snapshot, evidence);
+        return fixtureFromResolved(
+                resolved,
+                UUID.fromString("93333333-3333-4333-8333-333333333333"),
+                applicabilityReference,
+                null
+        );
+    }
+
+    private static Fixture computedFixture() {
+        EnumMap<EvidenceDimension, DimensionInput> dimensions =
+                new EnumMap<>(EvidenceDimension.class);
+        EnumMap<EvidenceDimension, List<ResolvedEvidence>> values =
+                new EnumMap<>(EvidenceDimension.class);
+
+        EvidenceReference applicability = reference(EvidenceDimension.APPLICABILITY, 1, null);
+        put(dimensions, values, EvidenceDimension.APPLICABILITY, applicability,
+                new ApplicabilityEvidenceValue(
+                        applicability,
+                        ApplicabilityStatus.APPLICABLE,
+                        "customer-confirmed applicable"
+                ));
+
+        EvidenceReference cvss = reference(EvidenceDimension.TECHNICAL_SEVERITY, 2, null);
+        put(dimensions, values, EvidenceDimension.TECHNICAL_SEVERITY, cvss,
+                new TechnicalSeverityEvidenceValue(
+                        cvss,
+                        "3.1",
+                        new BigDecimal("6.5"),
+                        "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:L"
+                ));
+
+        EvidenceReference kev = reference(EvidenceDimension.KNOWN_EXPLOITATION, 3, null);
+        put(dimensions, values, EvidenceDimension.KNOWN_EXPLOITATION, kev,
+                new KnownExploitationEvidenceValue(kev, KevStatus.NOT_LISTED, null, null, null));
+
+        EvidenceReference epss = reference(EvidenceDimension.EXPLOITATION_PROBABILITY, 4, null);
+        put(dimensions, values, EvidenceDimension.EXPLOITATION_PROBABILITY, epss,
+                new ExploitationProbabilityEvidenceValue(
+                        epss,
+                        new BigDecimal("0.1"),
+                        new BigDecimal("0.7"),
+                        "2026.08.22",
+                        LocalDate.parse("2026-08-22")
+                ));
+
+        EvidenceReference context = reference(EvidenceDimension.ASSET_CONTEXT, 5, null);
+        put(dimensions, values, EvidenceDimension.ASSET_CONTEXT, context,
+                new AssetContextEvidenceValue(
+                        context,
+                        Environment.PRODUCTION,
+                        "payments",
+                        "payments-owner",
+                        BusinessCriticality.MODERATE
+                ));
+
+        BindingReference reachBinding = binding(
+                BindingKind.FINDING_REACHABILITY_SCOPE_LINK_EVENT,
+                6
+        );
+        EvidenceReference reachability = reference(
+                EvidenceDimension.NETWORK_REACHABILITY,
+                6,
+                reachBinding
+        );
+        put(dimensions, values, EvidenceDimension.NETWORK_REACHABILITY, reachability,
+                new NetworkReachabilityEvidenceValue(
+                        reachability,
+                        OriginScope.INTERNET,
+                        "edge-a",
+                        TransportProtocol.TCP,
+                        443,
+                        "https",
+                        ReachabilityStatus.REACHABLE,
+                        ReachabilityMethod.FIREWALL_POLICY
+                ));
+
+        BindingReference impactBinding = binding(
+                BindingKind.FINDING_BUSINESS_SERVICE_LINK_EVENT,
+                7
+        );
+        EvidenceReference impact = reference(
+                EvidenceDimension.BUSINESS_MISSION_IMPACT,
+                7,
+                impactBinding
+        );
+        put(dimensions, values, EvidenceDimension.BUSINESS_MISSION_IMPACT, impact,
+                new BusinessMissionImpactEvidenceValue(
+                        impact,
+                        "payments",
+                        "payments",
+                        ImpactDimension.AVAILABILITY,
+                        ImpactLevel.MODERATE,
+                        ImpactMethod.BUSINESS_IMPACT_ANALYSIS,
+                        "payment processing interruption"
+                ));
+
+        RbvmDecisionInputSnapshot snapshot = RbvmDecisionInputSnapshot.createV3(
+                FINDING_ID,
+                8,
+                POLICY_SHA,
+                EVALUATED_AT,
+                dimensions
+        );
+        RbvmResolvedDecisionInput resolved = new RbvmResolvedDecisionInput(snapshot, values);
+        return fixtureFromResolved(
+                resolved,
+                UUID.fromString("94444444-4444-4444-8444-444444444444"),
+                applicability,
+                reachability
+        );
+    }
+
+    private static void put(
+            EnumMap<EvidenceDimension, DimensionInput> dimensions,
+            EnumMap<EvidenceDimension, List<ResolvedEvidence>> values,
+            EvidenceDimension dimension,
+            EvidenceReference reference,
+            ResolvedEvidence resolved
+    ) {
+        dimensions.put(
+                dimension,
+                new DimensionInput(dimension, DimensionState.PRESENT, List.of(reference))
+        );
+        values.put(dimension, List.of(resolved));
+    }
+
+    private static EvidenceReference reference(
+            EvidenceDimension dimension,
+            int ordinal,
+            BindingReference binding
+    ) {
+        String identity = "formula-result-api:" + dimension + ':' + ordinal;
+        return new EvidenceReference(
+                dimension,
+                NativeEvidenceKind.defaultFor(dimension),
+                UUID.nameUUIDFromBytes(identity.getBytes(StandardCharsets.UTF_8)),
+                Integer.toHexString(ordinal).repeat(64),
+                "formula-result-api-self-test-" + dimension.name().toLowerCase(java.util.Locale.ROOT),
+                EVALUATED_AT.minusSeconds(300L + ordinal),
+                binding
+        );
+    }
+
+    private static BindingReference binding(BindingKind kind, int ordinal) {
+        String identity = "formula-result-api-binding:" + kind + ':' + ordinal;
+        return new BindingReference(
+                kind,
+                UUID.nameUUIDFromBytes(identity.getBytes(StandardCharsets.UTF_8)),
+                Integer.toHexString(ordinal + 7).repeat(64),
+                "CUSTOMER_CONFIRMED",
+                EVALUATED_AT.minusSeconds(120L + ordinal)
+        );
+    }
+
+    private static Fixture fixtureFromResolved(
+            RbvmResolvedDecisionInput resolved,
+            UUID resultId,
+            EvidenceReference applicabilityReference,
+            EvidenceReference reachabilityReference
+    ) {
         RbvmFormulaV1.FormulaResult result = RbvmFormulaV1.evaluate(resolved);
-        assert result.state() == RbvmFormulaV1.ResultState.NOT_APPLICABLE;
         RbvmFormulaV1Explanation explanation = RbvmFormulaV1Explanation.from(resolved, result);
         StoredFormulaResult stored = new StoredFormulaResult(
-                UUID.fromString("93333333-3333-4333-8333-333333333333"),
-                snapshot.snapshotSha256(),
-                snapshot.findingId(),
-                snapshot.evaluatedAt(),
-                snapshot.methodologyRevision(),
-                snapshot.methodologyPolicySha256(),
+                resultId,
+                resolved.snapshot().snapshotSha256(),
+                resolved.snapshot().findingId(),
+                resolved.snapshot().evaluatedAt(),
+                resolved.snapshot().methodologyRevision(),
+                resolved.snapshot().methodologyPolicySha256(),
                 explanation.formulaId(),
                 explanation.formulaVersion(),
                 explanation.formulaSha256(),
@@ -259,7 +490,14 @@ public final class FormulaResultApiSelfTest {
                 explanation.canonicalPayload(),
                 PERSISTED_AT
         );
-        return new Fixture(snapshot, resolved, explanation, stored, applicabilityReference);
+        return new Fixture(
+                resolved.snapshot(),
+                resolved,
+                explanation,
+                stored,
+                applicabilityReference,
+                reachabilityReference
+        );
     }
 
     private static FormulaResultStore formulaStore(StoredFormulaResult stored) {
@@ -312,7 +550,8 @@ public final class FormulaResultApiSelfTest {
             RbvmResolvedDecisionInput resolved,
             RbvmFormulaV1Explanation explanation,
             StoredFormulaResult stored,
-            EvidenceReference applicabilityReference
+            EvidenceReference applicabilityReference,
+            EvidenceReference reachabilityReference
     ) {
     }
 }
