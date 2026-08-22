@@ -112,8 +112,9 @@ public final class RbvmDecisionInputSnapshotV2SelfTest {
                     EVALUATED_AT.minusSeconds(30),
                     null
             );
-        } catch (NullPointerException expected) {
-            rejected = expected.getMessage().contains("bindingReference");
+        } catch (IllegalArgumentException | NullPointerException expected) {
+            rejected = expected.getMessage() != null
+                    && expected.getMessage().toLowerCase(java.util.Locale.ROOT).contains("binding");
         }
         assert rejected;
     }

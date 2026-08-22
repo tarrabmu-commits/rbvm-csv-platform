@@ -17,6 +17,8 @@ import java.util.Locale;
 import java.util.Map;
 
 public final class PostgresMigratorSelfTest {
+    private static final int LATEST_SCHEMA_VERSION = 22;
+
     private PostgresMigratorSelfTest() {
     }
 
@@ -30,9 +32,9 @@ public final class PostgresMigratorSelfTest {
     private static void appliesAndReplaysVersionedMigrations() throws Exception {
         FakeDatabase database = new FakeDatabase();
         PostgresMigrator migrator = new PostgresMigrator(database::connection);
-        assert migrator.migrate() == 21;
-        assert database.checksums.size() == 21;
-        assert database.commits == 21;
+        assert migrator.migrate() == LATEST_SCHEMA_VERSION;
+        assert database.checksums.size() == LATEST_SCHEMA_VERSION;
+        assert database.commits == LATEST_SCHEMA_VERSION;
         assert database.rollbacks == 0;
         assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.observation"));
         assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE VIEW rbvm.operational_finding"));
@@ -77,6 +79,9 @@ public final class PostgresMigratorSelfTest {
         assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE VIEW rbvm.current_finding_reachability_scope_link"));
         assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.finding_business_service_link_event"));
         assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE VIEW rbvm.current_finding_business_service_link"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("RBVM_DECISION_INPUT_SNAPSHOT_V3"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("FINDING_REACHABILITY_SCOPE_LINK_EVENT"));
+        assert database.executedSql.stream().anyMatch(sql -> sql.contains("FINDING_BUSINESS_SERVICE_LINK_EVENT"));
 
         long observationCreates = count(database, "CREATE TABLE rbvm.observation (");
         long operationalFindingCreates = count(database, "CREATE VIEW rbvm.operational_finding");
@@ -106,9 +111,10 @@ public final class PostgresMigratorSelfTest {
                 database, "CREATE TABLE rbvm.finding_reachability_scope_link_event");
         long findingBusinessServiceLinkCreates = count(
                 database, "CREATE TABLE rbvm.finding_business_service_link_event");
+        long v3ContractAlterations = count(database, "RBVM_DECISION_INPUT_SNAPSHOT_V3");
 
-        assert migrator.migrate() == 21;
-        assert database.commits == 21 : "replay must not reapply migrations";
+        assert migrator.migrate() == LATEST_SCHEMA_VERSION;
+        assert database.commits == LATEST_SCHEMA_VERSION : "replay must not reapply migrations";
         assert count(database, "CREATE TABLE rbvm.observation (") == observationCreates;
         assert count(database, "CREATE VIEW rbvm.operational_finding") == operationalFindingCreates;
         assert count(database, "CREATE TABLE rbvm.applicability_assessment") == applicabilityCreates;
@@ -137,6 +143,7 @@ public final class PostgresMigratorSelfTest {
                 == findingReachabilityLinkCreates;
         assert count(database, "CREATE TABLE rbvm.finding_business_service_link_event")
                 == findingBusinessServiceLinkCreates;
+        assert count(database, "RBVM_DECISION_INPUT_SNAPSHOT_V3") == v3ContractAlterations;
         assert database.advisoryLocks == 2;
         assert database.advisoryUnlocks == 2;
     }
