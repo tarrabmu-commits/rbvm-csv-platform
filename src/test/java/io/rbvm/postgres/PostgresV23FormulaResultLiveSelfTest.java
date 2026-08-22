@@ -46,6 +46,11 @@ public final class PostgresV23FormulaResultLiveSelfTest {
                 runtimeConnections,
                 schemaVersion
         );
+        invokeV22(
+                "proveAppendOnlyPrivileges",
+                new Class<?>[]{JdbcConnectionFactory.class},
+                runtimeConnections
+        );
 
         String snapshotSha = latestV3SnapshotSha(runtimeConnections);
         PostgresDecisionInputSnapshotStore decisionInputs = new PostgresDecisionInputSnapshotStore(
@@ -104,7 +109,7 @@ public final class PostgresV23FormulaResultLiveSelfTest {
 
         System.out.println(
                 "PostgresV23FormulaResultLiveSelfTest: PASS schema=23 formula_result=PASS "
-                        + "idempotency=PASS replay=PASS append_only=PASS"
+                        + "decision_v3_append_only=PASS idempotency=PASS replay=PASS append_only=PASS"
         );
     }
 
