@@ -6,6 +6,7 @@ import io.rbvm.context.FindingContextAssociationSelfTest;
 import io.rbvm.decision.DecisionInputEvidenceSelectionSelfTest;
 import io.rbvm.decision.RbvmDecisionInputSnapshotSelfTest;
 import io.rbvm.decision.RbvmDecisionInputSnapshotV2SelfTest;
+import io.rbvm.decision.RbvmDecisionInputSnapshotV3SelfTest;
 import io.rbvm.decision.RbvmDecisionMethodologyPolicySelfTest;
 import io.rbvm.decision.RbvmResolvedDecisionInputSelfTest;
 import io.rbvm.postgres.DecisionInputSnapshotMaterializerSelfTest;
@@ -46,6 +47,7 @@ public final class PlatformSelfTest {
         RbvmDecisionMethodologyPolicySelfTest.main(args);
         RbvmDecisionInputSnapshotSelfTest.main(args);
         RbvmDecisionInputSnapshotV2SelfTest.main(args);
+        RbvmDecisionInputSnapshotV3SelfTest.main(args);
         DecisionInputEvidenceSelectionSelfTest.main(args);
         RbvmResolvedDecisionInputSelfTest.main(args);
         DomainCatalogSelfTest.main(args);
