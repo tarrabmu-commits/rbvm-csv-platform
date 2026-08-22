@@ -1,53 +1,61 @@
 # CISA KEV Scheduled Collection and Safe Handoff
 
-This increment automates the already-established CISA KEV threat-evidence path without creating a second persistence path.
+This automation delivers independent CISA KEV threat evidence without creating a second persistence, risk, or priority path.
 
-## Trust boundary
+## Deployed trust boundary
 
-The scheduled workflow is deliberately:
+The supplied systemd path derives the vulnerability scope from current canonical Cases rather than from a separately maintained vulnerability CSV:
 
 ```text
-current vulnerability CSV containing CVE_ID
-        |
-        v
+Canonical Cases API
+        ↓
+Unique current CVE set
+        ↓
+scheduled-canonical-source-refresh.sh kev
+        ↓
 Official CISA KEV JSON acquisition
-        |
-        v
+        ↓
 Complete validated CISA snapshot
-        |
-        v
+        ↓
 CISA_KEV_CSV_V1
-        |
-        v
-Authenticated HTTP handoff
-        |
-        v
+        ↓
+Authenticated / same-origin HTTP handoff
+        ↓
 Existing KEV contract validation
-        |
-        v
+        ↓
 Existing tenant/CVE resolution
-        |
-        v
-Existing transactional PostgreSQL V11 importer
-        |
-        v
+        ↓
+Transactional PostgreSQL KEV importer
+        ↓
 Immutable snapshot-bound KEV history
 ```
 
-There is no `CISA -> PostgreSQL` shortcut. The scheduler does not use JDBC, `psql`, the legacy combined-intelligence path, or any RBVM scoring logic.
+There is no `CISA -> PostgreSQL` shortcut. The scheduler does not use JDBC, `psql`, the legacy combined-intelligence path, or RBVM scoring logic.
 
-## Components
+`scripts/scheduled-cisa-kev-refresh.sh` remains the source-specific collection/handoff primitive and can accept an explicit CVE-bearing CSV for controlled manual use and tests. The supplied systemd service instead runs `scripts/scheduled-canonical-source-refresh.sh kev`, which first exports current CVEs from canonical Cases and supplies that generated scope as `RBVM_KEV_INPUT`.
 
-### `scripts/scheduled-cisa-kev-refresh.sh`
+## Canonical source wrapper
 
-The workflow:
+For deployed source-only scheduling, `scheduled-canonical-source-refresh.sh kev`:
 
-1. validates configuration and the current CVE-bearing input CSV;
-2. acquires a non-blocking `flock` so overlapping refreshes do not run concurrently;
+1. reads current canonical Cases through the configured API;
+2. exports a deterministic unique CVE set into private staging;
+3. skips safely when there are no canonical CVEs;
+4. invokes the source-specific KEV refresh with that generated scope;
+5. preserves `PASS`, `PARTIAL`, or `SKIPPED` from the source workflow.
+
+This prevents a stale external inventory file from defining KEV evidence for a different CVE set than the platform currently holds.
+
+## Source-specific workflow
+
+`scripts/scheduled-cisa-kev-refresh.sh`:
+
+1. validates configuration and the supplied CVE scope;
+2. acquires a non-blocking `flock` so overlapping source refreshes do not run concurrently;
 3. creates a private staging directory;
 4. runs `fetch-cisa-kev-snapshot.py` against the pinned official CISA feed;
-5. accepts only a complete validated snapshot and records a checksum of the canonical snapshot artifact;
-6. derives `CISA_KEV_CSV_V1` for the CVEs in the configured input;
+5. accepts only a complete validated snapshot and records its checksum;
+6. derives `CISA_KEV_CSV_V1` for the supplied CVEs;
 7. records a checksum for the exact generated evidence CSV;
 8. sends that exact CSV through `import-cisa-kev.py` to `POST /api/v1/cisa-kev-imports`;
 9. publishes the refresh directory only after the canonical importer completes successfully;
@@ -65,30 +73,36 @@ cisa-kev-YYYYMMDDTHHMMSSZ/
     import.json
 ```
 
-`catalog-snapshot.json` is the validated source artifact. Its embedded `sha256` binds the evidence semantics to the exact CISA source bytes. The adjacent checksum binds the locally published canonical artifact itself.
+`catalog-snapshot.json` is the validated source artifact. Its source digest binds the evidence semantics to the exact CISA snapshot. `build.json` records how in-scope CVEs were mapped to `LISTED` or `NOT_LISTED`; `import.json` records what the canonical platform inserted, replayed, or quarantined.
 
-`build.json` records how the input CVEs were mapped to `LISTED` or `NOT_LISTED`. `import.json` records what the canonical platform inserted, replayed, or quarantined. These layers remain separate so acquisition provenance, evidence construction, and persistence outcome are auditable independently.
+## KEV status semantics
 
-## Failure semantics
+`LISTED` is positive membership evidence in the validated complete CISA KEV snapshot.
 
-The workflow fails closed before publication if acquisition fails, the CISA catalog is incomplete, the evidence contract cannot be built, authentication fails, the API transport is unsafe, the API response is invalid, or the canonical importer fails.
+`NOT_LISTED` is negative membership evidence only when the CVE was evaluated against that validated complete snapshot and was absent. It does not mean the vulnerability is safe or has never been exploited.
 
-A failed acquisition therefore cannot create `NOT_LISTED` evidence:
+Failure to obtain or validate a complete catalog cannot produce `NOT_LISTED` evidence. In that condition no new usable KEV evidence is published:
 
 ```text
 failed / incomplete CISA acquisition
         != NOT_LISTED
-        -> no published refresh
-        -> no new usable KEV evidence
+        → no published refresh
+        → no new usable KEV evidence
 ```
 
-If the canonical importer completes but quarantines some rows, the refresh is published with the import ledger and the command reports:
+At read time, absence of usable KEV evidence remains unknown rather than being fabricated as `NOT_LISTED`. Ambiguous current evidence also remains explicit rather than being silently collapsed.
+
+## Failure semantics
+
+The workflow fails closed before publication if acquisition fails, the CISA catalog is incomplete, evidence construction fails, authentication or transport validation fails, the API response is invalid, or the canonical importer fails.
+
+If the canonical importer completes but quarantines some rows, the refresh is published with its immutable import ledger and reports:
 
 ```text
 cisa_kev_refresh=PARTIAL
 ```
 
-This preserves the evidence and makes quarantine visible without pretending that already-committed rows were rolled back.
+A concurrent source invocation may report `SKIPPED`; the canonical source wrapper preserves that state rather than relabeling it `PASS`.
 
 ## Scheduling
 
@@ -100,38 +114,40 @@ deploy/systemd/rbvm-cisa-kev-refresh.timer
 deploy/cisa-kev-refresh.example
 ```
 
-The supplied timer runs daily with a randomized delay of up to 30 minutes and `Persistent=true`. This is an operational refresh default, not a vulnerability-remediation SLA or an RBVM freshness decision threshold.
+The supplied timer runs daily with a randomized delay of up to 30 minutes and `Persistent=true`. This is an operational refresh default, not a remediation SLA, priority rule, or Formula freshness threshold.
 
-The service uses the existing hardened pattern with `NoNewPrivileges`, `ProtectSystem=strict`, kernel/control-group protections, restricted address families, a restrictive umask, and an explicit writable path for the default published refresh directory.
+The KEV source-only timer conflicts with the umbrella `rbvm-intelligence-refresh.timer`; operators should enable either the umbrella schedule or the source-only schedules, not both. The service uses `NoNewPrivileges`, `ProtectSystem=strict`, kernel/control-group protections, restricted address families, a restrictive umask, and explicit per-user writable refresh paths.
+
+A newly imported Wazuh dataset may be followed by an explicit canonical intelligence refresh rather than waiting for the next timer window. CISA availability remains independent from Wazuh import success.
 
 ## Secrets and transport
 
-`RBVM_KEV_API_KEY` is a dedicated platform OPERATOR credential used only for the canonical KEV import endpoint. CISA's public KEV feed itself does not require an API key.
+CISA's public KEV feed does not require an API key. In hardened deployments, `RBVM_INTELLIGENCE_API_KEY` may authenticate the canonical-CVE read and `RBVM_KEV_API_KEY` may override it for the KEV import endpoint. Trusted-local deployments may require no bearer token when `RBVM_AUTH_MODE=DISABLED`.
 
-The handoff client preserves the transport rule already established for canonical evidence import:
+The handoff preserves the transport rules:
 
 - loopback may use HTTP;
 - non-local endpoints must use HTTPS;
-- credentials in the URL are rejected;
+- credentials embedded in URLs are rejected;
 - bearer-key material is not echoed in error output.
 
 ## Controlled offline replay
 
-`RBVM_KEV_OFFLINE_INPUT` may be configured for deterministic testing or controlled replay. The local bytes still pass through the same CISA source validation logic, and downstream evidence continues to use the pinned official CISA feed as its semantic source. Normal production scheduling should leave this unset.
+`RBVM_KEV_OFFLINE_INPUT` may be configured for deterministic tests or controlled replay. The local bytes still pass through the same CISA source validation logic, and downstream evidence remains bound to the validated source snapshot. Normal production scheduling should leave this unset.
 
-## What this automation does not do
+## Methodology boundary
 
-It does not derive or change:
+This automation does not derive or change:
 
 - CVSS;
 - EPSS;
 - asset criticality;
-- internet exposure or reachability;
+- reachability;
 - business impact;
 - remediation priority;
 - risk score;
 - organizational SLA;
 - CISA due-date interpretation;
-- `LISTED`/`NOT_LISTED` semantics.
+- Formula evaluation.
 
-It only automates collection and safe delivery of snapshot-bound CISA KEV threat evidence through the canonical evidence boundary.
+It only automates current-scope collection and safe delivery of snapshot-bound CISA KEV threat evidence through the canonical evidence boundary.
