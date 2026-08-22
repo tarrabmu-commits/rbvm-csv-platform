@@ -2,7 +2,7 @@
 
 Contract ID: `RBVM_FORMULA_RESULT_API_V1`
 
-This contract exposes one already-persisted `RBVM_FORMULA_V1` result and its exact canonical explanation through a read-only exact-identity boundary. It is not a current-state query, ranking service, Priority policy, Treatment policy, or SLA engine.
+This contract exposes one already-persisted `RBVM_FORMULA_V1` result and its exact canonical explanation through a read-only exact-identity boundary. It is an **exact immutable identity** boundary; it is not a current-state query, ranking service, Priority policy, Treatment policy, or SLA engine.
 
 ## 1. Lookup identity
 
