@@ -75,15 +75,17 @@ Exact Native Evidence + Association-Event Resolution
 RBVM_FORMULA_V1 Pure Evaluator
         ↓
 Ephemeral Formula Result
+        ↓
+Canonical Formula Explanation Identity
 ```
 
 PostgreSQL V22 stores Decision Input V3 snapshots with typed native references. Managed-asset context is bound to the exact scanner↔managed-asset link event and managed-asset revision used as of evaluation time. Reachability and Business Impact evidence are admitted only through exact customer-confirmed Finding-context association events, rather than being inherited asset-wide.
 
 Current Decision Input semantics preserve `PRESENT / MISSING / AMBIGUOUS / STALE`; the resolver dereferences exact immutable evidence and exact binding provenance rather than re-selecting from `current_*` views.
 
-`RBVM_FORMULA_V1` consumes only one exact resolved `RBVM_DECISION_INPUT_SNAPSHOT_V3`. It produces `COMPUTED`, `NOT_APPLICABLE`, or `NON_COMPUTABLE`; only `COMPUTED` carries the dimensionless `RBVM Relative Risk Index` on `0.00 .. 100.00`. The current evaluator is pure and ephemeral: Formula-result persistence, canonical result/explanation storage, HTTP/API exposure, and UI presentation are not implemented yet.
+`RBVM_FORMULA_V1` consumes only one exact resolved `RBVM_DECISION_INPUT_SNAPSHOT_V3`. It produces `COMPUTED`, `NOT_APPLICABLE`, or `NON_COMPUTABLE`; only `COMPUTED` carries the dimensionless `RBVM Relative Risk Index` on `0.00 .. 100.00`. `RBVM_FORMULA_EXPLANATION_CANONICAL_BINARY_V1` deterministically binds that result to the exact Formula identity, snapshot, Finding, methodology, native evidence references, association events, dimension states, normalized Formula values, contributions, and terminal reason code. Formula-result/explanation persistence, HTTP/API exposure, and UI presentation are not implemented yet.
 
-See [`docs/DECISION_INPUT_V3.md`](docs/DECISION_INPUT_V3.md) for the immutable Decision Input boundary and [`docs/RBVM_FORMULA_V1.md`](docs/RBVM_FORMULA_V1.md) for the accepted Formula contract.
+See [`docs/DECISION_INPUT_V3.md`](docs/DECISION_INPUT_V3.md) for the immutable Decision Input boundary, [`docs/RBVM_FORMULA_V1.md`](docs/RBVM_FORMULA_V1.md) for the accepted Formula contract, and [`docs/RBVM_FORMULA_CANONICALIZATION_V1.md`](docs/RBVM_FORMULA_CANONICALIZATION_V1.md) for canonical Formula/explanation identity.
 
 ## External intelligence refresh
 
@@ -189,6 +191,7 @@ The platform includes:
 - Append-only runtime privileges/guards for immutable evidence, association decisions, and audit history.
 - Exact Decision Input V3 native-evidence and association-event resolution.
 - Canonical `RBVM_FORMULA_V1` identity plus a deterministic pure evaluator over resolved Decision Input V3.
+- Deterministic `RBVM_FORMULA_EXPLANATION_CANONICAL_BINARY_V1` bytes and SHA-256 identity for exact Formula result provenance/replay semantics.
 - TLS `verify-full` support, backup/restore tooling, readiness/liveness, metrics, and reconciliation health.
 - Backend API-key/RBAC capability for hardened deployments.
 - Reproducible JAR, SHA-256 checksum, SPDX 2.3 SBOM, CodeQL, and GitHub build/release verification.
@@ -214,7 +217,7 @@ Formula V1 is an explicit, versioned RBVM policy for a relative risk result. Pri
 
 ## Verification
 
-The repository verification pipeline includes Java/domain/API/SQL/web/script checks, Formula V1 contract/runtime checks, Frontend System V2 structural checks, reproducible distribution verification, PostgreSQL integration coverage, and CodeQL.
+The repository verification pipeline includes Java/domain/API/SQL/web/script checks, Formula V1 contract/runtime/canonical-explanation checks, Frontend System V2 structural checks, reproducible distribution verification, PostgreSQL integration coverage, and CodeQL.
 
 Frontend V2 itself is additionally guarded for:
 
@@ -228,6 +231,6 @@ Frontend V2 itself is additionally guarded for:
 
 ## Formula implementation and roadmap boundary
 
-Formula-readiness semantics, canonicalization, the Stage 8 golden-case corpus, and the canonical `RBVM_FORMULA_V1` artifact are frozen and verified. The pure Java evaluator consumes exactly one resolved `RBVM_DECISION_INPUT_SNAPSHOT_V3`, preserves terminal `NOT_APPLICABLE / NON_COMPUTABLE` behavior, rejects missing/stale/ambiguous required evidence, applies only the accepted SHA-bound mappings/weights, and reproduces the frozen numeric examples.
+Formula-readiness semantics, canonicalization, the Stage 8 golden-case corpus, the canonical `RBVM_FORMULA_V1` artifact, the pure Java evaluator, and deterministic canonical explanation identity are frozen and verified. Formula evaluation consumes exactly one resolved `RBVM_DECISION_INPUT_SNAPSHOT_V3`, preserves terminal `NOT_APPLICABLE / NON_COMPUTABLE` behavior, rejects missing/stale/ambiguous required evidence, applies only the accepted SHA-bound mappings/weights, reproduces the frozen numeric examples, and produces replay-stable explanation bytes bound to exact evidence and association provenance.
 
-The next Formula-layer increments are deterministic canonical explanation/result identity, durable Formula-result persistence and replay, then explicit API/UI exposure. Priority, Treatment, SLA, remediation deadlines, and workflow policy remain separate later contracts and must not be hidden inside Formula V1.
+The next Formula-layer increment is durable Formula-result/explanation persistence and replay, followed by explicit API/UI exposure. Priority, Treatment, SLA, remediation deadlines, and workflow policy remain separate later contracts and must not be hidden inside Formula V1.

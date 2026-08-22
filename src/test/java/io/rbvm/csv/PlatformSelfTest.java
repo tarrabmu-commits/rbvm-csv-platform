@@ -8,6 +8,7 @@ import io.rbvm.decision.RbvmDecisionInputSnapshotSelfTest;
 import io.rbvm.decision.RbvmDecisionInputSnapshotV2SelfTest;
 import io.rbvm.decision.RbvmDecisionInputSnapshotV3SelfTest;
 import io.rbvm.decision.RbvmDecisionMethodologyPolicySelfTest;
+import io.rbvm.decision.RbvmFormulaV1ExplanationSelfTest;
 import io.rbvm.decision.RbvmFormulaV1SelfTest;
 import io.rbvm.decision.RbvmResolvedDecisionInputSelfTest;
 import io.rbvm.postgres.DecisionInputSnapshotMaterializerSelfTest;
@@ -53,6 +54,7 @@ public final class PlatformSelfTest {
         DecisionInputEvidenceSelectionSelfTest.main(args);
         RbvmResolvedDecisionInputSelfTest.main(args);
         RbvmFormulaV1SelfTest.main(args);
+        RbvmFormulaV1ExplanationSelfTest.main(args);
         DomainCatalogSelfTest.main(args);
         ApiSecuritySelfTest.main(args);
         CsvHttpSelfTest.main(args);

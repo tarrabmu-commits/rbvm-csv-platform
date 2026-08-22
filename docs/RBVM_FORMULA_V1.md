@@ -238,17 +238,26 @@ The canonical payload is `1290` bytes and its SHA-256 is:
 
 ## 8. Explanation semantics
 
-A computed explanation must report, in the stable Decision Input dimension order:
+Canonical explanation payload format: `RBVM_FORMULA_EXPLANATION_CANONICAL_BINARY_V1`.
 
+The runtime implementation is `io.rbvm.decision.RbvmFormulaV1Explanation`. It accepts only an exact resolved Decision Input V3 plus the exact deterministic `RbvmFormulaV1` result for that input; a mismatched or fabricated result is rejected before canonical explanation bytes are produced.
+
+A computed explanation reports, in stable Decision Input dimension order:
+
+- exact Formula ID/version/SHA and Decision Input snapshot identity;
+- Finding ID, evaluation time, and methodology revision/SHA;
 - exact native evidence and binding provenance from Decision Input V3;
+- each Decision Input dimension state;
 - the normalized Formula-consumed value;
-- factor/transform ID;
-- factor weight;
+- applied Formula factor identifier;
 - weighted contribution before output scaling;
-- Business Impact reducer inputs and selected maximum when multiple dimensions exist;
-- final Formula identity/SHA and exact rounded result.
+- final exact rounded Risk Result.
 
-For `NOT_APPLICABLE` or `NON_COMPUTABLE`, the explanation contains no numeric substitute and carries the canonical terminal/gating reason codes.
+The explanation serializer uses the canonical primitive encoding defined by `RBVM_FORMULA_CANONICALIZATION_V1`, produces deterministic bytes, and derives a lowercase SHA-256 identity from those bytes. Exact evidence/binding provenance therefore changes explanation identity even when two evaluations happen to have the same numeric Risk Result.
+
+For `NOT_APPLICABLE` or `NON_COMPUTABLE`, the explanation contains no numeric substitute or partial numeric contributions and carries the canonical terminal/gating reason code.
+
+Business Impact source evidence references remain individually present in canonical provenance while the Formula contribution records the accepted V1 mapped/reduced value. Durable storage of the explanation bytes is a later persistence-layer concern.
 
 ## 9. Explicit non-goals
 
@@ -268,7 +277,7 @@ Those remain separate later contracts.
 
 ## 10. Runtime acceptance boundary
 
-The accepted Formula contract is implemented by the pure evaluator `io.rbvm.decision.RbvmFormulaV1`. Runtime acceptance requires executable verification to prove:
+The accepted Formula contract is implemented by the pure evaluator `io.rbvm.decision.RbvmFormulaV1`; deterministic canonical explanation identity is implemented by `io.rbvm.decision.RbvmFormulaV1Explanation`. Runtime acceptance requires executable verification to prove:
 
 - exact Formula canonical bytes reproduce the declared SHA;
 - all Stage 8 terminal/state cases preserve their result state and reason;
@@ -278,6 +287,10 @@ The accepted Formula contract is implemented by the pure evaluator `io.rbvm.deci
 - the resolved cross-dimension trade-offs reproduce the frozen Formula V1 expected results;
 - repeated evaluation is decimal-deterministic;
 - Formula arithmetic does not use any field excluded by the readiness decisions;
-- the evaluator accepts only exact resolved `RBVM_DECISION_INPUT_SNAPSHOT_V3` inputs and does not query current state or select evidence.
+- the evaluator accepts only exact resolved `RBVM_DECISION_INPUT_SNAPSHOT_V3` inputs and does not query current state or select evidence;
+- repeated explanation serialization for the same exact input/result is byte-equivalent;
+- terminal explanations never substitute numeric risk values;
+- explanation identity changes when exact retained evidence/binding provenance changes;
+- explanation construction rejects any Formula result that is not the deterministic result for its exact input.
 
-The Java runtime currently returns an ephemeral Formula result with Formula identity, Decision Input identity, final state/value, and visible factor contributions. Durable result persistence, canonical result/explanation serialization, API/UI exposure, Priority, Treatment, and SLA remain outside this increment.
+The Java runtime returns an ephemeral Formula result plus deterministic canonical explanation bytes/SHA. Durable Formula-result/explanation persistence and historical replay APIs, HTTP/API/UI exposure, Priority, Treatment, and SLA remain outside this increment.
