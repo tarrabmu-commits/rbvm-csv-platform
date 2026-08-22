@@ -32,7 +32,7 @@ for marker in (
     'RbvmFormulaV1Explanation.from(',
     'results.install(explanation)',
     'FormulaResultInstallResult.Status.RESULT_CONFLICT',
-    'results.findByExplanationSha256(explanation.canonicalSha256())',
+    '.findByExplanationSha256(explanation.canonicalSha256())',
     'replayVerifier.replay(stored)',
 ):
     require(marker in DEFAULT, f'Exact Formula materializer missing invariant {marker!r}')
