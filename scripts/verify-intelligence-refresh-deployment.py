@@ -15,6 +15,8 @@ for needle in (
     'RBVM_EPSS_INPUT="$input"',
     'RBVM_KEV_INPUT="$input"',
     "RBVM_INTELLIGENCE_API_KEY",
+    'PASS|PARTIAL|SKIPPED',
+    'canonical_source_refresh=%s',
 ):
     if needle not in text:
         raise AssertionError(f"canonical source wrapper missing {needle!r}")
@@ -34,8 +36,10 @@ for source, name in services.items():
         "epss": "scheduled-epss-refresh.sh",
         "kev": "scheduled-cisa-kev-refresh.sh",
     }[source]
-    if f"ExecStart=" in service and f"scripts/{legacy}" in service:
+    if "ExecStart=" in service and f"scripts/{legacy}" in service:
         raise AssertionError(f"{name}: must not run the static-input source script directly")
+    if "canonical-intelligence-refresh" not in service:
+        raise AssertionError(f"{name}: canonical-CVE staging path must be writable")
 
 examples = (
     "cvss-v31-refresh.example",
