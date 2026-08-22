@@ -58,6 +58,23 @@ public final class FormulaResultReplayVerifier {
     }
 
     /**
+     * Materializes Formula V1 only from one exact already-persisted Decision Input V3 identity.
+     *
+     * <p>This convenience boundary deliberately reuses the same immutable stores, exact evidence
+     * resolver, and replay verifier as read-time historical verification. It never invokes a
+     * Decision Input builder or selects current evidence.</p>
+     */
+    public FormulaResultMaterializationResult materializeExactSnapshot(String inputSnapshotSha256)
+            throws IOException {
+        return new DefaultFormulaResultMaterializer(
+                decisionInputs,
+                evidenceResolver,
+                formulaResults,
+                this
+        ).materialize(inputSnapshotSha256);
+    }
+
+    /**
      * Reconstructs the exact canonical explanation after proving it is byte-identical to storage.
      * This is the safe structured-explanation boundary for read APIs and audit tooling.
      */
