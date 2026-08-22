@@ -36,11 +36,10 @@ for marker in (
     require(marker in API, f"Formula Result API V1 missing invariant {marker!r}")
 
 for forbidden in (
-    'Priority',
     'priorityTier',
-    'SLA',
+    'priorityScore',
     'slaDays',
-    'Treatment',
+    'treatmentDecision',
     'remediationDeadline',
     'latest(',
     'current_',
