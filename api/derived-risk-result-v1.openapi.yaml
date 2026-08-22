@@ -1,0 +1,259 @@
+openapi: 3.0.3
+info:
+  title: RBVM Derived Risk Result API V1
+  version: 1.0.0
+  description: >-
+    Exact, replay-verified discovery and read contract for independently persisted
+    derived risk methodology results. Methodology catalog order carries no
+    preference, precedence, or default semantics.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/derived-risk-methodologies:
+    get:
+      operationId: listDerivedRiskMethodologies
+      summary: List implemented SHA-bound derived risk methodologies
+      responses:
+        '200':
+          description: Deterministic methodology catalog with explicit no-default semantics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MethodologyCatalogResponse'
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/InsufficientRole' }
+        '503': { $ref: '#/components/responses/CapabilityUnavailable' }
+  /api/v1/derived-risk-results:
+    get:
+      operationId: getDerivedRiskResultByInputAndMethodology
+      summary: Read one exact persisted result by immutable input and methodology identity
+      parameters:
+        - $ref: '#/components/parameters/InputSnapshotSha256'
+        - $ref: '#/components/parameters/MethodologyIdQuery'
+        - $ref: '#/components/parameters/MethodologySha256Query'
+      responses:
+        '200':
+          description: Replay-verified exact result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DerivedRiskResultResponse'
+        '400': { $ref: '#/components/responses/InvalidIdentity' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/InsufficientRole' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/CapabilityUnavailable' }
+  /api/v1/derived-risk-results/{resultSha256}:
+    get:
+      operationId: getDerivedRiskResultBySha256
+      summary: Read one exact persisted result by canonical result SHA-256
+      parameters:
+        - name: resultSha256
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Sha256'
+      responses:
+        '200':
+          description: Replay-verified exact result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DerivedRiskResultResponse'
+        '400': { $ref: '#/components/responses/InvalidIdentity' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/InsufficientRole' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/CapabilityUnavailable' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    InputSnapshotSha256:
+      name: inputSnapshotSha256
+      in: query
+      required: true
+      schema:
+        $ref: '#/components/schemas/Sha256'
+    MethodologyIdQuery:
+      name: methodologyId
+      in: query
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    MethodologySha256Query:
+      name: methodologySha256
+      in: query
+      required: true
+      schema:
+        $ref: '#/components/schemas/Sha256'
+  schemas:
+    Sha256:
+      type: string
+      pattern: '^[a-f0-9]{64}$'
+    MethodologyDefinition:
+      type: object
+      additionalProperties: false
+      required:
+        - methodologyId
+        - version
+        - classification
+        - provider
+        - sourceModel
+        - sourceEquation
+        - sourceUrl
+        - methodologySha256
+        - outputName
+      properties:
+        methodologyId: { type: string }
+        version: { type: integer, minimum: 1 }
+        classification:
+          type: string
+          enum: [DERIVED]
+        provider: { type: string }
+        sourceModel: { type: string }
+        sourceEquation: { type: string }
+        sourceUrl: { type: string, format: uri }
+        methodologySha256:
+          $ref: '#/components/schemas/Sha256'
+        outputName: { type: string }
+    MethodologyCatalogResponse:
+      type: object
+      additionalProperties: false
+      required: [contractId, selectionSemantics, methodologies]
+      properties:
+        contractId:
+          type: string
+          enum: [RBVM_DERIVED_RISK_METHODOLOGY_CATALOG_API_V1]
+        selectionSemantics:
+          type: string
+          enum: [EXPLICIT_ID_AND_SHA_ONLY_NO_DEFAULT]
+        methodologies:
+          type: array
+          minItems: 2
+          items:
+            $ref: '#/components/schemas/MethodologyDefinition'
+    StoredDerivedRiskResult:
+      type: object
+      additionalProperties: false
+      required:
+        - resultId
+        - inputSnapshotSha256
+        - findingId
+        - methodology
+        - resultState
+        - reasonCode
+        - numericScore
+        - numericScale
+        - rating
+        - persistedAt
+      properties:
+        resultId: { type: string, format: uuid }
+        inputSnapshotSha256:
+          $ref: '#/components/schemas/Sha256'
+        findingId: { type: string, format: uuid }
+        methodology:
+          $ref: '#/components/schemas/MethodologyDefinition'
+        resultState:
+          type: string
+          enum: [COMPUTED, NOT_APPLICABLE, NON_COMPUTABLE]
+        reasonCode:
+          type: string
+          nullable: true
+        numericScore:
+          type: string
+          nullable: true
+          description: Methodology-native exact decimal string; never cross-methodology normalized.
+        numericScale:
+          type: string
+          nullable: true
+        rating:
+          type: string
+          nullable: true
+        persistedAt: { type: string, format: date-time }
+    DerivedRiskMeasure:
+      type: object
+      additionalProperties: false
+      required: [measureId, role, value, scale]
+      properties:
+        measureId: { type: string }
+        role: { type: string }
+        value: { type: string }
+        scale: { type: string }
+    CanonicalDerivedRiskResult:
+      type: object
+      additionalProperties: false
+      required:
+        - payloadFormat
+        - sha256
+        - canonicalPayloadBase64
+        - replayVerified
+        - measures
+      properties:
+        payloadFormat:
+          type: string
+          enum: [RBVM_DERIVED_RISK_RESULT_CANONICAL_BINARY_V1]
+        sha256:
+          $ref: '#/components/schemas/Sha256'
+        canonicalPayloadBase64:
+          type: string
+          format: byte
+        replayVerified:
+          type: boolean
+          enum: [true]
+        measures:
+          type: array
+          items:
+            $ref: '#/components/schemas/DerivedRiskMeasure'
+    DerivedRiskResultResponse:
+      type: object
+      additionalProperties: false
+      required: [contractId, result, canonicalResult]
+      properties:
+        contractId:
+          type: string
+          enum: [RBVM_DERIVED_RISK_RESULT_API_V1]
+        result:
+          $ref: '#/components/schemas/StoredDerivedRiskResult'
+        canonicalResult:
+          $ref: '#/components/schemas/CanonicalDerivedRiskResult'
+    Problem:
+      type: object
+      required: [type, title, status, detail, correlationId]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        correlationId: { type: string }
+  responses:
+    InvalidIdentity:
+      description: Invalid exact identity or query shape
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    AuthenticationRequired:
+      description: Bearer authentication required
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    InsufficientRole:
+      description: Viewer permission required
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: Exact result or methodology identity not found
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    CapabilityUnavailable:
+      description: PostgreSQL V24 derived-risk runtime unavailable
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }

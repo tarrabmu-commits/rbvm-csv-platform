@@ -1,0 +1,179 @@
+openapi: 3.0.3
+info:
+  title: RBVM Derived Risk Result Materialization API V1
+  version: 1.0.0
+  description: >-
+    Explicit command contract for materializing one exact persisted Decision Input V3
+    under one exact canonical derived-risk methodology ID and SHA-256. No request body,
+    default methodology, latest selector, or cross-methodology normalization is admitted.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/derived-risk-result-materializations/{inputSnapshotSha256}/{methodologyId}/{methodologySha256}:
+    post:
+      operationId: materializeDerivedRiskResult
+      summary: Materialize one exact snapshot under one exact derived-risk methodology
+      parameters:
+        - name: inputSnapshotSha256
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Sha256'
+        - name: methodologyId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: methodologySha256
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Sha256'
+      responses:
+        '200':
+          description: Exact result already existed and was replay-verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterializationResponse'
+        '201':
+          description: Exact result was appended and replay-verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterializationResponse'
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/InsufficientRole' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnsupportedSnapshot' }
+        '503': { $ref: '#/components/responses/CapabilityUnavailable' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Sha256:
+      type: string
+      pattern: '^[a-f0-9]{64}$'
+    MethodologyDefinition:
+      type: object
+      additionalProperties: false
+      required:
+        - methodologyId
+        - version
+        - classification
+        - provider
+        - sourceModel
+        - sourceEquation
+        - sourceUrl
+        - methodologySha256
+        - outputName
+      properties:
+        methodologyId: { type: string }
+        version: { type: integer, minimum: 1 }
+        classification: { type: string, enum: [DERIVED] }
+        provider: { type: string }
+        sourceModel: { type: string }
+        sourceEquation: { type: string }
+        sourceUrl: { type: string, format: uri }
+        methodologySha256: { $ref: '#/components/schemas/Sha256' }
+        outputName: { type: string }
+    MaterializationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - contractId
+        - materializationStatus
+        - inputSnapshotSha256
+        - resultId
+        - methodology
+        - resultState
+        - reasonCode
+        - numericScore
+        - numericScale
+        - rating
+        - resultSha256
+        - replayVerified
+        - persistedAt
+      properties:
+        contractId:
+          type: string
+          enum: [RBVM_DERIVED_RISK_RESULT_MATERIALIZATION_API_V1]
+        materializationStatus:
+          type: string
+          enum: [INSERTED, REPLAYED]
+        inputSnapshotSha256: { $ref: '#/components/schemas/Sha256' }
+        resultId: { type: string, format: uuid }
+        methodology: { $ref: '#/components/schemas/MethodologyDefinition' }
+        resultState:
+          type: string
+          enum: [COMPUTED, NOT_APPLICABLE, NON_COMPUTABLE]
+        reasonCode:
+          type: string
+          nullable: true
+        numericScore:
+          type: string
+          nullable: true
+          description: Methodology-native decimal string; never cross-methodology normalized.
+        numericScale:
+          type: string
+          nullable: true
+        rating:
+          type: string
+          nullable: true
+        resultSha256: { $ref: '#/components/schemas/Sha256' }
+        replayVerified:
+          type: boolean
+          enum: [true]
+        persistedAt: { type: string, format: date-time }
+    Problem:
+      type: object
+      required: [type, title, status, detail, correlationId]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        correlationId: { type: string }
+  responses:
+    InvalidRequest:
+      description: Invalid SHA, path selector, query, or prohibited request body
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    AuthenticationRequired:
+      description: Bearer authentication required
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    InsufficientRole:
+      description: Operator role required
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: Exact Decision Input snapshot or methodology identity not found
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Conflict:
+      description: Conflicting canonical result already persisted for the exact tuple
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    UnsupportedSnapshot:
+      description: Materialization requires RBVM_DECISION_INPUT_SNAPSHOT_V3
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    CapabilityUnavailable:
+      description: PostgreSQL V24 derived-risk runtime unavailable
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }

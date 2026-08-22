@@ -35,6 +35,7 @@ import io.rbvm.postgres.CisaKevImporter;
 import io.rbvm.postgres.CvssV31EvidenceReader;
 import io.rbvm.postgres.CvssV31ImportResult;
 import io.rbvm.postgres.CvssV31Importer;
+import io.rbvm.postgres.DerivedRiskResultRuntimeFactory;
 import io.rbvm.postgres.EpssEvidenceReader;
 import io.rbvm.postgres.EpssImportResult;
 import io.rbvm.postgres.EpssImporter;
@@ -121,6 +122,7 @@ public final class CsvPlatformServer implements AutoCloseable {
     private Optional<ScannerManagedAssetLinkHttpRouter> scannerManagedAssetLinkRouter;
     private Optional<FindingContextAssociationHttpRouter> findingContextAssociationRouter = Optional.empty();
     private Optional<FormulaResultHttpRouter> formulaResultRouter = Optional.empty();
+    private Optional<DerivedRiskResultHttpRouter> derivedRiskResultRouter = Optional.empty();
     private final Instant startedAt = Instant.now();
     private final AtomicLong requestsTotal = new AtomicLong();
     private final AtomicLong problemsTotal = new AtomicLong();
@@ -707,6 +709,16 @@ public final class CsvPlatformServer implements AutoCloseable {
         ));
     }
 
+    /** Enable the replay-verified V24 derived risk result API before the server is started. */
+    public void enableDerivedRiskResultApi(DerivedRiskResultApi api) {
+        if (derivedRiskResultRouter.isPresent()) {
+            throw new IllegalStateException("Derived Risk Result API is already enabled");
+        }
+        derivedRiskResultRouter = Optional.of(new DerivedRiskResultHttpRouter(
+                Objects.requireNonNull(api, "api")
+        ));
+    }
+
     public void start() {
         server.start();
     }
@@ -899,6 +911,25 @@ public final class CsvPlatformServer implements AutoCloseable {
                 formulaResults.routeAuthorized(exchange, method, principal);
                 return;
             }
+            if (DerivedRiskResultHttpRouter.inNamespace(path)) {
+                if (!DerivedRiskResultHttpRouter.handles(path)) {
+                    throw new HttpProblem(
+                            404,
+                            "NOT_FOUND",
+                            "The requested derived risk result route does not exist"
+                    );
+                }
+                ApiRole requiredRole = DerivedRiskResultHttpRouter.requiredRole(exchange, method);
+                AuthPrincipal principal = authorize(exchange, requiredRole);
+                DerivedRiskResultHttpRouter derivedRiskResults = derivedRiskResultRouter.orElseThrow(() ->
+                        new HttpProblem(
+                                503,
+                                "DERIVED_RISK_RESULT_PERSISTENCE_UNAVAILABLE",
+                                "Derived Risk Result API requires PostgreSQL schema version 24 or newer"
+                        ));
+                derivedRiskResults.routeAuthorized(exchange, method, principal);
+                return;
+            }
             if ("/api/v1/cases".equals(path)) {
                 requireMethod(exchange, method, "GET");
                 authorize(exchange, ApiRole.VIEWER);
@@ -1032,6 +1063,9 @@ public final class CsvPlatformServer implements AutoCloseable {
             }
 
             throw new HttpProblem(404, "NOT_FOUND", "The requested route does not exist");
+        } catch (DerivedRiskResultApi.ApiProblem problem) {
+            problemsTotal.incrementAndGet();
+            sendProblem(exchange, problem.status(), problem.code(), problem.getMessage(), correlationId);
         } catch (FormulaResultApi.ApiProblem problem) {
             problemsTotal.incrementAndGet();
             sendProblem(exchange, problem.status(), problem.code(), problem.getMessage(), correlationId);
@@ -1128,6 +1162,12 @@ public final class CsvPlatformServer implements AutoCloseable {
         health.put("formulaResults", Map.of(
                 "readEnabled", formulaResultRouter.isPresent(),
                 "replayVerified", formulaResultRouter.isPresent()
+        ));
+        health.put("derivedRiskResults", Map.of(
+                "catalogEnabled", derivedRiskResultRouter.isPresent(),
+                "readEnabled", derivedRiskResultRouter.isPresent(),
+                "materializationEnabled", derivedRiskResultRouter.isPresent(),
+                "replayVerified", derivedRiskResultRouter.isPresent()
         ));
         return health;
     }
@@ -2024,6 +2064,9 @@ public final class CsvPlatformServer implements AutoCloseable {
                 + "# TYPE rbvm_formula_result_api_enabled gauge\n"
                 + "rbvm_formula_result_api_enabled "
                 + (formulaResultRouter.isPresent() ? 1 : 0) + "\n"
+                + "# TYPE rbvm_derived_risk_result_api_enabled gauge\n"
+                + "rbvm_derived_risk_result_api_enabled "
+                + (derivedRiskResultRouter.isPresent() ? 1 : 0) + "\n"
                 + "# TYPE rbvm_process_uptime_seconds gauge\n"
                 + "rbvm_process_uptime_seconds " + uptime + "\n"
                 + "# TYPE rbvm_imports_stored gauge\n"
@@ -2070,6 +2113,8 @@ public final class CsvPlatformServer implements AutoCloseable {
                 CanonicalProjectionFactory.findingContextAssociationRuntimeFromEnvironment(System.getenv());
         Optional<FormulaResultRuntimeFactory.Runtime> formulaResultRuntime =
                 FormulaResultRuntimeFactory.fromEnvironment(System.getenv());
+        Optional<DerivedRiskResultRuntimeFactory.Runtime> derivedRiskResultRuntime =
+                DerivedRiskResultRuntimeFactory.fromEnvironment(System.getenv());
         ApiKeyAuthenticator authenticator = ApiKeyAuthenticator.fromEnvironment(System.getenv());
         RequestRateLimiter rateLimiter = RequestRateLimiter.fromEnvironment(System.getenv());
         CanonicalProjection canonicalProjection = runtime.canonicalProjection();
@@ -2105,6 +2150,13 @@ public final class CsvPlatformServer implements AutoCloseable {
         ));
         formulaResultRuntime.ifPresent(context -> application.enableFormulaResultApi(
                 new FormulaResultApi(context.results(), context.replayVerifier())
+        ));
+        derivedRiskResultRuntime.ifPresent(context -> application.enableDerivedRiskResultApi(
+                new DerivedRiskResultApi(
+                        context.results(),
+                        context.replayVerifier(),
+                        context.materializer()
+                )
         ));
         Runtime.getRuntime().addShutdownHook(new Thread(application::close, "rbvm-shutdown"));
         application.start();
@@ -2142,6 +2194,8 @@ public final class CsvPlatformServer implements AutoCloseable {
                 + (associationRuntime.isPresent() ? "ENABLED" : "DISABLED"));
         System.out.println("Formula Result API: "
                 + (formulaResultRuntime.isPresent() ? "ENABLED" : "DISABLED"));
+        System.out.println("Derived Risk Result API: "
+                + (derivedRiskResultRuntime.isPresent() ? "ENABLED" : "DISABLED"));
         System.out.println("API authentication: "
                 + (authenticator.enabled() ? "API_KEY" : "DISABLED"));
         new CountDownLatch(1).await();
