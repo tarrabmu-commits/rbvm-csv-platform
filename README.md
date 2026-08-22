@@ -105,7 +105,25 @@ The default trusted-local deployment uses:
 RBVM_AUTH_MODE=DISABLED
 ```
 
-Frontend System V2 contains **no in-app login and no browser Access Token field**. It does not persist API credentials in browser storage. Hardened remote deployments may retain backend API-key capability for API clients or place authentication at the deployment boundary.
+Frontend System V2 contains **no in-app login and no browser Access Token field**. It does not persist API credentials in browser storage.
+
+The repository local launcher enforces that trusted-local boundary explicitly:
+
+```bash
+./scripts/run-server.sh
+```
+
+`run-server.sh` forces `RBVM_AUTH_MODE=DISABLED`, even when the current shell inherited an old `RBVM_AUTH_MODE=API_KEY` value. This prevents a stale hardened-shell setting from making the same-origin browser UI unusable.
+
+To deliberately test backend API-key mode, opt in explicitly:
+
+```bash
+RBVM_AUTH_MODE=API_KEY \
+RBVM_API_KEYS_FILE=/secure/path/api-keys.txt \
+./scripts/run-server.sh --auth-from-env
+```
+
+Direct JAR and deployment launches continue to honor authentication environment variables normally. Hardened remote deployments may retain backend API-key capability for API clients or place authentication at the deployment boundary.
 
 ## Run locally
 

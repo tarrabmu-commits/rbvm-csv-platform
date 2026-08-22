@@ -31,7 +31,25 @@ Legacy URLs (`/cvss`, `/kev`, `/epss`, `/asset-context`, `/reachability`, `/busi
 
 ## Local access model
 
-Frontend System V2 has **no in-app login** and no browser Access Token field. It does not read or write API credentials in `sessionStorage` or `localStorage`. The default trusted-local deployment uses `RBVM_AUTH_MODE=DISABLED`. Hardened remote deployments keep backend API-key capability for non-browser clients or may place access control at the deployment boundary.
+Frontend System V2 has **no in-app login** and no browser Access Token field. It does not read or write API credentials in `sessionStorage` or `localStorage`.
+
+The repository's trusted-local launcher is:
+
+```bash
+./scripts/run-server.sh
+```
+
+That launcher **forces `RBVM_AUTH_MODE=DISABLED`**, even if the invoking shell inherited an old `RBVM_AUTH_MODE=API_KEY` setting. This is intentional: the same-origin local browser UI cannot supply a bearer credential and must not become unusable because of unrelated shell state.
+
+Backend API-key behavior remains available for deliberate hardened/authentication testing by explicitly opting in:
+
+```bash
+RBVM_AUTH_MODE=API_KEY \
+RBVM_API_KEYS_FILE=/secure/path/api-keys.txt \
+./scripts/run-server.sh --auth-from-env
+```
+
+Direct JAR/deployment launches continue to honor the backend authentication environment normally. Hardened remote deployments may keep backend API-key capability for non-browser clients or place authentication at the deployment boundary.
 
 ## Interaction and accessibility contract
 
