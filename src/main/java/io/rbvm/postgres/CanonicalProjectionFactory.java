@@ -42,6 +42,9 @@ public final class CanonicalProjectionFactory {
                     Optional.empty(),
                     Optional.empty(),
                     Optional.empty(),
+                    Optional.empty(),
+                    Optional.empty(),
+                    Optional.empty(),
                     Optional.empty()
             );
         }
@@ -74,6 +77,8 @@ public final class CanonicalProjectionFactory {
         Optional<DecisionRuntime> decisionRuntime = Optional.empty();
         Optional<ManagedAssetRegistry> managedAssetRegistry = Optional.empty();
         Optional<ScannerManagedAssetLinkRegistry> scannerManagedAssetLinkRegistry = Optional.empty();
+        FindingContextAssociationRuntime findingContextAssociations =
+                FindingContextAssociationRuntime.disabled();
         if (installedVersion >= 9) {
             PostgresApplicabilityImporter importer = new PostgresApplicabilityImporter(
                     connections,
@@ -155,6 +160,12 @@ public final class CanonicalProjectionFactory {
                     new PostgresScannerManagedAssetLinkRegistry(connections, false)
             );
         }
+        if (installedVersion >= FindingContextAssociationRuntime.REQUIRED_SCHEMA_VERSION) {
+            findingContextAssociations = FindingContextAssociationRuntime.forSchema(
+                    connections,
+                    installedVersion
+            );
+        }
         return new RuntimeComponents(
                 projection,
                 readCatalog,
@@ -174,7 +185,8 @@ public final class CanonicalProjectionFactory {
                 businessImpactEvidenceReader,
                 decisionRuntime,
                 managedAssetRegistry,
-                scannerManagedAssetLinkRegistry
+                scannerManagedAssetLinkRegistry,
+                findingContextAssociations
         );
     }
 
@@ -197,7 +209,8 @@ public final class CanonicalProjectionFactory {
             Optional<BusinessImpactEvidenceReader> businessImpactEvidenceReader,
             Optional<DecisionRuntime> decisionRuntime,
             Optional<ManagedAssetRegistry> managedAssetRegistry,
-            Optional<ScannerManagedAssetLinkRegistry> scannerManagedAssetLinkRegistry
+            Optional<ScannerManagedAssetLinkRegistry> scannerManagedAssetLinkRegistry,
+            FindingContextAssociationRuntime findingContextAssociations
     ) {
         public RuntimeComponents {
             Objects.requireNonNull(canonicalProjection, "canonicalProjection");
@@ -221,6 +234,56 @@ public final class CanonicalProjectionFactory {
             scannerManagedAssetLinkRegistry = Objects.requireNonNull(
                     scannerManagedAssetLinkRegistry,
                     "scannerManagedAssetLinkRegistry"
+            );
+            findingContextAssociations = Objects.requireNonNull(
+                    findingContextAssociations,
+                    "findingContextAssociations"
+            );
+        }
+
+        /** Backward-compatible constructor through the complete V23 runtime layer. */
+        public RuntimeComponents(
+                CanonicalProjection canonicalProjection,
+                DomainCatalog readCatalog,
+                Optional<ApplicabilityImporter> applicabilityImporter,
+                Optional<ApplicabilityFindingExporter> applicabilityFindingExporter,
+                Optional<CvssV31Importer> cvssV31Importer,
+                Optional<CvssV31EvidenceReader> cvssV31EvidenceReader,
+                Optional<CisaKevImporter> cisaKevImporter,
+                Optional<CisaKevEvidenceReader> cisaKevEvidenceReader,
+                Optional<EpssImporter> epssImporter,
+                Optional<EpssEvidenceReader> epssEvidenceReader,
+                Optional<AssetContextImporter> assetContextImporter,
+                Optional<AssetContextEvidenceReader> assetContextEvidenceReader,
+                Optional<NetworkReachabilityImporter> networkReachabilityImporter,
+                Optional<NetworkReachabilityEvidenceReader> networkReachabilityEvidenceReader,
+                Optional<BusinessImpactImporter> businessImpactImporter,
+                Optional<BusinessImpactEvidenceReader> businessImpactEvidenceReader,
+                Optional<DecisionRuntime> decisionRuntime,
+                Optional<ManagedAssetRegistry> managedAssetRegistry,
+                Optional<ScannerManagedAssetLinkRegistry> scannerManagedAssetLinkRegistry
+        ) {
+            this(
+                    canonicalProjection,
+                    readCatalog,
+                    applicabilityImporter,
+                    applicabilityFindingExporter,
+                    cvssV31Importer,
+                    cvssV31EvidenceReader,
+                    cisaKevImporter,
+                    cisaKevEvidenceReader,
+                    epssImporter,
+                    epssEvidenceReader,
+                    assetContextImporter,
+                    assetContextEvidenceReader,
+                    networkReachabilityImporter,
+                    networkReachabilityEvidenceReader,
+                    businessImpactImporter,
+                    businessImpactEvidenceReader,
+                    decisionRuntime,
+                    managedAssetRegistry,
+                    scannerManagedAssetLinkRegistry,
+                    FindingContextAssociationRuntime.disabled()
             );
         }
 
