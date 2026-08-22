@@ -1,6 +1,6 @@
 # RBVM CSV Platform — Increment 23
 
-RBVM CSV Platform is a local, evidence-driven vulnerability-management platform that ingests Wazuh vulnerability CSV data, enriches findings with independent external and organizational evidence, preserves immutable provenance, and prepares reproducible Decision Inputs without inventing risk, priority, SLA, or remediation semantics before their contracts exist.
+RBVM CSV Platform is a local, evidence-driven vulnerability-management platform that ingests Wazuh vulnerability CSV data, enriches findings with independent external and organizational evidence, preserves immutable provenance, prepares reproducible Decision Inputs, and evaluates the versioned RBVM Formula V1 without conflating relative risk with priority, SLA, or remediation policy.
 
 Current release contract: **0.23.2**  
 Java runtime/toolchain: **17**  
@@ -23,7 +23,7 @@ Primary workspaces:
 
 Legacy URLs remain valid: `/cvss`, `/kev`, `/epss`, `/asset-context`, `/reachability`, `/business-impact`, `/assets`, and `/asset-links`. New workspace state is represented through shareable query routes on `/`.
 
-Frontend V2 deliberately does **not** fabricate historical trends when the current API cannot support defensible historical aggregation. It also does not introduce an RBVM Formula, risk score, priority, SLA, or remediation ranking.
+Frontend V2 deliberately does **not** fabricate historical trends when the current API cannot support defensible historical aggregation. It also does not yet expose the RBVM Formula result, a remediation priority, SLA, or remediation ranking in the browser product surface.
 
 See [`docs/FRONTEND_SYSTEM_V2.md`](docs/FRONTEND_SYSTEM_V2.md) for the operator UX and security contract.
 
@@ -57,9 +57,9 @@ Customer-managed asset identity is separate from scanner identity.
 - `never assessed` is different from explicit `UNLINKED`.
 - The platform does not infer links from hostname, OS, product, CVSS, KEV, EPSS, or other hidden heuristics.
 
-## Decision-input architecture
+## Decision-input and Formula architecture
 
-The pre-Formula pipeline is intentionally reproducible:
+The evidence-to-Formula pipeline is intentionally reproducible:
 
 ```text
 Native Evidence History
@@ -72,14 +72,18 @@ Immutable Decision Input Snapshot V3
         ↓
 Exact Native Evidence + Association-Event Resolution
         ↓
-[Formula Contract — not implemented yet]
+RBVM_FORMULA_V1 Pure Evaluator
+        ↓
+Ephemeral Formula Result
 ```
 
 PostgreSQL V22 stores Decision Input V3 snapshots with typed native references. Managed-asset context is bound to the exact scanner↔managed-asset link event and managed-asset revision used as of evaluation time. Reachability and Business Impact evidence are admitted only through exact customer-confirmed Finding-context association events, rather than being inherited asset-wide.
 
 Current Decision Input semantics preserve `PRESENT / MISSING / AMBIGUOUS / STALE`; the resolver dereferences exact immutable evidence and exact binding provenance rather than re-selecting from `current_*` views.
 
-See [`docs/DECISION_INPUT_V3.md`](docs/DECISION_INPUT_V3.md) for the current immutable Decision Input boundary.
+`RBVM_FORMULA_V1` consumes only one exact resolved `RBVM_DECISION_INPUT_SNAPSHOT_V3`. It produces `COMPUTED`, `NOT_APPLICABLE`, or `NON_COMPUTABLE`; only `COMPUTED` carries the dimensionless `RBVM Relative Risk Index` on `0.00 .. 100.00`. The current evaluator is pure and ephemeral: Formula-result persistence, canonical result/explanation storage, HTTP/API exposure, and UI presentation are not implemented yet.
+
+See [`docs/DECISION_INPUT_V3.md`](docs/DECISION_INPUT_V3.md) for the immutable Decision Input boundary and [`docs/RBVM_FORMULA_V1.md`](docs/RBVM_FORMULA_V1.md) for the accepted Formula contract.
 
 ## External intelligence refresh
 
@@ -183,6 +187,8 @@ The platform includes:
 - Serializable/transactional evidence importers with replay/conflict/quarantine semantics.
 - Migration integrity with SHA-256 checks and advisory locking through V22.
 - Append-only runtime privileges/guards for immutable evidence, association decisions, and audit history.
+- Exact Decision Input V3 native-evidence and association-event resolution.
+- Canonical `RBVM_FORMULA_V1` identity plus a deterministic pure evaluator over resolved Decision Input V3.
 - TLS `verify-full` support, backup/restore tooling, readiness/liveness, metrics, and reconciliation health.
 - Backend API-key/RBAC capability for hardened deployments.
 - Reproducible JAR, SHA-256 checksum, SPDX 2.3 SBOM, CodeQL, and GitHub build/release verification.
@@ -192,22 +198,23 @@ The platform includes:
 The current platform intentionally does **not** equate:
 
 ```text
-CVSS                    = Risk
-CISA KEV listed         = Priority
-EPSS probability        = Priority
-Missing EPSS            = 0
-No KEV evidence         = NOT_LISTED
-Asset criticality       = Numeric weight
-Reachable endpoint      = Every finding is internet-reachable
-Business impact         = Every finding inherits that service impact
-Finding disappearance   = Remediated
+CVSS                         = Risk
+CISA KEV listed              = Priority
+EPSS probability             = Priority
+Missing EPSS                 = 0
+No KEV evidence              = NOT_LISTED
+RBVM policy weight/mapping   = Standards-mandated truth
+Reachable endpoint           = Every finding is internet-reachable
+Business impact              = Every finding inherits that service impact
+Formula result               = Priority / SLA / Treatment
+Finding disappearance        = Remediated
 ```
 
-Risk Formula, priority, treatment, SLA, and remediation-policy contracts remain later increments. They must consume the existing immutable Decision Input boundary rather than bypass it.
+Formula V1 is an explicit, versioned RBVM policy for a relative risk result. Priority, Treatment, SLA, remediation deadlines, and workflow decisions remain separate later contracts and must consume the Formula/Decision Input boundary rather than being hidden inside Formula arithmetic.
 
 ## Verification
 
-The repository verification pipeline includes Java/domain/API/SQL/web/script checks, Frontend System V2 structural checks, reproducible distribution verification, PostgreSQL integration coverage, and CodeQL.
+The repository verification pipeline includes Java/domain/API/SQL/web/script checks, Formula V1 contract/runtime checks, Frontend System V2 structural checks, reproducible distribution verification, PostgreSQL integration coverage, and CodeQL.
 
 Frontend V2 itself is additionally guarded for:
 
@@ -219,10 +226,8 @@ Frontend V2 itself is additionally guarded for:
 - explicit scanner-link and Finding-context association semantics.
 - no fabricated historical analytics or hidden risk score.
 
-## Formula readiness and roadmap boundary
+## Formula implementation and roadmap boundary
 
-Formula-readiness semantics and the Stage 8 golden-case corpus are already frozen and verified. They require Formula V1 to consume exactly one `RBVM_DECISION_INPUT_SNAPSHOT_V3`, preserve terminal `NOT_APPLICABLE` / `NON_COMPUTABLE` states, reject missing/stale/ambiguous required evidence, and remain sensitive to every authorized Formula-relevant dimension without smuggling in excluded fields.
+Formula-readiness semantics, canonicalization, the Stage 8 golden-case corpus, and the canonical `RBVM_FORMULA_V1` artifact are frozen and verified. The pure Java evaluator consumes exactly one resolved `RBVM_DECISION_INPUT_SNAPSHOT_V3`, preserves terminal `NOT_APPLICABLE / NON_COMPUTABLE` behavior, rejects missing/stale/ambiguous required evidence, applies only the accepted SHA-bound mappings/weights, and reproduces the frozen numeric examples.
 
-The next core methodology increment may therefore define the canonical **`RBVM_FORMULA_V1`** artifact and its deterministic evaluator contract. It must satisfy [`RBVM_FORMULA_READINESS_DECISIONS_V1`](docs/RBVM_FORMULA_READINESS_DECISIONS_V1.md), [`RBVM_FORMULA_GOLDEN_CASES_V1`](docs/RBVM_FORMULA_GOLDEN_CASES_V1.md), and [`RBVM_FORMULA_CANONICALIZATION_V1`](docs/RBVM_FORMULA_CANONICALIZATION_V1.md) before any numeric runtime result is accepted.
-
-Priority, Treatment, SLA, remediation deadlines, and workflow policy remain separate later contracts; they must not be hidden inside Formula V1.
+The next Formula-layer increments are deterministic canonical explanation/result identity, durable Formula-result persistence and replay, then explicit API/UI exposure. Priority, Treatment, SLA, remediation deadlines, and workflow policy remain separate later contracts and must not be hidden inside Formula V1.
