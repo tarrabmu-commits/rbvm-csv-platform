@@ -7,6 +7,8 @@ selection = (ROOT / "src/main/java/io/rbvm/decision/DecisionInputEvidenceSelecti
 builder = (ROOT / "src/main/java/io/rbvm/postgres/PostgresDecisionInputSnapshotBuilder.java").read_text(encoding="utf-8")
 resolver = (ROOT / "src/main/java/io/rbvm/postgres/PostgresDecisionInputEvidenceResolver.java").read_text(encoding="utf-8")
 migration = (ROOT / "db/migration/V22__decision_input_v3_context_bindings.sql").read_text(encoding="utf-8")
+live = (ROOT / "src/test/java/io/rbvm/postgres/PostgresV22LiveSelfTest.java").read_text(encoding="utf-8")
+workflow = (ROOT / ".github/workflows/postgres-integration.yml").read_text(encoding="utf-8")
 doc = (ROOT / "docs/DECISION_INPUT_V3.md").read_text(encoding="utf-8")
 
 for needle in (
@@ -45,11 +47,6 @@ for needle in (
     if needle not in builder:
         raise AssertionError(f"builder V3 ordering/invariant missing {needle!r}")
 
-if builder.index('FROM rbvm.finding_reachability_scope_link_event') > builder.index('DecisionInputEvidenceSelection.select'):
-    # Source order is not execution order, but keeping V3 candidate construction defined before helper tail
-    # helps detect accidental post-selection association annotation refactors.
-    pass
-
 for needle in (
     'snapshot.isV3()',
     'Decision Input Snapshot V3 requires PostgreSQL schema version 22',
@@ -72,6 +69,25 @@ for needle in (
 ):
     if needle not in migration:
         raise AssertionError(f"V22 migration missing {needle!r}")
+
+for needle in (
+    'schemaVersion == 22',
+    'cross-asset duplicate target must not add another reachability reference',
+    'cross-asset duplicate service must not add another impact reference',
+    'later unlink must not change an as-of T8 V3 snapshot',
+    'does not belong to snapshot Finding asset',
+    'REPLAYED',
+):
+    if needle not in live:
+        raise AssertionError(f"live V22 replay/isolation proof missing {needle!r}")
+
+for needle in (
+    'v22-live-integration',
+    'PostgresV22LiveSelfTest',
+    'Run live V18-V22 persistence and Decision Input V3 integration',
+):
+    if needle not in workflow:
+        raise AssertionError(f"PostgreSQL workflow is stale for V22: missing {needle!r}")
 
 for needle in (
     'Association filtering is therefore candidate construction',
