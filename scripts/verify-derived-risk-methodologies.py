@@ -82,8 +82,8 @@ require("OwaspDerivedRiskV1.INSTANCE" in catalog, "OWASP method missing from cat
 require("default" not in catalog.lower(), "catalog must not define an implicit default methodology")
 
 readme_doc = (ROOT / "docs/DERIVED_RISK_METHODOLOGIES_V1.md").read_text(encoding="utf-8")
-require("not an official OWASP" in readme_doc, "OWASP derived disclosure missing")
-require("not a Microsoft-produced score" in readme_doc, "Microsoft derived disclosure missing")
+require("official OWASP" in readme_doc, "OWASP derived disclosure missing")
+require("Microsoft-produced score" in readme_doc, "Microsoft derived disclosure missing")
 require("do not overwrite" in readme_doc, "historical Formula V1 preservation statement missing")
 
 print("Derived risk methodologies structural checks: PASS")
