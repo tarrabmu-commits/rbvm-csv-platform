@@ -124,7 +124,7 @@ public final class CsvDerivedRiskResultHttpSelfTest {
                 );
                 assert bySha.statusCode() == 200 : bySha.body();
                 assert bySha.body().contains("RBVM_DERIVED_RISK_RESULT_API_V1");
-                assert bySha.body().contains("\"resultSha256\": \""
+                assert bySha.body().contains("\"sha256\": \""
                         + stored.resultSha256() + "\"");
                 assert bySha.body().contains("\"replayVerified\": true");
                 assert bySha.body().contains("canonicalPayloadBase64");
