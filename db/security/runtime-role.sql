@@ -50,7 +50,9 @@ GRANT SELECT, INSERT ON
     rbvm.decision_input_evidence_reference,
     rbvm.managed_asset,
     rbvm.managed_asset_revision,
-    rbvm.scanner_managed_asset_link_event
+    rbvm.scanner_managed_asset_link_event,
+    rbvm.finding_reachability_scope_link_event,
+    rbvm.finding_business_service_link_event
 TO rbvm_runtime;
 
 GRANT SELECT ON
@@ -86,7 +88,11 @@ GRANT SELECT ON
     rbvm.current_managed_asset,
     rbvm.active_managed_asset,
     rbvm.current_scanner_managed_asset_link,
-    rbvm.active_scanner_managed_asset_link
+    rbvm.active_scanner_managed_asset_link,
+    rbvm.current_finding_reachability_scope_link,
+    rbvm.active_finding_reachability_scope_link,
+    rbvm.current_finding_business_service_link,
+    rbvm.active_finding_business_service_link
 TO rbvm_runtime;
 
 GRANT USAGE, SELECT ON SEQUENCE rbvm.case_audit_event_database_sequence TO rbvm_runtime;
@@ -113,3 +119,5 @@ REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.decision_input_evidence_reference FROM r
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.managed_asset FROM rbvm_runtime;
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.managed_asset_revision FROM rbvm_runtime;
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.scanner_managed_asset_link_event FROM rbvm_runtime;
+REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.finding_reachability_scope_link_event FROM rbvm_runtime;
+REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.finding_business_service_link_event FROM rbvm_runtime;

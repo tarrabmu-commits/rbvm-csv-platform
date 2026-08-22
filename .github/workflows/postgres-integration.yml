@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  v20-live-integration:
+  v21-live-integration:
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     services:
@@ -46,7 +46,7 @@ jobs:
           printf 'RBVM_POSTGRES_DRIVER_JAR=%s\n' "$driver" >> "$GITHUB_ENV"
       - name: Compile application and tests
         run: ./scripts/compile.sh --tests
-      - name: Run live V18-V20 persistence integration
+      - name: Run live V18-V21 persistence integration
         env:
           RBVM_PROJECTION_BACKEND: POSTGRESQL
           RBVM_JDBC_URL: jdbc:postgresql://127.0.0.1:5432/rbvm?sslmode=disable
@@ -56,4 +56,4 @@ jobs:
         run: >-
           java -ea
           -cp "build/manual/main:build/manual/test:${RBVM_POSTGRES_DRIVER_JAR}"
-          io.rbvm.postgres.PostgresV20LiveSelfTest
+          io.rbvm.postgres.PostgresV21LiveSelfTest
