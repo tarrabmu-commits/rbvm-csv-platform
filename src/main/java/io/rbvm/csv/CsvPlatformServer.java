@@ -36,6 +36,7 @@ import io.rbvm.postgres.CvssV31Importer;
 import io.rbvm.postgres.EpssEvidenceReader;
 import io.rbvm.postgres.EpssImportResult;
 import io.rbvm.postgres.EpssImporter;
+import io.rbvm.postgres.FindingContextAssociationRuntime;
 import io.rbvm.postgres.NetworkReachabilityEvidenceReader;
 import io.rbvm.postgres.NetworkReachabilityImportResult;
 import io.rbvm.postgres.NetworkReachabilityImporter;
@@ -116,6 +117,7 @@ public final class CsvPlatformServer implements AutoCloseable {
     private final Optional<BusinessImpactEvidenceReader> businessImpactEvidenceReader;
     private final Optional<ManagedAssetHttpRouter> managedAssetRouter;
     private Optional<ScannerManagedAssetLinkHttpRouter> scannerManagedAssetLinkRouter;
+    private Optional<FindingContextAssociationHttpRouter> findingContextAssociationRouter;
     private final Instant startedAt = Instant.now();
     private final AtomicLong requestsTotal = new AtomicLong();
     private final AtomicLong problemsTotal = new AtomicLong();
@@ -168,6 +170,7 @@ public final class CsvPlatformServer implements AutoCloseable {
         this.businessImpactEvidenceReader = Optional.empty();
         this.managedAssetRouter = Optional.empty();
         this.scannerManagedAssetLinkRouter = Optional.empty();
+        this.findingContextAssociationRouter = Optional.empty();
         this.webUi = loadResource("/web/index.html");
         this.cvssUi = loadResource("/web/cvss-v31.html");
         this.kevUi = loadResource("/web/cisa-kev.html");
@@ -598,6 +601,7 @@ public final class CsvPlatformServer implements AutoCloseable {
                 "managedAssetRegistry"
         ).map(ManagedAssetApi::new).map(ManagedAssetHttpRouter::new);
         this.scannerManagedAssetLinkRouter = Optional.empty();
+        this.findingContextAssociationRouter = Optional.empty();
         this.webUi = loadResource("/web/index.html");
         this.cvssUi = loadResource("/web/cvss-v31.html");
         this.kevUi = loadResource("/web/cisa-kev.html");
@@ -672,6 +676,80 @@ public final class CsvPlatformServer implements AutoCloseable {
                 scannerManagedAssetLinkRegistry,
                 "scannerManagedAssetLinkRegistry"
         ).map(ScannerManagedAssetLinkApi::new).map(ScannerManagedAssetLinkHttpRouter::new);
+    }
+
+    /** Runtime constructor through the V21 explicit Finding-context association API capability. */
+    public CsvPlatformServer(
+            String host,
+            int port,
+            Path dataDirectory,
+            long maximumUploadBytes,
+            CanonicalProjection canonicalProjection,
+            DomainCatalog readCatalog,
+            Optional<ApplicabilityImporter> applicabilityImporter,
+            Optional<ApplicabilityFindingExporter> applicabilityFindingExporter,
+            Optional<CvssV31Importer> cvssV31Importer,
+            Optional<CvssV31EvidenceReader> cvssV31EvidenceReader,
+            Optional<CisaKevImporter> cisaKevImporter,
+            Optional<CisaKevEvidenceReader> cisaKevEvidenceReader,
+            Optional<EpssImporter> epssImporter,
+            Optional<EpssEvidenceReader> epssEvidenceReader,
+            Optional<AssetContextImporter> assetContextImporter,
+            Optional<AssetContextEvidenceReader> assetContextEvidenceReader,
+            Optional<NetworkReachabilityImporter> networkReachabilityImporter,
+            Optional<NetworkReachabilityEvidenceReader> networkReachabilityEvidenceReader,
+            Optional<BusinessImpactImporter> businessImpactImporter,
+            Optional<BusinessImpactEvidenceReader> businessImpactEvidenceReader,
+            Optional<ManagedAssetRegistry> managedAssetRegistry,
+            Optional<ScannerManagedAssetLinkRegistry> scannerManagedAssetLinkRegistry,
+            FindingContextAssociationRuntime findingContextAssociations,
+            ApiKeyAuthenticator authenticator,
+            RequestRateLimiter rateLimiter
+    ) throws IOException {
+        this(
+                host,
+                port,
+                dataDirectory,
+                maximumUploadBytes,
+                canonicalProjection,
+                readCatalog,
+                applicabilityImporter,
+                applicabilityFindingExporter,
+                cvssV31Importer,
+                cvssV31EvidenceReader,
+                cisaKevImporter,
+                cisaKevEvidenceReader,
+                epssImporter,
+                epssEvidenceReader,
+                assetContextImporter,
+                assetContextEvidenceReader,
+                networkReachabilityImporter,
+                networkReachabilityEvidenceReader,
+                businessImpactImporter,
+                businessImpactEvidenceReader,
+                managedAssetRegistry,
+                scannerManagedAssetLinkRegistry,
+                authenticator,
+                rateLimiter
+        );
+        FindingContextAssociationRuntime associations = Objects.requireNonNull(
+                findingContextAssociations,
+                "findingContextAssociations"
+        );
+        if (associations.enabled()) {
+            this.findingContextAssociationRouter = Optional.of(
+                    new FindingContextAssociationHttpRouter(
+                            new FindingReachabilityScopeLinkApi(
+                                    associations.reachabilityScopeLinks().orElseThrow()
+                            ),
+                            new FindingBusinessServiceLinkApi(
+                                    associations.businessServiceLinks().orElseThrow()
+                            )
+                    )
+            );
+        } else {
+            this.findingContextAssociationRouter = Optional.empty();
+        }
     }
 
     public void start() {
@@ -826,6 +904,25 @@ public final class CsvPlatformServer implements AutoCloseable {
                                 "Scanner-managed-asset link API requires PostgreSQL schema version 19 or newer"
                         ));
                 links.routeAuthorized(exchange, method, principal);
+                return;
+            }
+            if (FindingContextAssociationHttpRouter.inNamespace(path)) {
+                if (!FindingContextAssociationHttpRouter.handles(path)) {
+                    throw new HttpProblem(
+                            404,
+                            "NOT_FOUND",
+                            "The requested Finding-context association route does not exist"
+                    );
+                }
+                ApiRole requiredRole = FindingContextAssociationHttpRouter.requiredRole(exchange, method);
+                AuthPrincipal principal = authorize(exchange, requiredRole);
+                FindingContextAssociationHttpRouter associations =
+                        findingContextAssociationRouter.orElseThrow(() -> new HttpProblem(
+                                503,
+                                "FINDING_CONTEXT_ASSOCIATION_PERSISTENCE_UNAVAILABLE",
+                                "Finding-context association API requires PostgreSQL schema version 21 or newer"
+                        ));
+                associations.routeAuthorized(exchange, method, principal);
                 return;
             }
             if ("/api/v1/cases".equals(path)) {
@@ -1045,6 +1142,11 @@ public final class CsvPlatformServer implements AutoCloseable {
                 "readEnabled", scannerManagedAssetLinkRouter.isPresent(),
                 "writeEnabled", scannerManagedAssetLinkRouter.isPresent(),
                 "historyReadEnabled", scannerManagedAssetLinkRouter.isPresent()
+        ));
+        health.put("findingContextAssociations", Map.of(
+                "readEnabled", findingContextAssociationRouter.isPresent(),
+                "writeEnabled", findingContextAssociationRouter.isPresent(),
+                "historyReadEnabled", findingContextAssociationRouter.isPresent()
         ));
         return health;
     }
@@ -1935,6 +2037,9 @@ public final class CsvPlatformServer implements AutoCloseable {
                 + "# TYPE rbvm_scanner_managed_asset_link_api_enabled gauge\n"
                 + "rbvm_scanner_managed_asset_link_api_enabled "
                 + (scannerManagedAssetLinkRouter.isPresent() ? 1 : 0) + "\n"
+                + "# TYPE rbvm_finding_context_association_api_enabled gauge\n"
+                + "rbvm_finding_context_association_api_enabled "
+                + (findingContextAssociationRouter.isPresent() ? 1 : 0) + "\n"
                 + "# TYPE rbvm_process_uptime_seconds gauge\n"
                 + "rbvm_process_uptime_seconds " + uptime + "\n"
                 + "# TYPE rbvm_imports_stored gauge\n"
@@ -2003,6 +2108,7 @@ public final class CsvPlatformServer implements AutoCloseable {
                 runtime.businessImpactEvidenceReader(),
                 runtime.managedAssetRegistry(),
                 runtime.scannerManagedAssetLinkRegistry(),
+                runtime.findingContextAssociations(),
                 authenticator,
                 rateLimiter
         );
@@ -2038,6 +2144,8 @@ public final class CsvPlatformServer implements AutoCloseable {
                 + (runtime.managedAssetRegistry().isPresent() ? "ENABLED" : "DISABLED"));
         System.out.println("Scanner↔Managed Asset Link API: "
                 + (runtime.scannerManagedAssetLinkRegistry().isPresent() ? "ENABLED" : "DISABLED"));
+        System.out.println("Finding Context Association API: "
+                + (runtime.findingContextAssociations().enabled() ? "ENABLED" : "DISABLED"));
         System.out.println("API authentication: "
                 + (authenticator.enabled() ? "API_KEY" : "DISABLED"));
         new CountDownLatch(1).await();
