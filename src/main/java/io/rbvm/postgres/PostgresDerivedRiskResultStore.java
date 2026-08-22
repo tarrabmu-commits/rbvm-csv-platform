@@ -169,8 +169,16 @@ public final class PostgresDerivedRiskResultStore implements DerivedRiskResultSt
                     "Derived-risk-result persistence accepts only Decision Input Snapshot V3"
             );
         }
-        RbvmDerivedRiskMethodology.Definition definition = evaluation.definition();
-        implementedDefinition(definition.methodologyId(), definition.methodologySha256());
+        RbvmDerivedRiskMethodology.Definition supplied = evaluation.definition();
+        RbvmDerivedRiskMethodology.Definition implemented = implementedDefinition(
+                supplied.methodologyId(),
+                supplied.methodologySha256()
+        );
+        if (!implemented.equals(supplied)) {
+            throw new IllegalArgumentException(
+                    "Derived risk methodology definition does not match the implemented identity"
+            );
+        }
     }
 
     private static RbvmDerivedRiskMethodology.Definition implementedDefinition(
