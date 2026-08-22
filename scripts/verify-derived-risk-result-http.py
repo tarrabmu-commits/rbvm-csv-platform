@@ -20,6 +20,16 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
+def resolve_parameter(api: dict, parameter: dict) -> dict:
+    reference = parameter.get('$ref')
+    if reference is None:
+        return parameter
+    prefix = '#/components/parameters/'
+    require(reference.startswith(prefix), f"Unsupported parameter reference {reference!r}")
+    name = reference[len(prefix):]
+    return api['components']['parameters'][name]
+
+
 for marker in (
     '"/api/v1/derived-risk-methodologies"',
     '"/api/v1/derived-risk-results"',
@@ -83,7 +93,7 @@ for marker in (
     'protectsDisabledCapabilityBehindViewerAndOperatorAuthorization',
     'EXPLICIT_ID_AND_SHA_ONLY_NO_DEFAULT',
     'fixture.store().size() == 2',
-    'owasp_derived_rbvm_v1',
+    'definition.methodologyId().toLowerCase()',
     'latest=true',
     'inserted.statusCode() == 201',
     'replayed.statusCode() == 200',
@@ -117,10 +127,11 @@ catalog_schema = READ_API['components']['schemas']['MethodologyCatalogResponse']
 require(catalog_schema['selectionSemantics']['enum'] == ['EXPLICIT_ID_AND_SHA_ONLY_NO_DEFAULT'],
         'Methodology catalog OpenAPI must explicitly declare no default')
 
-collection_params = {
-    parameter.get('name'): parameter
+collection_parameters = [
+    resolve_parameter(READ_API, parameter)
     for parameter in read_paths['/api/v1/derived-risk-results']['get'].get('parameters', [])
-}
+]
+collection_params = {parameter.get('name'): parameter for parameter in collection_parameters}
 require(set(collection_params) == {
     'inputSnapshotSha256', 'methodologyId', 'methodologySha256'
 }, 'Derived risk collection lookup must expose exactly three immutable selectors')
