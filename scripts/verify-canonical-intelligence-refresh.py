@@ -115,6 +115,12 @@ def verify_handoff():
         and 'RBVM_KEV_INPUT="$input"' in wrapper,
         "all intelligence sources must receive the exact same canonical CVE artifact",
     )
+    for source in ("CVSS", "EPSS", "KEV"):
+        expected = (
+            f'RBVM_{source}_API_KEY="${{RBVM_{source}_API_KEY:-'
+            '${RBVM_INTELLIGENCE_API_KEY:-}}"'
+        )
+        require(expected in wrapper, f"{source} importer must inherit the umbrella API key unless overridden")
     require("scheduled-cvss-v31-refresh.sh" in wrapper, "canonical wrapper must invoke CVSS v3.1 refresh")
     require("scheduled-epss-refresh.sh" in wrapper, "canonical wrapper must invoke FIRST EPSS refresh")
     require("scheduled-cisa-kev-refresh.sh" in wrapper, "canonical wrapper must invoke CISA KEV refresh")
