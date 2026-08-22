@@ -28,7 +28,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -36,12 +35,16 @@ import java.util.UUID;
  *
  * <p>The builder reads native immutable evidence history under one REPEATABLE READ transaction,
  * applies one explicitly requested methodology revision/SHA, and returns typed evidence references.
- * It does not persist the snapshot and does not calculate any RBVM score, priority, SLA, treatment,
+ * Schema V22 builds Decision Input V3: Finding-specific association history is resolved as-of the
+ * evaluation boundary before Reachability or Business/Mission Impact candidates enter methodology
+ * source/freshness selection. It does not calculate any RBVM score, priority, SLA, treatment,
  * source ranking, or Case roll-up.</p>
  */
 public final class PostgresDecisionInputSnapshotBuilder implements DecisionInputSnapshotBuilder {
     private static final String TENANT_KEY = "local";
     private static final int REQUIRED_SCHEMA_VERSION = 17;
+    private static final int V2_SCHEMA_VERSION = 20;
+    private static final int V3_SCHEMA_VERSION = 22;
 
     private final JdbcConnectionFactory connections;
     private final DecisionMethodologyPolicyStore methodologyPolicies;
@@ -129,21 +132,32 @@ public final class PostgresDecisionInputSnapshotBuilder implements DecisionInput
                     );
                 }
 
-                RbvmDecisionInputSnapshot snapshot = schemaVersion >= 20
-                        ? RbvmDecisionInputSnapshot.createV2(
-                                findingId,
-                                methodology.revision(),
-                                methodology.policySha256(),
-                                evaluatedAt,
-                                dimensions
-                        )
-                        : RbvmDecisionInputSnapshot.create(
-                                findingId,
-                                methodology.revision(),
-                                methodology.policySha256(),
-                                evaluatedAt,
-                                dimensions
-                        );
+                RbvmDecisionInputSnapshot snapshot;
+                if (schemaVersion >= V3_SCHEMA_VERSION) {
+                    snapshot = RbvmDecisionInputSnapshot.createV3(
+                            findingId,
+                            methodology.revision(),
+                            methodology.policySha256(),
+                            evaluatedAt,
+                            dimensions
+                    );
+                } else if (schemaVersion >= V2_SCHEMA_VERSION) {
+                    snapshot = RbvmDecisionInputSnapshot.createV2(
+                            findingId,
+                            methodology.revision(),
+                            methodology.policySha256(),
+                            evaluatedAt,
+                            dimensions
+                    );
+                } else {
+                    snapshot = RbvmDecisionInputSnapshot.create(
+                            findingId,
+                            methodology.revision(),
+                            methodology.policySha256(),
+                            evaluatedAt,
+                            dimensions
+                    );
+                }
                 connection.commit();
                 return snapshot;
             } catch (IOException | SQLException | RuntimeException exception) {
@@ -245,9 +259,9 @@ public final class PostgresDecisionInputSnapshotBuilder implements DecisionInput
             case ASSET_CONTEXT -> loadAssetContext(
                     connection, tenantId, finding, evaluatedAt, schemaVersion);
             case NETWORK_REACHABILITY -> loadNetworkReachability(
-                    connection, tenantId, finding, evaluatedAt);
+                    connection, tenantId, finding, evaluatedAt, schemaVersion);
             case BUSINESS_MISSION_IMPACT -> loadBusinessImpact(
-                    connection, tenantId, finding, evaluatedAt);
+                    connection, tenantId, finding, evaluatedAt, schemaVersion);
         };
     }
 
@@ -452,7 +466,7 @@ public final class PostgresDecisionInputSnapshotBuilder implements DecisionInput
                 }
             }
         }
-        if (schemaVersion >= 20) {
+        if (schemaVersion >= V2_SCHEMA_VERSION) {
             loadManagedAssetContext(connection, tenantId, finding, evaluatedAt, output);
         }
         return List.copyOf(output);
@@ -503,21 +517,14 @@ public final class PostgresDecisionInputSnapshotBuilder implements DecisionInput
             throw new IOException("Persisted scanner-managed-asset link state is invalid");
         }
 
-        BindingReference binding;
-        try {
-            binding = new BindingReference(
-                    BindingKind.SCANNER_MANAGED_ASSET_LINK_EVENT,
-                    linkEventId,
-                    linkSha256 == null ? null : linkSha256.trim(),
-                    linkMethod,
-                    linkRecordedAt
-            );
-        } catch (IllegalArgumentException | NullPointerException exception) {
-            throw new IOException(
-                    "Persisted scanner-managed-asset link provenance is invalid",
-                    exception
-            );
-        }
+        BindingReference binding = binding(
+                BindingKind.SCANNER_MANAGED_ASSET_LINK_EVENT,
+                linkEventId,
+                linkSha256,
+                linkMethod,
+                linkRecordedAt,
+                "Persisted scanner-managed-asset link provenance is invalid"
+        );
 
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT id, evidence_sha256, context_source, recorded_at
@@ -560,6 +567,19 @@ public final class PostgresDecisionInputSnapshotBuilder implements DecisionInput
             Connection connection,
             UUID tenantId,
             FindingScope finding,
+            Instant evaluatedAt,
+            int schemaVersion
+    ) throws SQLException, IOException {
+        if (schemaVersion >= V3_SCHEMA_VERSION) {
+            return loadNetworkReachabilityV3(connection, tenantId, finding, evaluatedAt);
+        }
+        return loadNetworkReachabilityLegacy(connection, tenantId, finding, evaluatedAt);
+    }
+
+    private static List<Candidate> loadNetworkReachabilityLegacy(
+            Connection connection,
+            UUID tenantId,
+            FindingScope finding,
             Instant evaluatedAt
     ) throws SQLException, IOException {
         List<Candidate> output = new ArrayList<>();
@@ -582,17 +602,16 @@ public final class PostgresDecisionInputSnapshotBuilder implements DecisionInput
                 while (rows.next()) {
                     Object portValue = rows.getObject(8);
                     String port = portValue == null ? "" : Integer.toString(((Number) portValue).intValue());
-                    String subgrain = subgrain(
-                            "reachability",
-                            finding.assetId().toString(),
-                            rows.getString(5),
-                            normalizeKey(rows.getString(6)),
-                            rows.getString(7),
-                            port
-                    );
                     output.add(candidate(
                             EvidenceDimension.NETWORK_REACHABILITY,
-                            subgrain,
+                            subgrain(
+                                    "reachability",
+                                    finding.assetId().toString(),
+                                    rows.getString(5),
+                                    normalizeKey(rows.getString(6)),
+                                    rows.getString(7),
+                                    port
+                            ),
                             rows.getObject(1, UUID.class),
                             rows.getString(2),
                             rows.getString(3),
@@ -604,7 +623,105 @@ public final class PostgresDecisionInputSnapshotBuilder implements DecisionInput
         return List.copyOf(output);
     }
 
+    private static List<Candidate> loadNetworkReachabilityV3(
+            Connection connection,
+            UUID tenantId,
+            FindingScope finding,
+            Instant evaluatedAt
+    ) throws SQLException, IOException {
+        List<Candidate> output = new ArrayList<>();
+        try (PreparedStatement statement = connection.prepareStatement("""
+                WITH latest_link AS (
+                    SELECT DISTINCT ON (
+                        origin_scope, origin_label_normalized,
+                        transport_protocol, target_port_key
+                    )
+                        tenant_id, id, evidence_sha256, link_method, recorded_at,
+                        link_status, origin_scope, origin_label_normalized,
+                        transport_protocol, target_port_key
+                    FROM rbvm.finding_reachability_scope_link_event
+                    WHERE tenant_id = ?
+                      AND finding_id = ?
+                      AND recorded_at <= ?
+                    ORDER BY
+                        origin_scope, origin_label_normalized,
+                        transport_protocol, target_port_key,
+                        revision DESC
+                )
+                SELECT e.id, e.evidence_sha256, s.evidence_source, s.observed_at,
+                       e.origin_scope, e.origin_label, e.transport_protocol, e.target_port,
+                       l.id, l.evidence_sha256, l.link_method, l.recorded_at
+                FROM latest_link l
+                JOIN rbvm.network_reachability_evidence e
+                  ON e.tenant_id = l.tenant_id
+                 AND e.asset_id = ?
+                 AND e.origin_scope = l.origin_scope
+                 AND e.origin_label = l.origin_label_normalized
+                 AND e.transport_protocol = l.transport_protocol
+                 AND COALESCE(e.target_port, 0) = l.target_port_key
+                JOIN rbvm.network_reachability_snapshot s
+                  ON s.tenant_id = e.tenant_id
+                 AND s.id = e.snapshot_id
+                WHERE l.link_status = 'LINKED'
+                  AND s.observed_at <= ?
+                ORDER BY
+                    e.origin_scope, e.origin_label, e.transport_protocol,
+                    COALESCE(e.target_port, 0), s.observed_at, e.id
+                """)) {
+            statement.setObject(1, tenantId);
+            statement.setObject(2, finding.findingId());
+            statement.setTimestamp(3, Timestamp.from(evaluatedAt));
+            statement.setObject(4, finding.assetId());
+            statement.setTimestamp(5, Timestamp.from(evaluatedAt));
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) {
+                    Object portValue = rows.getObject(8);
+                    String port = portValue == null ? "" : Integer.toString(((Number) portValue).intValue());
+                    BindingReference association = binding(
+                            BindingKind.FINDING_REACHABILITY_SCOPE_LINK_EVENT,
+                            rows.getObject(9, UUID.class),
+                            rows.getString(10),
+                            rows.getString(11),
+                            rows.getTimestamp(12).toInstant(),
+                            "Persisted Finding reachability association provenance is invalid"
+                    );
+                    output.add(boundCandidate(
+                            EvidenceDimension.NETWORK_REACHABILITY,
+                            subgrain(
+                                    "reachability",
+                                    finding.assetId().toString(),
+                                    rows.getString(5),
+                                    normalizeKey(rows.getString(6)),
+                                    rows.getString(7),
+                                    port
+                            ),
+                            NativeEvidenceKind.NETWORK_REACHABILITY_EVIDENCE,
+                            rows.getObject(1, UUID.class),
+                            rows.getString(2),
+                            rows.getString(3),
+                            rows.getTimestamp(4).toInstant(),
+                            association
+                    ));
+                }
+            }
+        }
+        return List.copyOf(output);
+    }
+
     private static List<Candidate> loadBusinessImpact(
+            Connection connection,
+            UUID tenantId,
+            FindingScope finding,
+            Instant evaluatedAt,
+            int schemaVersion
+    ) throws SQLException, IOException {
+        if (schemaVersion >= V3_SCHEMA_VERSION) {
+            return loadBusinessImpactV3(connection, tenantId, finding, evaluatedAt);
+        }
+        return loadBusinessImpactLegacy(connection, tenantId, finding, evaluatedAt);
+    }
+
+    private static List<Candidate> loadBusinessImpactLegacy(
             Connection connection,
             UUID tenantId,
             FindingScope finding,
@@ -628,19 +745,89 @@ public final class PostgresDecisionInputSnapshotBuilder implements DecisionInput
             statement.setTimestamp(3, Timestamp.from(evaluatedAt));
             try (ResultSet rows = statement.executeQuery()) {
                 while (rows.next()) {
-                    String subgrain = subgrain(
-                            "business-impact",
-                            finding.assetId().toString(),
-                            rows.getString(5).trim(),
-                            rows.getString(6)
-                    );
                     output.add(candidate(
                             EvidenceDimension.BUSINESS_MISSION_IMPACT,
-                            subgrain,
+                            subgrain(
+                                    "business-impact",
+                                    finding.assetId().toString(),
+                                    rows.getString(5).trim(),
+                                    rows.getString(6)
+                            ),
                             rows.getObject(1, UUID.class),
                             rows.getString(2),
                             rows.getString(3),
                             rows.getTimestamp(4).toInstant()
+                    ));
+                }
+            }
+        }
+        return List.copyOf(output);
+    }
+
+    private static List<Candidate> loadBusinessImpactV3(
+            Connection connection,
+            UUID tenantId,
+            FindingScope finding,
+            Instant evaluatedAt
+    ) throws SQLException, IOException {
+        List<Candidate> output = new ArrayList<>();
+        try (PreparedStatement statement = connection.prepareStatement("""
+                WITH latest_link AS (
+                    SELECT DISTINCT ON (business_service_normalized)
+                        tenant_id, id, evidence_sha256, link_method, recorded_at,
+                        link_status, business_service_normalized
+                    FROM rbvm.finding_business_service_link_event
+                    WHERE tenant_id = ?
+                      AND finding_id = ?
+                      AND recorded_at <= ?
+                    ORDER BY business_service_normalized, revision DESC
+                )
+                SELECT e.id, e.evidence_sha256, s.impact_source, s.observed_at,
+                       e.business_service_normalized, e.impact_dimension,
+                       l.id, l.evidence_sha256, l.link_method, l.recorded_at
+                FROM latest_link l
+                JOIN rbvm.business_impact_evidence e
+                  ON e.tenant_id = l.tenant_id
+                 AND e.asset_id = ?
+                 AND e.business_service_normalized = l.business_service_normalized
+                JOIN rbvm.business_impact_snapshot s
+                  ON s.tenant_id = e.tenant_id
+                 AND s.id = e.snapshot_id
+                WHERE l.link_status = 'LINKED'
+                  AND s.observed_at <= ?
+                ORDER BY
+                    e.business_service_normalized, e.impact_dimension,
+                    s.observed_at, e.id
+                """)) {
+            statement.setObject(1, tenantId);
+            statement.setObject(2, finding.findingId());
+            statement.setTimestamp(3, Timestamp.from(evaluatedAt));
+            statement.setObject(4, finding.assetId());
+            statement.setTimestamp(5, Timestamp.from(evaluatedAt));
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) {
+                    BindingReference association = binding(
+                            BindingKind.FINDING_BUSINESS_SERVICE_LINK_EVENT,
+                            rows.getObject(7, UUID.class),
+                            rows.getString(8),
+                            rows.getString(9),
+                            rows.getTimestamp(10).toInstant(),
+                            "Persisted Finding business-service association provenance is invalid"
+                    );
+                    output.add(boundCandidate(
+                            EvidenceDimension.BUSINESS_MISSION_IMPACT,
+                            subgrain(
+                                    "business-impact",
+                                    finding.assetId().toString(),
+                                    rows.getString(5).trim(),
+                                    rows.getString(6)
+                            ),
+                            NativeEvidenceKind.BUSINESS_IMPACT_EVIDENCE,
+                            rows.getObject(1, UUID.class),
+                            rows.getString(2),
+                            rows.getString(3),
+                            rows.getTimestamp(4).toInstant(),
+                            association
                     ));
                 }
             }
@@ -673,6 +860,56 @@ public final class PostgresDecisionInputSnapshotBuilder implements DecisionInput
         }
     }
 
+    private static Candidate boundCandidate(
+            EvidenceDimension dimension,
+            String subgrain,
+            NativeEvidenceKind nativeEvidenceKind,
+            UUID evidenceId,
+            String evidenceSha256,
+            String evidenceSource,
+            Instant observedAt,
+            BindingReference bindingReference
+    ) throws IOException {
+        try {
+            return new Candidate(
+                    dimension,
+                    subgrain,
+                    nativeEvidenceKind,
+                    evidenceId,
+                    evidenceSha256 == null ? null : evidenceSha256.trim(),
+                    evidenceSource,
+                    observedAt,
+                    bindingReference
+            );
+        } catch (IllegalArgumentException | NullPointerException exception) {
+            throw new IOException(
+                    "Persisted bound native evidence metadata is invalid for " + dimension,
+                    exception
+            );
+        }
+    }
+
+    private static BindingReference binding(
+            BindingKind bindingKind,
+            UUID bindingId,
+            String bindingSha256,
+            String bindingSource,
+            Instant recordedAt,
+            String errorMessage
+    ) throws IOException {
+        try {
+            return new BindingReference(
+                    bindingKind,
+                    bindingId,
+                    bindingSha256 == null ? null : bindingSha256.trim(),
+                    bindingSource,
+                    recordedAt
+            );
+        } catch (IllegalArgumentException | NullPointerException exception) {
+            throw new IOException(errorMessage, exception);
+        }
+    }
+
     private static String vulnerabilitySubgrain(FindingScope finding) {
         return subgrain("vulnerability", finding.vulnerabilityId().toString());
     }
@@ -691,7 +928,7 @@ public final class PostgresDecisionInputSnapshotBuilder implements DecisionInput
         return output.toString();
     }
 
-    /** Matches NETWORK_REACHABILITY_CSV_V1 key normalization. */
+    /** Matches NETWORK_REACHABILITY_CSV_V1 and association-key normalization. */
     private static String normalizeKey(String value) {
         return Normalizer.normalize(Objects.requireNonNull(value, "value").trim(), Normalizer.Form.NFKC)
                 .toLowerCase(Locale.ROOT);
