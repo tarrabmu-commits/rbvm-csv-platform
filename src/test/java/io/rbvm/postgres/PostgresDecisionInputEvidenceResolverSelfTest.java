@@ -33,6 +33,7 @@ import java.util.UUID;
 public final class PostgresDecisionInputEvidenceResolverSelfTest {
     private static final UUID TENANT_ID = UUID.fromString("10000000-0000-5000-8000-000000000001");
     private static final UUID FINDING_ID = UUID.fromString("11111111-1111-4111-8111-111111111111");
+    private static final UUID FINDING_ASSET_ID = UUID.fromString("22222222-2222-4222-8222-222222222222");
     private static final Instant EVALUATED_AT = Instant.parse("2026-08-20T05:00:00Z");
     private static final String POLICY_SHA = "a".repeat(64);
 
@@ -194,9 +195,11 @@ public final class PostgresDecisionInputEvidenceResolverSelfTest {
                         reference.evidenceSha256(), reference.evidenceSource(), reference.observedAt(),
                         "PRODUCTION", "Payments", "payments-owner", "MISSION_CRITICAL");
                 case NETWORK_REACHABILITY -> row(
+                        FINDING_ASSET_ID,
                         reference.evidenceSha256(), reference.evidenceSource(), reference.observedAt(),
                         "INTERNET", "external edge", "TCP", 443, "https", "REACHABLE", "ACTIVE_PROBE");
                 case BUSINESS_MISSION_IMPACT -> row(
+                        FINDING_ASSET_ID,
                         reference.evidenceSha256(), reference.evidenceSource(), reference.observedAt(),
                         "Payments", "payments", "AVAILABILITY", "SEVERE",
                         "BUSINESS_IMPACT_ANALYSIS", "payment outage stops settlement");
