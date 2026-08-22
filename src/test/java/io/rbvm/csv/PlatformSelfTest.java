@@ -13,6 +13,7 @@ import io.rbvm.decision.RbvmFormulaV1SelfTest;
 import io.rbvm.decision.RbvmResolvedDecisionInputSelfTest;
 import io.rbvm.postgres.DecisionInputSnapshotMaterializerSelfTest;
 import io.rbvm.postgres.DecisionRuntimeFactorySelfTest;
+import io.rbvm.postgres.FormulaResultReplayVerifierSelfTest;
 import io.rbvm.postgres.PostgresDecisionInputEvidenceResolverSelfTest;
 import io.rbvm.postgres.PostgresDecisionInputSnapshotBuilderSelfTest;
 import io.rbvm.postgres.PostgresDecisionInputSnapshotStoreSelfTest;
@@ -55,6 +56,7 @@ public final class PlatformSelfTest {
         RbvmResolvedDecisionInputSelfTest.main(args);
         RbvmFormulaV1SelfTest.main(args);
         RbvmFormulaV1ExplanationSelfTest.main(args);
+        FormulaResultReplayVerifierSelfTest.main(args);
         DomainCatalogSelfTest.main(args);
         ApiSecuritySelfTest.main(args);
         CsvHttpSelfTest.main(args);
