@@ -11,11 +11,12 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Exact Formula read transport plus a separate exact-snapshot Operator materialization command. */
+/** Exact Formula transport plus exact Decision Input workflow transport. */
 final class FormulaResultHttpRouter {
     private static final String COLLECTION_PATH = "/api/v1/formula-results";
     private static final Pattern ITEM_PATH = Pattern.compile(
@@ -28,22 +29,26 @@ final class FormulaResultHttpRouter {
     );
 
     private final FormulaResultApi api;
+    private final Optional<DecisionInputHttpRouter> decisionInputs;
 
     FormulaResultHttpRouter(FormulaResultApi api) {
         this.api = Objects.requireNonNull(api, "api");
+        this.decisionInputs = api.decisionInputs().map(DecisionInputHttpRouter::new);
     }
 
     static boolean inNamespace(String path) {
         return COLLECTION_PATH.equals(path)
                 || path.startsWith(COLLECTION_PATH + '/')
                 || MATERIALIZATION_COLLECTION_PATH.equals(path)
-                || path.startsWith(MATERIALIZATION_COLLECTION_PATH + '/');
+                || path.startsWith(MATERIALIZATION_COLLECTION_PATH + '/')
+                || DecisionInputHttpRouter.inNamespace(path);
     }
 
     static boolean handles(String path) {
         return COLLECTION_PATH.equals(path)
                 || ITEM_PATH.matcher(path).matches()
-                || MATERIALIZATION_ITEM_PATH.matcher(path).matches();
+                || MATERIALIZATION_ITEM_PATH.matcher(path).matches()
+                || DecisionInputHttpRouter.handles(path);
     }
 
     /** Resolve route-specific RBAC before capability lookup so V23 availability is not leaked. */
@@ -51,6 +56,9 @@ final class FormulaResultHttpRouter {
         Objects.requireNonNull(exchange, "exchange");
         Objects.requireNonNull(method, "method");
         String path = exchange.getRequestURI().getPath();
+        if (DecisionInputHttpRouter.inNamespace(path)) {
+            return DecisionInputHttpRouter.requiredRole(exchange, method);
+        }
         if (MATERIALIZATION_ITEM_PATH.matcher(path).matches()) {
             if (!"POST".equals(method)) {
                 exchange.getResponseHeaders().set("Allow", "POST");
@@ -80,6 +88,17 @@ final class FormulaResultHttpRouter {
         Objects.requireNonNull(principal, "principal");
 
         String path = exchange.getRequestURI().getPath();
+        if (DecisionInputHttpRouter.inNamespace(path)) {
+            DecisionInputHttpRouter router = decisionInputs.orElseThrow(() ->
+                    new DecisionInputApi.ApiProblem(
+                            503,
+                            "DECISION_INPUT_RUNTIME_UNAVAILABLE",
+                            "Decision Input workflow requires PostgreSQL schema version 23 or newer"
+                    ));
+            router.routeAuthorized(exchange, method, principal);
+            return;
+        }
+
         Matcher materialization = MATERIALIZATION_ITEM_PATH.matcher(path);
         if (materialization.matches()) {
             if (!"POST".equals(method)) {
