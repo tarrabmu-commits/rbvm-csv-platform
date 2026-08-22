@@ -1,0 +1,38 @@
+{
+  "contractId": "OWASP_DERIVED_RBVM_V1",
+  "version": 1,
+  "classification": "STANDARD_DERIVED",
+  "provider": "OWASP",
+  "sourceModel": "OWASP Risk Rating Methodology",
+  "sourceUrl": "https://owasp.org/www-community/OWASP_Risk_Rating_Methodology",
+  "sourceEquation": "Risk = Likelihood * Impact",
+  "inputContractId": "RBVM_DECISION_INPUT_SNAPSHOT_V3",
+  "requiredDimensions": [
+    "APPLICABILITY",
+    "TECHNICAL_SEVERITY",
+    "KNOWN_EXPLOITATION",
+    "EXPLOITATION_PROBABILITY",
+    "ASSET_CONTEXT",
+    "NETWORK_REACHABILITY",
+    "BUSINESS_MISSION_IMPACT"
+  ],
+  "mapping": {
+    "normalizedEvidence": {
+      "cvss": "CVSS_v3.1_Base / 10",
+      "epss": "EPSS_Probability",
+      "kev": "LISTED=1;NOT_LISTED=0",
+      "reachability": "REACHABLE=1;NOT_REACHABLE=0",
+      "businessCriticality": "LOW=0.25;MODERATE=0.5;HIGH=0.75;MISSION_CRITICAL=1",
+      "businessImpact": "NEGLIGIBLE=0;LOW=0.25;MODERATE=0.5;HIGH=0.75;SEVERE=1;same-service reducer=MAX"
+    },
+    "likelihood": "9 * MEAN(epss, kev, reachability)",
+    "impact": "9 * MEAN(cvss, businessCriticality, businessImpact)",
+    "likelihoodImpactBands": "LOW:[0,3);MEDIUM:[3,6);HIGH:[6,9]",
+    "riskMatrix": "LOWxLOW=NOTE;LOWxMEDIUM=LOW;LOWxHIGH=MEDIUM;MEDIUMxLOW=LOW;MEDIUMxMEDIUM=MEDIUM;MEDIUMxHIGH=HIGH;HIGHxLOW=MEDIUM;HIGHxMEDIUM=HIGH;HIGHxHIGH=CRITICAL",
+    "numericProduct": "Likelihood * Impact"
+  },
+  "output": {
+    "numericScale": "0.0000..81.0000",
+    "rating": "NOTE|LOW|MEDIUM|HIGH|CRITICAL"
+  }
+}
