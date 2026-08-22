@@ -15,6 +15,8 @@ platform_test = (ROOT / "src/test/java/io/rbvm/csv/PlatformSelfTest.java").read_
 openapi_path = ROOT / "api/finding-context-association-v1.openapi.yaml"
 openapi_text = openapi_path.read_text(encoding="utf-8")
 openapi = yaml.safe_load(openapi_text)
+base_openapi = yaml.safe_load((ROOT / "api/openapi.yaml").read_text(encoding="utf-8"))
+composed_openapi = yaml.safe_load((ROOT / "api/openapi-v21.yaml").read_text(encoding="utf-8"))
 
 for name, text, prefix in (
     ("reachability API", reach, "frs"),
@@ -168,5 +170,25 @@ for needle in ("NEVER_ASSESSED", "CUSTOMER_CONFIRMED", "UNLINKED"):
 for forbidden in ("riskScore", "priorityTier", "slaDays", "autoLink", "autoMatch"):
     if forbidden in openapi_text:
         raise AssertionError(f"Finding-context OpenAPI must not introduce {forbidden}")
+
+if composed_openapi.get("openapi") != "3.1.2":
+    raise AssertionError("Composed V21 OpenAPI must declare 3.1.2")
+if composed_openapi.get("security") != [{"bearerAuth": []}]:
+    raise AssertionError("Composed V21 OpenAPI must retain default bearer security")
+base_paths = set(base_openapi.get("paths", {}))
+composed_paths = set(composed_openapi.get("paths", {}))
+if composed_paths != base_paths | expected_paths:
+    missing = (base_paths | expected_paths) - composed_paths
+    extra = composed_paths - (base_paths | expected_paths)
+    raise AssertionError(
+        f"Composed V21 OpenAPI path drift: missing={sorted(missing)}, extra={sorted(extra)}"
+    )
+for path, item in composed_openapi["paths"].items():
+    reference = item.get("$ref")
+    if not reference:
+        raise AssertionError(f"Composed path {path} must be a source-contract reference")
+    expected_source = "./finding-context-association-v1.openapi.yaml" if path in expected_paths else "./openapi.yaml"
+    if not reference.startswith(expected_source + "#/paths/"):
+        raise AssertionError(f"Composed path {path} references the wrong source contract")
 
 print("Finding context association API checks: PASS")
