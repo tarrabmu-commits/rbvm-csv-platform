@@ -20,7 +20,7 @@ window.fetch=async(input,options)=>{
   const response=await previousFetch(input,options);
   try{
     const url=new URL(typeof input==='string'?input:input.url,location.href);
-    if(response.ok&&(/^\/api\/v1\/cases(?:\?|$)/.test(url.pathname+url.search)||/^\/api\/v1\/cases\/[a-f0-9]{64}$/.test(url.pathname))){
+    if(response.ok&&(url.pathname==='/api/v1/cases'||/^\/api\/v1\/cases\/[a-f0-9]{64}$/.test(url.pathname))){
       response.clone().json().then(observePayload).catch(()=>{});
     }
   }catch(_){}
@@ -37,31 +37,33 @@ function state(intel){
   if(intel.knownExploited===false||intel.kevStatus==='NOT_LISTED')return'NOT_LISTED';
   return'UNKNOWN';
 }
+function label(s){return s==='AMBIGUOUS'?'Ambiguous':s==='UNKNOWN'?'Unknown':s==='LISTED'?'Listed':'Not listed'}
 function note(intel,s){
   if(s==='AMBIGUOUS')return`CISA KEV evidence is ambiguous across ${intel.kevSourceCount??'multiple'} current sources; no source precedence was applied.`;
   if(s==='UNKNOWN')return'CISA KEV membership is unknown because no unambiguous current dedicated evidence is available.';
   if(s==='LISTED')return intel.kevObservedAt?`Listed in current CISA KEV evidence observed ${intel.kevObservedAt}.`:'Listed in current CISA KEV evidence.';
   return intel.kevObservedAt?`Not listed in the validated CISA KEV snapshot observed ${intel.kevObservedAt}.`:'Not listed in the validated current CISA KEV snapshot.';
 }
-function replacement(s){return s==='AMBIGUOUS'?'Ambiguous':s==='UNKNOWN'?'Unknown':s==='LISTED'?'Listed':'Not listed'}
-function patchNode(node,intel){
-  const s=state(intel);if(!s)return;
-  const expected=replacement(s);
-  for(const element of node.querySelectorAll('td,dd,.badge')){
-    const text=(element.textContent||'').trim();
-    if(text==='Not listed'||text==='Not listed in KEV'||text==='Listed'||text==='KEV listed'||text==='Unknown'||text==='Ambiguous'){
-      if((text.includes('listed')||text.includes('Listed')||text==='Unknown'||text==='Ambiguous')&&element.closest('tr,dl,.drawer')){
-        element.textContent=expected;
-        element.dataset.evidenceState=s;
-        element.title=note(intel,s);
-      }
+function setValue(element,intel){const s=state(intel);if(!s||!element)return;element.textContent=label(s);element.dataset.evidenceState=s;element.title=note(intel,s)}
+function patchTables(){
+  for(const table of document.querySelectorAll('table')){
+    const headers=[...table.querySelectorAll('thead th')].map(x=>(x.textContent||'').trim().toUpperCase());
+    const kevIndex=headers.indexOf('KEV');if(kevIndex<0)continue;
+    for(const row of table.querySelectorAll('tbody tr')){
+      const cve=cveFor(row),intel=cve?byCve.get(cve):null,cells=row.querySelectorAll('td');
+      if(intel&&cells.length>kevIndex)setValue(cells[kevIndex],intel);
     }
   }
 }
-function patch(){
-  for(const row of document.querySelectorAll('tr')){const cve=cveFor(row);if(cve&&byCve.has(cve))patchNode(row,byCve.get(cve))}
-  const drawer=document.querySelector('.drawer');if(drawer){const cve=cveFor(drawer);if(cve&&byCve.has(cve))patchNode(drawer,byCve.get(cve))}
+function patchDrawer(){
+  const drawer=document.querySelector('.drawer');if(!drawer)return;
+  const cve=cveFor(drawer),intel=cve?byCve.get(cve):null;if(!intel)return;
+  for(const element of drawer.querySelectorAll('.badge')){
+    const text=(element.textContent||'').trim();
+    if(['KEV listed','Not listed in KEV','Listed','Not listed','Unknown','Ambiguous'].includes(text)){setValue(element,intel);break}
+  }
 }
+function patch(){patchTables();patchDrawer()}
 new MutationObserver(schedule).observe(document.documentElement,{childList:true,subtree:true});
 window.addEventListener('DOMContentLoaded',schedule);
 })();
