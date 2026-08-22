@@ -1,7 +1,7 @@
 [Unit]
 Description=RBVM canonical vulnerability intelligence refresh
 After=network-online.target rbvm-csv-platform.service
-Wants=network-online.target
+Wants=network-online.target rbvm-csv-platform.service
 
 [Service]
 Type=oneshot
@@ -17,3 +17,9 @@ ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
 LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=-%h/.local/share/rbvm-platform/canonical-intelligence-refresh
+ReadWritePaths=-%h/.local/share/rbvm-platform/cvss-v31
+ReadWritePaths=-%h/.cache/rbvm-platform/cvss-v31
+ReadWritePaths=-%h/.local/share/rbvm-platform/epss
+ReadWritePaths=-%h/.local/share/rbvm-platform/cisa-kev
