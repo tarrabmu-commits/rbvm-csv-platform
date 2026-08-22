@@ -20,6 +20,10 @@ public record DerivedRiskResultInstallResult(
         persistedResultSha256 = requireSha(persistedResultSha256, "persistedResultSha256");
     }
 
+    public boolean installedOrReplayed() {
+        return status == Status.INSERTED || status == Status.REPLAYED;
+    }
+
     private static String requireSha(String value, String field) {
         if (value == null || !value.matches("[a-f0-9]{64}")) {
             throw new IllegalArgumentException(field + " must be lowercase SHA-256");

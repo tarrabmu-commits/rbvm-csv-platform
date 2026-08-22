@@ -1,10 +1,8 @@
 package io.rbvm.postgres;
 
 import io.rbvm.decision.RbvmDecisionInputSnapshot;
-import io.rbvm.decision.RbvmDerivedRiskCanonicalResult;
 import io.rbvm.decision.RbvmDerivedRiskMethodology;
 import io.rbvm.decision.RbvmDerivedRiskMethodologyCatalog;
-import io.rbvm.decision.RbvmResolvedDecisionInput;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -12,7 +10,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 
-/** Live PostgreSQL coverage for V24 append-only derived-risk persistence and exact replay. */
+/** Live PostgreSQL coverage for V24 derived-risk persistence, materialization, and exact replay. */
 public final class PostgresV24DerivedRiskLiveSelfTest {
     private PostgresV24DerivedRiskLiveSelfTest() {
     }
@@ -46,7 +44,6 @@ public final class PostgresV24DerivedRiskLiveSelfTest {
                 runtimeConnections,
                 24
         );
-        RbvmResolvedDecisionInput resolved = resolver.resolve(snapshot);
         PostgresDerivedRiskResultStore results = new PostgresDerivedRiskResultStore(
                 runtimeConnections,
                 false
@@ -56,30 +53,40 @@ public final class PostgresV24DerivedRiskLiveSelfTest {
                 decisionInputs,
                 resolver
         );
+        DefaultDerivedRiskResultMaterializer materializer = new DefaultDerivedRiskResultMaterializer(
+                decisionInputs,
+                resolver,
+                results,
+                replayVerifier
+        );
 
         for (RbvmDerivedRiskMethodology.Definition definition
                 : RbvmDerivedRiskMethodologyCatalog.definitions()) {
-            RbvmDerivedRiskMethodology methodology = RbvmDerivedRiskMethodologyCatalog
-                    .find(definition.methodologyId())
-                    .orElseThrow();
-            RbvmDerivedRiskCanonicalResult canonical = RbvmDerivedRiskCanonicalResult.from(
-                    methodology.evaluate(resolved)
+            DerivedRiskResultMaterializationResult inserted = materializer.materialize(
+                    snapshot.snapshotSha256(),
+                    definition.methodologyId(),
+                    definition.methodologySha256()
             );
+            require(inserted.installResult().status()
+                            == DerivedRiskResultInstallResult.Status.INSERTED,
+                    "first production derived risk materialization must append one row");
+            require(inserted.canonicalResult().evaluation().definition().equals(definition),
+                    "materializer must evaluate the exact requested methodology definition");
 
-            DerivedRiskResultInstallResult inserted = results.install(canonical);
-            require(inserted.status() == DerivedRiskResultInstallResult.Status.INSERTED,
-                    "first derived risk materialization must append one row");
-            require(inserted.persistedResultSha256().equals(canonical.canonicalSha256()),
-                    "insert must preserve canonical derived result identity");
-
-            DerivedRiskResultInstallResult replayed = results.install(canonical);
-            require(replayed.status() == DerivedRiskResultInstallResult.Status.REPLAYED,
-                    "exact derived risk retry must replay without duplicate row");
-            require(replayed.persistedResultSha256().equals(canonical.canonicalSha256()),
-                    "replay must preserve canonical derived result identity");
+            DerivedRiskResultMaterializationResult replayed = materializer.materialize(
+                    snapshot.snapshotSha256(),
+                    definition.methodologyId(),
+                    definition.methodologySha256()
+            );
+            require(replayed.installResult().status()
+                            == DerivedRiskResultInstallResult.Status.REPLAYED,
+                    "exact derived risk materialization retry must replay without duplicate row");
+            require(replayed.canonicalResult().canonicalSha256()
+                            .equals(inserted.canonicalResult().canonicalSha256()),
+                    "materialization replay must preserve canonical result identity");
 
             StoredDerivedRiskResult stored = results
-                    .findByResultSha256(canonical.canonicalSha256())
+                    .findByResultSha256(inserted.canonicalResult().canonicalSha256())
                     .orElseThrow();
             require(stored.inputSnapshotSha256().equals(snapshot.snapshotSha256()),
                     "stored derived risk result must retain exact snapshot identity");
@@ -102,7 +109,8 @@ public final class PostgresV24DerivedRiskLiveSelfTest {
 
         System.out.println(
                 "PostgresV24DerivedRiskLiveSelfTest: PASS schema=24 methodologies=2 "
-                        + "insert=PASS replay=PASS exact_identity=PASS append_only=PASS"
+                        + "materialization=PASS insert=PASS replay=PASS exact_identity=PASS "
+                        + "append_only=PASS"
         );
     }
 
