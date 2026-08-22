@@ -38,6 +38,7 @@ public final class PlatformSelfTest {
         FindingContextAssociationSelfTest.main(args);
         ManagedAssetApiSelfTest.main(args);
         ScannerManagedAssetLinkApiSelfTest.main(args);
+        FindingContextAssociationApiSelfTest.main(args);
         CvssV31BaseScoreCalculatorSelfTest.main(args);
         CvssV31CsvContractSelfTest.main(args);
         CisaKevEvidenceSelfTest.main(args);
@@ -60,6 +61,7 @@ public final class PlatformSelfTest {
         CsvBusinessImpactHttpSelfTest.main(args);
         CsvManagedAssetHttpSelfTest.main(args);
         CsvScannerManagedAssetLinkHttpSelfTest.main(args);
+        CsvFindingContextAssociationHttpSelfTest.main(args);
         CanonicalProjectionSelfTest.main(args);
         PostgresFoundationSelfTest.main(args);
         PostgresManagedAssetRegistrySelfTest.main(args);

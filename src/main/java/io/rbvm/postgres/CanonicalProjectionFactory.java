@@ -2,6 +2,8 @@ package io.rbvm.postgres;
 
 import io.rbvm.asset.ManagedAssetRegistry;
 import io.rbvm.asset.ScannerManagedAssetLinkRegistry;
+import io.rbvm.context.FindingBusinessServiceLinkRegistry;
+import io.rbvm.context.FindingReachabilityScopeLinkRegistry;
 import io.rbvm.csv.CanonicalProjection;
 import io.rbvm.csv.NoopCanonicalProjection;
 import io.rbvm.decision.DecisionInputEvidenceResolver;
@@ -20,6 +22,33 @@ public final class CanonicalProjectionFactory {
     public static CanonicalProjection fromEnvironment(Map<String, String> environment)
             throws IOException {
         return runtimeFromEnvironment(environment).canonicalProjection();
+    }
+
+    /**
+     * Builds the explicit Finding-context association capability when PostgreSQL V21+ exists.
+     * Kept separate from RuntimeComponents so older constructor compatibility remains untouched.
+     */
+    public static Optional<FindingContextAssociationRuntime>
+            findingContextAssociationRuntimeFromEnvironment(Map<String, String> environment)
+            throws IOException {
+        PostgresProjectionSettings settings = PostgresProjectionSettings.fromEnvironment(environment);
+        if (!settings.enabled()) {
+            return Optional.empty();
+        }
+        JdbcConnectionFactory connections = new DriverManagerConnectionFactory(
+                settings.jdbcUrl(),
+                settings.user(),
+                settings.password()
+        );
+        PostgresMigrator migrator = new PostgresMigrator(connections);
+        int installedVersion = settings.migrate() ? migrator.migrate() : migrator.installedVersion();
+        if (installedVersion < 21) {
+            return Optional.empty();
+        }
+        return Optional.of(new FindingContextAssociationRuntime(
+                new PostgresFindingReachabilityScopeLinkRegistry(connections, false),
+                new PostgresFindingBusinessServiceLinkRegistry(connections, false)
+        ));
     }
 
     public static RuntimeComponents runtimeFromEnvironment(Map<String, String> environment)
@@ -449,6 +478,16 @@ public final class CanonicalProjectionFactory {
                     epssImporter, epssEvidenceReader, assetContextImporter, assetContextEvidenceReader,
                     networkReachabilityImporter, networkReachabilityEvidenceReader,
                     Optional.empty(), Optional.empty());
+        }
+    }
+
+    public record FindingContextAssociationRuntime(
+            FindingReachabilityScopeLinkRegistry reachabilityLinks,
+            FindingBusinessServiceLinkRegistry businessServiceLinks
+    ) {
+        public FindingContextAssociationRuntime {
+            reachabilityLinks = Objects.requireNonNull(reachabilityLinks, "reachabilityLinks");
+            businessServiceLinks = Objects.requireNonNull(businessServiceLinks, "businessServiceLinks");
         }
     }
 
