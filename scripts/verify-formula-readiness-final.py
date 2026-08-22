@@ -56,7 +56,8 @@ required_canonical = (
     "Factor definitions are encoded by ascending ordinal",
     "Every numeric constant, category mapping, transform identifier, threshold, gate, coefficient, bound",
     "UI prose and localization are derived views and are excluded",
-    "does not authorize `RBVM_FORMULA_V1` runtime implementation",
+    "This contract defines Formula and explanation canonical identity only",
+    "Downstream Priority, Treatment, SLA",
 )
 for marker in required_canonical:
     if marker.lower() not in canonical.lower():

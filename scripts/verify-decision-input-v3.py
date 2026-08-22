@@ -8,6 +8,7 @@ builder = (ROOT / "src/main/java/io/rbvm/postgres/PostgresDecisionInputSnapshotB
 resolver = (ROOT / "src/main/java/io/rbvm/postgres/PostgresDecisionInputEvidenceResolver.java").read_text(encoding="utf-8")
 migration = (ROOT / "db/migration/V22__decision_input_v3_context_bindings.sql").read_text(encoding="utf-8")
 live = (ROOT / "src/test/java/io/rbvm/postgres/PostgresV22LiveSelfTest.java").read_text(encoding="utf-8")
+v23_live = (ROOT / "src/test/java/io/rbvm/postgres/PostgresV23FormulaResultLiveSelfTest.java").read_text(encoding="utf-8")
 workflow = (ROOT / ".github/workflows/postgres-integration.yml").read_text(encoding="utf-8")
 doc = (ROOT / "docs/DECISION_INPUT_V3.md").read_text(encoding="utf-8")
 
@@ -82,12 +83,23 @@ for needle in (
         raise AssertionError(f"live V22 replay/isolation proof missing {needle!r}")
 
 for needle in (
+    'PostgresV22LiveSelfTest.class',
+    '"exerciseV3"',
+    '"proveAppendOnlyPrivileges"',
+    'schemaVersion',
+):
+    if needle not in v23_live:
+        raise AssertionError(
+            f"V23 live integration must retain V22 Decision Input V3 coverage: missing {needle!r}"
+        )
+
+for needle in (
     'v22-live-integration',
-    'PostgresV22LiveSelfTest',
-    'Run live V18-V22 persistence and Decision Input V3 integration',
+    'PostgresV23FormulaResultLiveSelfTest',
+    'Run live V18-V23 persistence, Decision Input V3, and Formula replay integration',
 ):
     if needle not in workflow:
-        raise AssertionError(f"PostgreSQL workflow is stale for V22: missing {needle!r}")
+        raise AssertionError(f"PostgreSQL workflow is stale for Decision Input V3: missing {needle!r}")
 
 for needle in (
     'Association filtering is therefore candidate construction',
