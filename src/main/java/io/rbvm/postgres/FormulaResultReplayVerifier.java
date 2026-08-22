@@ -40,7 +40,7 @@ public final class FormulaResultReplayVerifier {
                 .orElseThrow(() -> new IOException(
                         "Persisted Formula result does not exist for explanation identity"
                 ));
-        verify(stored);
+        replay(stored);
         return stored;
     }
 
@@ -53,11 +53,15 @@ public final class FormulaResultReplayVerifier {
                 .orElseThrow(() -> new IOException(
                         "Persisted Formula result does not exist for input/formula identity"
                 ));
-        verify(stored);
+        replay(stored);
         return stored;
     }
 
-    public void verify(StoredFormulaResult stored) throws IOException {
+    /**
+     * Reconstructs the exact canonical explanation after proving it is byte-identical to storage.
+     * This is the safe structured-explanation boundary for read APIs and audit tooling.
+     */
+    public RbvmFormulaV1Explanation replay(StoredFormulaResult stored) throws IOException {
         Objects.requireNonNull(stored, "stored");
         RbvmDecisionInputSnapshot snapshot = decisionInputs
                 .findBySha256(stored.inputSnapshotSha256())
@@ -91,6 +95,11 @@ public final class FormulaResultReplayVerifier {
                     "Persisted Formula result failed deterministic historical replay verification"
             );
         }
+        return replayed;
+    }
+
+    public void verify(StoredFormulaResult stored) throws IOException {
+        replay(stored);
     }
 
     private static void requireSnapshotIdentity(

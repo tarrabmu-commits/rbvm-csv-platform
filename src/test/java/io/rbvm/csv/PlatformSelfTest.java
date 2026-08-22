@@ -57,6 +57,7 @@ public final class PlatformSelfTest {
         RbvmFormulaV1SelfTest.main(args);
         RbvmFormulaV1ExplanationSelfTest.main(args);
         FormulaResultReplayVerifierSelfTest.main(args);
+        FormulaResultApiSelfTest.main(args);
         DomainCatalogSelfTest.main(args);
         ApiSecuritySelfTest.main(args);
         CsvHttpSelfTest.main(args);
