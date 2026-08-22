@@ -1,0 +1,36 @@
+{
+  "contractId": "MICROSOFT_PD_DERIVED_RBVM_V1",
+  "version": 1,
+  "classification": "STANDARD_DERIVED",
+  "provider": "Microsoft",
+  "sourceModel": "Probability x Damage Potential",
+  "sourceUrl": "https://download.microsoft.com/download/d/8/c/d8c02f31-64af-438c-a9f4-e31acb8e3333/threats_countermeasures.pdf",
+  "sourceEquation": "Risk = Probability * Damage Potential",
+  "inputContractId": "RBVM_DECISION_INPUT_SNAPSHOT_V3",
+  "requiredDimensions": [
+    "APPLICABILITY",
+    "TECHNICAL_SEVERITY",
+    "KNOWN_EXPLOITATION",
+    "EXPLOITATION_PROBABILITY",
+    "ASSET_CONTEXT",
+    "NETWORK_REACHABILITY",
+    "BUSINESS_MISSION_IMPACT"
+  ],
+  "mapping": {
+    "normalizedEvidence": {
+      "cvss": "CVSS_v3.1_Base / 10",
+      "epss": "EPSS_Probability",
+      "kev": "LISTED=1;NOT_LISTED=0",
+      "reachability": "REACHABLE=1;NOT_REACHABLE=0",
+      "businessCriticality": "LOW=0.25;MODERATE=0.5;HIGH=0.75;MISSION_CRITICAL=1",
+      "businessImpact": "NEGLIGIBLE=0;LOW=0.25;MODERATE=0.5;HIGH=0.75;SEVERE=1;same-service reducer=MAX"
+    },
+    "probability": "1 + 9 * MEAN(epss, kev, reachability)",
+    "damagePotential": "1 + 9 * MEAN(cvss, businessCriticality, businessImpact)",
+    "risk": "Probability * DamagePotential"
+  },
+  "output": {
+    "numericScale": "1.0000..100.0000",
+    "rating": null
+  }
+}
