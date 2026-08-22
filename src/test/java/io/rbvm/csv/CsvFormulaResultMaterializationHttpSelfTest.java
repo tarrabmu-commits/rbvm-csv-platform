@@ -337,7 +337,7 @@ public final class CsvFormulaResultMaterializationHttpSelfTest {
         };
     }
 
-    private static StoredFormulaResult stored(RbvmFormulaV1Explanation explanation) {
+    private static StoredFormulaResult toStored(RbvmFormulaV1Explanation explanation) {
         return new StoredFormulaResult(
                 RESULT_ID,
                 explanation.inputSnapshotSha256(),
@@ -421,7 +421,7 @@ public final class CsvFormulaResultMaterializationHttpSelfTest {
         public FormulaResultInstallResult install(RbvmFormulaV1Explanation explanation) {
             installCount++;
             if (stored == null) {
-                stored = stored(explanation);
+                stored = toStored(explanation);
                 return new FormulaResultInstallResult(
                         FormulaResultInstallResult.Status.INSERTED,
                         explanation.canonicalSha256(),
