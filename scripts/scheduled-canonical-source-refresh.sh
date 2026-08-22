@@ -41,20 +41,33 @@ fi
 
 case "$SOURCE" in
   cvss)
+    state_key="cvss_v31_refresh"
     RBVM_CVSS_INPUT="$input" \
     RBVM_CVSS_API_KEY="${RBVM_CVSS_API_KEY:-${RBVM_INTELLIGENCE_API_KEY:-}}" \
-      "$ROOT_DIR/scripts/scheduled-cvss-v31-refresh.sh"
+      "$ROOT_DIR/scripts/scheduled-cvss-v31-refresh.sh" | tee "$staging/source.log"
     ;;
   epss)
+    state_key="epss_refresh"
     RBVM_EPSS_INPUT="$input" \
     RBVM_EPSS_API_KEY="${RBVM_EPSS_API_KEY:-${RBVM_INTELLIGENCE_API_KEY:-}}" \
-      "$ROOT_DIR/scripts/scheduled-epss-refresh.sh"
+      "$ROOT_DIR/scripts/scheduled-epss-refresh.sh" | tee "$staging/source.log"
     ;;
   kev)
+    state_key="cisa_kev_refresh"
     RBVM_KEV_INPUT="$input" \
     RBVM_KEV_API_KEY="${RBVM_KEV_API_KEY:-${RBVM_INTELLIGENCE_API_KEY:-}}" \
-      "$ROOT_DIR/scripts/scheduled-cisa-kev-refresh.sh"
+      "$ROOT_DIR/scripts/scheduled-cisa-kev-refresh.sh" | tee "$staging/source.log"
     ;;
 esac
 
-printf 'canonical_source_refresh=PASS source=%s unique_cves=%s\n' "$SOURCE" "$unique_cves"
+source_state="$(sed -n "s/^${state_key}=\([A-Z_]*\).*/\1/p" "$staging/source.log" | tail -n 1)"
+case "$source_state" in
+  PASS|PARTIAL|SKIPPED) ;;
+  *)
+    printf 'canonical_source_refresh=FAILED source=%s reason=invalid_source_state\n' "$SOURCE" >&2
+    exit 70
+    ;;
+esac
+
+printf 'canonical_source_refresh=%s source=%s unique_cves=%s\n' \
+  "$source_state" "$SOURCE" "$unique_cves"
