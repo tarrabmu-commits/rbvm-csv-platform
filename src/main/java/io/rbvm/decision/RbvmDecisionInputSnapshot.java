@@ -26,7 +26,9 @@ import java.util.UUID;
  *
  * <p>V1 references are dimension-addressed. V2 adds an explicit native-evidence kind and, for
  * managed-asset context, the exact scanner-to-managed-asset link event that authorized the join.
- * Neither version contains a decision formula or a source winner.</p>
+ * V3 additionally binds Network Reachability and Business/Mission Impact references to the exact
+ * customer-confirmed Finding-specific association events that authorized those joins. No version
+ * contains a decision formula or a source winner.</p>
  */
 public record RbvmDecisionInputSnapshot(
         String contractId,
@@ -39,6 +41,7 @@ public record RbvmDecisionInputSnapshot(
 ) {
     public static final String V1_ID = "RBVM_DECISION_INPUT_SNAPSHOT_V1";
     public static final String V2_ID = "RBVM_DECISION_INPUT_SNAPSHOT_V2";
+    public static final String V3_ID = "RBVM_DECISION_INPUT_SNAPSHOT_V3";
     /** Backward-compatible alias for the historical V1 contract. */
     public static final String ID = V1_ID;
 
@@ -46,6 +49,8 @@ public record RbvmDecisionInputSnapshot(
             "FINDING_SCOPED_POLICY_BOUND_EVIDENCE_REFERENCE_SNAPSHOT";
     public static final String V2_SEMANTICS =
             "FINDING_SCOPED_POLICY_BOUND_TYPED_EVIDENCE_REFERENCE_SNAPSHOT";
+    public static final String V3_SEMANTICS =
+            "FINDING_SCOPED_POLICY_BOUND_TYPED_ASSOCIATION_PROVENANCE_SNAPSHOT";
     /** Backward-compatible alias for the historical V1 semantics. */
     public static final String SEMANTICS = V1_SEMANTICS;
 
@@ -53,6 +58,8 @@ public record RbvmDecisionInputSnapshot(
             "RBVM_DECISION_INPUT_SNAPSHOT_CANONICAL_BINARY_V1";
     public static final String V2_CANONICAL_PAYLOAD_FORMAT =
             "RBVM_DECISION_INPUT_SNAPSHOT_CANONICAL_BINARY_V2";
+    public static final String V3_CANONICAL_PAYLOAD_FORMAT =
+            "RBVM_DECISION_INPUT_SNAPSHOT_CANONICAL_BINARY_V3";
     /** Backward-compatible alias for the historical V1 payload format. */
     public static final String CANONICAL_PAYLOAD_FORMAT = V1_CANONICAL_PAYLOAD_FORMAT;
 
@@ -117,6 +124,23 @@ public record RbvmDecisionInputSnapshot(
         );
     }
 
+    public static RbvmDecisionInputSnapshot createV3(
+            UUID findingId,
+            int methodologyRevision,
+            String methodologyPolicySha256,
+            Instant evaluatedAt,
+            Map<EvidenceDimension, DimensionInput> dimensions
+    ) {
+        return createForContract(
+                V3_ID,
+                findingId,
+                methodologyRevision,
+                methodologyPolicySha256,
+                evaluatedAt,
+                dimensions
+        );
+    }
+
     private static RbvmDecisionInputSnapshot createForContract(
             String contractId,
             UUID findingId,
@@ -155,6 +179,10 @@ public record RbvmDecisionInputSnapshot(
 
     public boolean isV2() {
         return V2_ID.equals(contractId);
+    }
+
+    public boolean isV3() {
+        return V3_ID.equals(contractId);
     }
 
     public String semantics() {
@@ -217,7 +245,9 @@ public record RbvmDecisionInputSnapshot(
     }
 
     public enum BindingKind {
-        SCANNER_MANAGED_ASSET_LINK_EVENT
+        SCANNER_MANAGED_ASSET_LINK_EVENT,
+        FINDING_REACHABILITY_SCOPE_LINK_EVENT,
+        FINDING_BUSINESS_SERVICE_LINK_EVENT
     }
 
     /** Immutable provenance for an evidence reference that depends on an explicit identity link. */
@@ -337,21 +367,52 @@ public record RbvmDecisionInputSnapshot(
             evidenceSha256 = requireSha(evidenceSha256, "evidenceSha256");
             evidenceSource = requireText(evidenceSource, "evidenceSource", 256);
             observedAt = Objects.requireNonNull(observedAt, "observedAt");
+            validateBindingShape(nativeEvidenceKind, bindingReference);
+        }
+    }
 
-            if (nativeEvidenceKind == NativeEvidenceKind.MANAGED_ASSET_REVISION) {
-                Objects.requireNonNull(
-                        bindingReference,
-                        "managed-asset evidence requires bindingReference"
-                );
-                if (bindingReference.bindingKind()
-                        != BindingKind.SCANNER_MANAGED_ASSET_LINK_EVENT) {
+    private static void validateBindingShape(
+            NativeEvidenceKind nativeEvidenceKind,
+            BindingReference bindingReference
+    ) {
+        switch (nativeEvidenceKind) {
+            case MANAGED_ASSET_REVISION -> requireBindingKind(
+                    bindingReference,
+                    BindingKind.SCANNER_MANAGED_ASSET_LINK_EVENT,
+                    "managed-asset evidence requires scanner-managed-asset link binding"
+            );
+            case NETWORK_REACHABILITY_EVIDENCE -> {
+                if (bindingReference != null
+                        && bindingReference.bindingKind()
+                        != BindingKind.FINDING_REACHABILITY_SCOPE_LINK_EVENT) {
                     throw new IllegalArgumentException(
-                            "managed-asset evidence requires scanner-managed-asset link binding");
+                            "network reachability evidence binding must be a Finding reachability-scope link event");
                 }
-            } else if (bindingReference != null) {
-                throw new IllegalArgumentException(
-                        "bindingReference is only supported for managed-asset revisions");
             }
+            case BUSINESS_IMPACT_EVIDENCE -> {
+                if (bindingReference != null
+                        && bindingReference.bindingKind()
+                        != BindingKind.FINDING_BUSINESS_SERVICE_LINK_EVENT) {
+                    throw new IllegalArgumentException(
+                            "business impact evidence binding must be a Finding business-service link event");
+                }
+            }
+            default -> {
+                if (bindingReference != null) {
+                    throw new IllegalArgumentException(
+                            "bindingReference is not supported for this native evidence kind");
+                }
+            }
+        }
+    }
+
+    private static void requireBindingKind(
+            BindingReference bindingReference,
+            BindingKind expected,
+            String message
+    ) {
+        if (bindingReference == null || bindingReference.bindingKind() != expected) {
+            throw new IllegalArgumentException(message);
         }
     }
 
@@ -369,6 +430,7 @@ public record RbvmDecisionInputSnapshot(
                     "Decision input snapshot must classify every evidence dimension");
         }
         boolean v1 = V1_ID.equals(contractId);
+        boolean v2 = V2_ID.equals(contractId);
         for (Map.Entry<EvidenceDimension, DimensionInput> entry : normalized.entrySet()) {
             DimensionInput input = Objects.requireNonNull(entry.getValue(), "dimensionInput");
             if (input.dimension() != entry.getKey()) {
@@ -391,9 +453,44 @@ public record RbvmDecisionInputSnapshot(
                     throw new IllegalArgumentException(
                             "V1 Decision Input cannot contain typed alternate native evidence");
                 }
+                if (v2 && reference.nativeEvidenceKind()
+                        != NativeEvidenceKind.MANAGED_ASSET_REVISION
+                        && reference.bindingReference() != null) {
+                    throw new IllegalArgumentException(
+                            "V2 Decision Input only permits binding provenance for managed-asset revisions");
+                }
+                if (!v1 && !v2) {
+                    validateV3Reference(reference);
+                }
             }
         }
         return normalized;
+    }
+
+    private static void validateV3Reference(EvidenceReference reference) {
+        switch (reference.nativeEvidenceKind()) {
+            case NETWORK_REACHABILITY_EVIDENCE -> requireBindingKind(
+                    reference.bindingReference(),
+                    BindingKind.FINDING_REACHABILITY_SCOPE_LINK_EVENT,
+                    "V3 network reachability evidence requires exact Finding reachability-scope binding"
+            );
+            case BUSINESS_IMPACT_EVIDENCE -> requireBindingKind(
+                    reference.bindingReference(),
+                    BindingKind.FINDING_BUSINESS_SERVICE_LINK_EVENT,
+                    "V3 business impact evidence requires exact Finding business-service binding"
+            );
+            case MANAGED_ASSET_REVISION -> requireBindingKind(
+                    reference.bindingReference(),
+                    BindingKind.SCANNER_MANAGED_ASSET_LINK_EVENT,
+                    "V3 managed-asset evidence requires scanner-managed-asset link binding"
+            );
+            default -> {
+                if (reference.bindingReference() != null) {
+                    throw new IllegalArgumentException(
+                            "V3 binding provenance is not supported for this native evidence kind");
+                }
+            }
+        }
     }
 
     private static String canonicalSha256(
@@ -429,7 +526,7 @@ public record RbvmDecisionInputSnapshot(
             Map<EvidenceDimension, DimensionInput> dimensions
     ) {
         try {
-            boolean v2 = V2_ID.equals(contractId);
+            boolean typed = !V1_ID.equals(contractId);
             ByteArrayOutputStream buffer = new ByteArrayOutputStream();
             try (DataOutputStream output = new DataOutputStream(buffer)) {
                 writeString(output, canonicalPayloadFormatFor(contractId));
@@ -447,7 +544,7 @@ public record RbvmDecisionInputSnapshot(
                     writeString(output, input.state().name());
                     output.writeInt(input.evidenceReferences().size());
                     for (EvidenceReference reference : input.evidenceReferences()) {
-                        if (v2) {
+                        if (typed) {
                             writeString(output, reference.nativeEvidenceKind().name());
                         }
                         output.writeLong(reference.evidenceId().getMostSignificantBits());
@@ -456,7 +553,7 @@ public record RbvmDecisionInputSnapshot(
                         writeString(output, reference.evidenceSource());
                         output.writeLong(reference.observedAt().getEpochSecond());
                         output.writeInt(reference.observedAt().getNano());
-                        if (v2) {
+                        if (typed) {
                             BindingReference binding = reference.bindingReference();
                             output.writeBoolean(binding != null);
                             if (binding != null) {
@@ -482,19 +579,21 @@ public record RbvmDecisionInputSnapshot(
     }
 
     private static void requireContract(String contractId) {
-        if (!V1_ID.equals(contractId) && !V2_ID.equals(contractId)) {
+        if (!V1_ID.equals(contractId) && !V2_ID.equals(contractId) && !V3_ID.equals(contractId)) {
             throw new IllegalArgumentException(
-                    "contractId must be " + V1_ID + " or " + V2_ID);
+                    "contractId must be " + V1_ID + ", " + V2_ID + ", or " + V3_ID);
         }
     }
 
     private static String semanticsFor(String contractId) {
         requireContract(contractId);
+        if (V3_ID.equals(contractId)) return V3_SEMANTICS;
         return V2_ID.equals(contractId) ? V2_SEMANTICS : V1_SEMANTICS;
     }
 
     private static String canonicalPayloadFormatFor(String contractId) {
         requireContract(contractId);
+        if (V3_ID.equals(contractId)) return V3_CANONICAL_PAYLOAD_FORMAT;
         return V2_ID.equals(contractId)
                 ? V2_CANONICAL_PAYLOAD_FORMAT
                 : V1_CANONICAL_PAYLOAD_FORMAT;
