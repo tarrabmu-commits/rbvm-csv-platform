@@ -83,12 +83,17 @@ for forbidden in (
     if forbidden.lower() not in readiness.lower():
         raise AssertionError(f"formula readiness must explicitly forbid {forbidden!r}")
 
+# The initial roadmap gate has been closed by the approved readiness decisions and Stage 8
+# golden-case corpus. Keep the README verifier aligned with the current forward boundary rather
+# than requiring historical prose that would incorrectly claim readiness research is still next.
 for required_readme in (
-    "Formula Readiness / Formula Contract research",
-    "not with arbitrary scoring",
+    "Formula-readiness semantics",
+    "Stage 8 golden-case corpus",
+    "RBVM_FORMULA_V1",
+    "Priority, Treatment, SLA",
 ):
     if required_readme.lower() not in readme.lower():
-        raise AssertionError(f"README roadmap missing formula-readiness boundary {required_readme!r}")
+        raise AssertionError(f"README roadmap missing current Formula boundary {required_readme!r}")
 
 if "RBVM_FORMULA_V1 =" in readiness or "Risk Score =" in readiness:
     raise AssertionError("formula readiness document must not define a scoring equation")
