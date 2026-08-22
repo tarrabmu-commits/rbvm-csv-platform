@@ -46,6 +46,8 @@ python3 "$ROOT_DIR/scripts/verify-first-epss-source.py"
 python3 "$ROOT_DIR/scripts/verify-epss-contract.py"
 python3 "$ROOT_DIR/scripts/verify-epss-handoff.py"
 python3 "$ROOT_DIR/scripts/verify-epss-refresh.py"
+python3 "$ROOT_DIR/scripts/verify-canonical-intelligence-refresh.py"
+python3 "$ROOT_DIR/scripts/verify-dedicated-intelligence-read.py"
 for script in "$ROOT_DIR"/scripts/*.sh; do
   bash -n "$script"
 done

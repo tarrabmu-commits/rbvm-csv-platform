@@ -53,7 +53,8 @@ jobs:
           RBVM_DB_USER: postgres
           RBVM_DB_PASSWORD: postgres-live-owner
           RBVM_DB_MIGRATE: 'true'
-        run: >-
-          java -ea
-          -cp "build/manual/main:build/manual/test:${RBVM_POSTGRES_DRIVER_JAR}"
-          io.rbvm.postgres.PostgresV22LiveSelfTest
+        run: |
+          set -euo pipefail
+          classpath="build/manual/main:build/manual/test:${RBVM_POSTGRES_DRIVER_JAR}"
+          java -ea -cp "$classpath" io.rbvm.postgres.PostgresV22LiveSelfTest
+          java -ea -cp "$classpath" io.rbvm.postgres.PostgresEvidenceAwareCatalogLiveSelfTest

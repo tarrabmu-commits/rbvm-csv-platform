@@ -1,13 +1,13 @@
 [Unit]
-Description=RBVM vulnerability intelligence refresh
-After=network-online.target
+Description=RBVM canonical vulnerability intelligence refresh
+After=network-online.target rbvm-csv-platform.service
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 WorkingDirectory=%h/rbvm-csv-platform
 EnvironmentFile=%h/.config/rbvm-platform/intelligence-refresh.env
-ExecStart=%h/rbvm-csv-platform/scripts/scheduled-intelligence-refresh.sh
+ExecStart=%h/rbvm-csv-platform/scripts/scheduled-canonical-intelligence-refresh.sh
 UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true

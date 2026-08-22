@@ -184,6 +184,9 @@ public final class CanonicalProjectionFactory {
                     new PostgresScannerManagedAssetLinkRegistry(connections, false)
             );
         }
+        if (installedVersion >= 12) {
+            readCatalog = new PostgresEvidenceAwareCatalog(readCatalog, connections);
+        }
         return new RuntimeComponents(
                 projection,
                 readCatalog,
