@@ -1,72 +1,57 @@
 # CVSS v3.1 Scheduled Collection and Safe Handoff
 
-This increment automates the already-established CVSS v3.1 Technical Severity evidence path without creating a second persistence path.
+This automation delivers independent CVSS v3.1 Technical Severity evidence without creating a second persistence or scoring path.
 
-## Trust boundary
+## Deployed trust boundary
 
-The scheduled workflow is deliberately:
+The deployed systemd path derives the vulnerability scope from the platform's current canonical Cases rather than from a separately maintained Wazuh CSV:
 
 ```text
-current Wazuh CSV (V1 or another CSV containing CVE_ID)
-        |
-        v
+Canonical Cases API
+        ↓
+Unique current CVE set
+        ↓
+scheduled-canonical-source-refresh.sh cvss
+        ↓
 Official NVD CVSS v3.1 collector
-        |
-        v
+        ↓
 CVSS_V31_CSV_V1
-        |
-        v
-Authenticated HTTP handoff
-        |
-        v
+        ↓
+Authenticated / same-origin HTTP handoff
+        ↓
 Existing CVSS contract validation
-        |
-        v
+        ↓
 Existing tenant/CVE resolution
-        |
-        v
-Existing transactional PostgreSQL importer
-        |
-        v
-Immutable CVSS history
+        ↓
+Transactional PostgreSQL CVSS importer
+        ↓
+Immutable CVSS evidence history
 ```
 
-There is no `NVD -> PostgreSQL` shortcut. The scheduler does not use JDBC, `psql`, or the legacy combined intelligence enrichment path.
+There is no `NVD -> PostgreSQL` shortcut. The scheduler does not use JDBC, `psql`, the legacy combined-intelligence enrichment path, or RBVM scoring logic.
+
+`scripts/scheduled-cvss-v31-refresh.sh` remains the source-specific collector/handoff primitive and can still be given an explicit CVE-bearing CSV for controlled manual use or tests. The supplied systemd service does not pin such a file: it calls `scripts/scheduled-canonical-source-refresh.sh cvss`, which first exports current CVEs from canonical Cases and passes the generated scope to the source-specific script.
 
 ## Components
 
-### `scripts/import-cvss-v31.py`
+### `scripts/scheduled-canonical-source-refresh.sh cvss`
 
-This is a narrow API client for:
+For deployed source-only scheduling, this wrapper:
 
-```text
-POST /api/v1/cvss-v31-imports
-```
-
-It requires `RBVM_CVSS_API_KEY`, sends the generated CSV as `text/csv`, and verifies that a successful response identifies:
-
-```text
-contractId = CVSS_V31_CSV_V1
-semantics  = CVE_SCOPED_CVSS_V31_BASE_EVIDENCE
-```
-
-Transport policy is fail-closed:
-
-- loopback (`127.0.0.1`, `localhost`, `::1`) may use HTTP;
-- any non-local API endpoint must use HTTPS;
-- credentials embedded in the URL are rejected;
-- the bearer key is never included in diagnostic output.
-
-The handoff input must be a bounded, regular, non-symlink file. The default bound is 16 MiB and may be reduced or increased with `RBVM_CVSS_MAX_BYTES`.
+1. reads current canonical Cases through the configured API;
+2. exports a deterministic CSV containing the unique current CVE set;
+3. skips safely when there are no canonical CVEs;
+4. passes that generated scope as `RBVM_CVSS_INPUT` to the source-specific CVSS refresh;
+5. preserves the source result as `PASS`, `PARTIAL`, or `SKIPPED` rather than converting a skipped source run into success.
 
 ### `scripts/scheduled-cvss-v31-refresh.sh`
 
-The scheduled workflow:
+The source-specific workflow:
 
 1. validates configuration and acquires a non-blocking `flock`;
 2. creates a private staging directory;
-3. runs `collect-nvd-cvss-v31.py` against the configured CSV;
-4. records SHA-256 for the generated contract;
+3. runs `collect-nvd-cvss-v31.py` against the supplied CVE scope;
+4. records SHA-256 for the generated `CVSS_V31_CSV_V1` contract;
 5. passes that exact generated file to `import-cvss-v31.py`;
 6. publishes the snapshot directory only after the HTTP importer completes successfully;
 7. atomically moves the `latest` symlink to the newly published snapshot;
@@ -82,17 +67,9 @@ cvss-v31-YYYYMMDDTHHMMSSZ/
     import.json
 ```
 
-`collection.json` records what the NVD collector observed. `import.json` records what the canonical platform accepted, replayed, or quarantined. These are intentionally separate provenance layers.
+`collection.json` records what the NVD collector observed. `import.json` records what the canonical platform accepted, replayed, or quarantined. These are separate provenance layers.
 
-If the canonical importer reports quarantined rows, the scheduled command reports:
-
-```text
-cvss_v31_refresh=PARTIAL
-```
-
-but retains the completed snapshot and import ledger. Quarantine is therefore visible without pretending that already-inserted evidence was rolled back.
-
-A collector failure, transport failure, authentication failure, invalid API response, or canonical importer failure prevents publication of the staging snapshot and prevents the `latest` pointer from moving.
+If the canonical importer reports quarantined rows, the source-specific command reports `cvss_v31_refresh=PARTIAL`. Collector, transport, authentication, response-validation, or canonical-import failures prevent publication and leave the previous `latest` target unchanged.
 
 ## Scheduling
 
@@ -104,50 +81,41 @@ deploy/systemd/rbvm-cvss-v31-refresh.timer
 deploy/cvss-v31-refresh.example
 ```
 
-The supplied timer runs daily with a randomized delay of up to 30 minutes and `Persistent=true`. This is an operational default, not an RBVM scoring or SLA policy.
+The supplied timer runs daily with a randomized delay of up to 30 minutes and `Persistent=true`. This is an operational refresh default, not an RBVM scoring, freshness, remediation, or SLA policy.
 
-The service is hardened with a restrictive umask, `NoNewPrivileges`, `ProtectSystem=strict`, kernel/control-group protections, and restricted address families.
+The source-only CVSS timer conflicts with the umbrella `rbvm-intelligence-refresh.timer`. Operators should enable either the umbrella schedule or the source-only schedules, not both. The service is hardened with a restrictive umask, `NoNewPrivileges`, `ProtectSystem=strict`, kernel/control-group protections, restricted address families, and explicit per-user writable refresh paths.
+
+A newly imported Wazuh dataset does not have to wait for the next timer window: an operator may explicitly invoke the canonical intelligence refresh after the import. External-source failure remains independent from Wazuh import success.
 
 ## Secrets
 
-Two credentials are intentionally separate:
+`NVD_API_KEY` is optional and is sent only to NVD. `RBVM_CVSS_API_KEY` is a platform OPERATOR credential for the canonical CVSS import endpoint. In hardened deployments the canonical-CVE read may use `RBVM_INTELLIGENCE_API_KEY`; the source-specific key may override it for the CVSS handoff. Local trusted operation may require no bearer token when `RBVM_AUTH_MODE=DISABLED`.
 
-```text
-NVD_API_KEY
-```
-
-is optional and is used only by the collector when calling NVD, while:
-
-```text
-RBVM_CVSS_API_KEY
-```
-
-is a platform OPERATOR credential used only for the canonical CVSS import endpoint.
-
-They must not be reused as one another. The example environment file contains placeholders only; production values should come from protected configuration or secret management.
+Credentials must not be embedded in URLs or committed to repository configuration.
 
 ## Replay behavior
 
-The scheduled workflow is safe to retry because the existing persistence identity remains:
+The source-specific workflow remains safe to retry because the existing persistence identity is unchanged:
 
 ```text
 Tenant + CVE + CVSS Source + CVSS Observed At
 ```
 
-A repeated identical observation is replayed instead of inserted twice. Conflicting same-source/same-time evidence is quarantined by the existing importer. Scheduling does not weaken either behavior.
+A repeated identical observation is replayed rather than inserted twice. Conflicting same-source/same-time evidence is quarantined by the existing importer. Canonical Cases-driven scheduling does not weaken either rule.
 
-## What this automation does not do
+## Methodology boundary
 
-It does not derive or change:
+This automation does not derive or change:
 
 - remediation priority;
 - risk score;
 - EPSS;
 - CISA KEV status;
 - asset criticality;
+- reachability;
 - business impact;
 - SLA;
 - cross-source CVSS precedence;
-- RBVM decisions.
+- Formula evaluation.
 
-It only automates collection and safe delivery of CVSS v3.1 Base Technical Severity evidence through the canonical evidence boundary.
+It only automates current-scope collection and safe delivery of CVSS v3.1 Base Technical Severity evidence through the canonical evidence boundary.
