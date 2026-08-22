@@ -41,9 +41,16 @@ fi
 
 # All three source adapters receive the exact same canonical CVE set. They retain
 # independent provenance, timestamps, validation, persistence, and freshness rules.
-RBVM_CVSS_INPUT="$input" "$ROOT_DIR/scripts/scheduled-cvss-v31-refresh.sh"
-RBVM_EPSS_INPUT="$input" "$ROOT_DIR/scripts/scheduled-epss-refresh.sh"
-RBVM_KEV_INPUT="$input" "$ROOT_DIR/scripts/scheduled-cisa-kev-refresh.sh"
+# Hardened deployments may set one umbrella API credential or narrower per-source overrides.
+RBVM_CVSS_INPUT="$input" \
+RBVM_CVSS_API_KEY="${RBVM_CVSS_API_KEY:-${RBVM_INTELLIGENCE_API_KEY:-}}" \
+  "$ROOT_DIR/scripts/scheduled-cvss-v31-refresh.sh"
+RBVM_EPSS_INPUT="$input" \
+RBVM_EPSS_API_KEY="${RBVM_EPSS_API_KEY:-${RBVM_INTELLIGENCE_API_KEY:-}}" \
+  "$ROOT_DIR/scripts/scheduled-epss-refresh.sh"
+RBVM_KEV_INPUT="$input" \
+RBVM_KEV_API_KEY="${RBVM_KEV_API_KEY:-${RBVM_INTELLIGENCE_API_KEY:-}}" \
+  "$ROOT_DIR/scripts/scheduled-cisa-kev-refresh.sh"
 
 printf 'canonical_intelligence_refresh=PASS unique_cves=%s sources=CVSS_V31,FIRST_EPSS,CISA_KEV\n' \
   "$unique_cves"
