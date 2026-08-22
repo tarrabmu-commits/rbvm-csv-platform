@@ -4,6 +4,7 @@ import io.rbvm.asset.ManagedAssetSelfTest;
 import io.rbvm.asset.ScannerManagedAssetLinkSelfTest;
 import io.rbvm.context.FindingContextAssociationSelfTest;
 import io.rbvm.decision.DecisionInputEvidenceSelectionSelfTest;
+import io.rbvm.decision.DerivedRiskMethodologiesSelfTest;
 import io.rbvm.decision.RbvmDecisionInputSnapshotSelfTest;
 import io.rbvm.decision.RbvmDecisionInputSnapshotV2SelfTest;
 import io.rbvm.decision.RbvmDecisionInputSnapshotV3SelfTest;
@@ -57,6 +58,7 @@ public final class PlatformSelfTest {
         RbvmResolvedDecisionInputSelfTest.main(args);
         RbvmFormulaV1SelfTest.main(args);
         RbvmFormulaV1ExplanationSelfTest.main(args);
+        DerivedRiskMethodologiesSelfTest.main(args);
         FormulaResultReplayVerifierSelfTest.main(args);
         DefaultFormulaResultMaterializerSelfTest.main(args);
         FormulaResultApiSelfTest.main(args);
