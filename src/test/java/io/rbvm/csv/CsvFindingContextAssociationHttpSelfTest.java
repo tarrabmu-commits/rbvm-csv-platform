@@ -76,6 +76,8 @@ public final class CsvFindingContextAssociationHttpSelfTest {
             assert metrics.statusCode() == 200 : metrics.body();
             assert metrics.body().contains("rbvm_finding_context_association_api_enabled 1");
 
+            URI reachabilityMutation = base.resolve("/api/v1/findings/" + FINDING
+                    + "/reachability-links/current");
             URI reachabilityCurrent = base.resolve("/api/v1/findings/" + FINDING
                     + "/reachability-links/current?originScope=INTERNET&originLabel=edge%20probe"
                     + "&transportProtocol=TCP&targetPort=443");
@@ -103,11 +105,11 @@ public final class CsvFindingContextAssociationHttpSelfTest {
                     }
                     """;
             HttpResponse<String> viewerWriteDenied = postJson(
-                    client, reachabilityCurrent, reachabilityJson, reachabilityZero, viewerToken);
+                    client, reachabilityMutation, reachabilityJson, reachabilityZero, viewerToken);
             assert viewerWriteDenied.statusCode() == 403 : viewerWriteDenied.body();
 
             HttpResponse<String> linked = postJson(
-                    client, reachabilityCurrent, reachabilityJson, reachabilityZero, operatorToken);
+                    client, reachabilityMutation, reachabilityJson, reachabilityZero, operatorToken);
             assert linked.statusCode() == 200 : linked.body();
             assert linked.body().contains("\"associationState\": \"LINKED\"");
             assert linked.body().contains("\"changedBy\": \"finding-context-operator\"");
@@ -116,7 +118,7 @@ public final class CsvFindingContextAssociationHttpSelfTest {
 
             HttpResponse<String> replay = postJson(
                     client,
-                    reachabilityCurrent,
+                    reachabilityMutation,
                     reachabilityJson.replace("customer confirmed endpoint", "network retry note"),
                     reachabilityZero,
                     operatorToken
@@ -144,11 +146,13 @@ public final class CsvFindingContextAssociationHttpSelfTest {
             String spoofed = reachabilityJson.replace(
                     "\"changeNote\":\"customer confirmed endpoint\"",
                     "\"changedBy\":\"mallory\",\"changeNote\":\"customer confirmed endpoint\""
-            );
+            ).replace("443", "8443");
             HttpResponse<String> spoofRejected = postJson(
-                    client, reachabilityOther, spoofed.replace("443", "8443"), otherZero, operatorToken);
+                    client, reachabilityMutation, spoofed, otherZero, operatorToken);
             assert spoofRejected.statusCode() == 400 : spoofRejected.body();
 
+            URI businessMutation = base.resolve("/api/v1/findings/" + FINDING
+                    + "/business-service-links/current");
             URI businessCurrent = base.resolve("/api/v1/findings/" + FINDING
                     + "/business-service-links/current?businessService=Payments");
             HttpResponse<String> businessInitial = get(client, businessCurrent, viewerToken);
@@ -164,7 +168,7 @@ public final class CsvFindingContextAssociationHttpSelfTest {
                     }
                     """;
             HttpResponse<String> businessLinked = postJson(
-                    client, businessCurrent, businessJson, businessZero, operatorToken);
+                    client, businessMutation, businessJson, businessZero, operatorToken);
             assert businessLinked.statusCode() == 200 : businessLinked.body();
             assert businessLinked.body().contains("\"associationState\": \"LINKED\"");
             assert businessLinked.body().contains("\"changedBy\": \"finding-context-operator\"");
@@ -200,6 +204,8 @@ public final class CsvFindingContextAssociationHttpSelfTest {
             server.start();
             URI current = server.baseUri().resolve("/api/v1/findings/" + FINDING
                     + "/business-service-links/current?businessService=payments");
+            URI mutation = server.baseUri().resolve("/api/v1/findings/" + FINDING
+                    + "/business-service-links/current");
 
             HttpResponse<String> missing = get(client, current, null);
             assert missing.statusCode() == 401 : missing.body();
@@ -210,11 +216,11 @@ public final class CsvFindingContextAssociationHttpSelfTest {
 
             String json = "{\"linkStatus\":\"LINKED\",\"businessService\":\"payments\"}";
             HttpResponse<String> viewerDenied = postJson(
-                    client, current, json, "\"fbs-r0-" + "0".repeat(64) + "\"", viewerToken);
+                    client, mutation, json, "\"fbs-r0-" + "0".repeat(64) + "\"", viewerToken);
             assert viewerDenied.statusCode() == 403 : viewerDenied.body();
 
             HttpResponse<String> operatorUnavailable = postJson(
-                    client, current, json, "\"fbs-r0-" + "0".repeat(64) + "\"", operatorToken);
+                    client, mutation, json, "\"fbs-r0-" + "0".repeat(64) + "\"", operatorToken);
             assert operatorUnavailable.statusCode() == 503 : operatorUnavailable.body();
         } finally {
             deleteTree(data);
@@ -384,18 +390,7 @@ public final class CsvFindingContextAssociationHttpSelfTest {
             boolean more = all.size() > limit;
             List<FindingReachabilityScopeLink> page = all.subList(0, Math.min(limit, all.size()));
             Integer next = more ? page.get(page.size() - 1).revision() : null;
-            String scopeKey = page.isEmpty()
-                    ? new FindingReachabilityScopeLink.ChangeDraft(
-                            FindingReachabilityScopeLink.LinkStatus.LINKED,
-                            originScope,
-                            originLabel,
-                            transportProtocol,
-                            targetPort,
-                            "test-actor",
-                            "test"
-                    ).originScope().name() + "|" + originLabel.trim().toLowerCase()
-                            + "|" + transportProtocol.name() + "|" + (targetPort == null ? "" : targetPort)
-                    : page.get(0).scopeKey();
+            String scopeKey;
             if (page.isEmpty()) {
                 FindingReachabilityScopeLink probe = materialize(
                         findingId,
@@ -411,6 +406,8 @@ public final class CsvFindingContextAssociationHttpSelfTest {
                         )
                 );
                 scopeKey = probe.scopeKey();
+            } else {
+                scopeKey = page.get(0).scopeKey();
             }
             return Optional.of(new HistoryPage(findingId, scopeKey, page, next));
         }
