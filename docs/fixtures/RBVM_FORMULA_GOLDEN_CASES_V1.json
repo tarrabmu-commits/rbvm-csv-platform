@@ -12,7 +12,7 @@
     "applicability": {"state": "PRESENT", "status": "APPLICABLE"},
     "technicalSeverity": {"state": "PRESENT", "cvssVersion": "3.1", "cvssBase": "6.5"},
     "knownExploitation": {"state": "PRESENT", "status": "NOT_LISTED"},
-    "exploitProbability": {"state": "PRESENT", "probability": "0.10", "percentile": "0.70"},
+    "exploitProbability": {"state": "PRESENT", "probability": "0.1", "percentile": "0.7"},
     "assetContext": {
       "state": "PRESENT",
       "businessCriticality": "MODERATE",
@@ -95,25 +95,25 @@
   "materialSensitivityPairs": [
     {"id": "GS-CVSS", "lowChanges": {"technicalSeverity.cvssBase": "4"}, "highChanges": {"technicalSeverity.cvssBase": "9"}, "expectedRelation": "GREATER_THAN", "basis": "technical severity must be materially risk-increasing in a non-saturated controlled pair"},
     {"id": "GS-KEV", "lowChanges": {"knownExploitation.status": "NOT_LISTED"}, "highChanges": {"knownExploitation.status": "LISTED"}, "expectedRelation": "GREATER_THAN", "basis": "known exploitation must be materially risk-increasing in a controlled pair"},
-    {"id": "GS-EPSS", "lowChanges": {"exploitProbability.probability": "0.01", "exploitProbability.percentile": "0.20"}, "highChanges": {"exploitProbability.probability": "0.60", "exploitProbability.percentile": "0.95"}, "expectedRelation": "GREATER_THAN", "formulaRelevantDifference": "exploitProbability.probability", "basis": "percentile differs only as excluded context; probability is the Formula-relevant change"},
+    {"id": "GS-EPSS", "lowChanges": {"exploitProbability.probability": "0.01", "exploitProbability.percentile": "0.2"}, "highChanges": {"exploitProbability.probability": "0.6", "exploitProbability.percentile": "0.95"}, "expectedRelation": "GREATER_THAN", "formulaRelevantDifference": "exploitProbability.probability", "basis": "percentile differs only as excluded context; probability is the Formula-relevant change"},
     {"id": "GS-CRITICALITY", "lowChanges": {"assetContext.businessCriticality": "LOW"}, "highChanges": {"assetContext.businessCriticality": "MISSION_CRITICAL"}, "expectedRelation": "GREATER_THAN", "basis": "customer-confirmed business criticality must be materially risk-increasing"},
     {"id": "GS-REACHABILITY", "lowChanges": {"reachability.subgrains": [{"originScope": "INTERNET", "originLabel": "edge-a", "transportProtocol": "TCP", "targetPort": 443, "status": "NOT_REACHABLE", "bindingState": "LINKED"}]}, "highChanges": {"reachability.subgrains": [{"originScope": "INTERNET", "originLabel": "edge-a", "transportProtocol": "TCP", "targetPort": 443, "status": "REACHABLE", "bindingState": "LINKED"}]}, "expectedRelation": "GREATER_THAN", "basis": "same exact linked target changes only reachability status"},
     {"id": "GS-IMPACT", "lowChanges": {"businessImpact.impacts": [{"businessService": "payments", "impactDimension": "AVAILABILITY", "impactLevel": "LOW", "bindingState": "LINKED"}]}, "highChanges": {"businessImpact.impacts": [{"businessService": "payments", "impactDimension": "AVAILABILITY", "impactLevel": "SEVERE", "bindingState": "LINKED"}]}, "expectedRelation": "GREATER_THAN", "basis": "same service and impact dimension changes only customer impact level"}
   ],
   "arithmeticExclusionPairs": [
-    {"id": "GI-EPSS-PERCENTILE", "leftChanges": {"exploitProbability.probability": "0.20", "exploitProbability.percentile": "0.40"}, "rightChanges": {"exploitProbability.probability": "0.20", "exploitProbability.percentile": "0.95"}, "expectedRelation": "EQUAL_TO", "basis": "EPSS percentile is excluded from Formula V1 arithmetic"},
+    {"id": "GI-EPSS-PERCENTILE", "leftChanges": {"exploitProbability.probability": "0.2", "exploitProbability.percentile": "0.4"}, "rightChanges": {"exploitProbability.probability": "0.2", "exploitProbability.percentile": "0.95"}, "expectedRelation": "EQUAL_TO", "basis": "EPSS percentile is excluded from Formula V1 arithmetic"},
     {"id": "GI-ENVIRONMENT", "leftChanges": {"assetContext.environment": "PRODUCTION"}, "rightChanges": {"assetContext.environment": "DEVELOPMENT"}, "expectedRelation": "EQUAL_TO", "basis": "Environment is context/explanation only when Business Criticality is unchanged"},
     {"id": "GI-OWNER", "leftChanges": {"assetContext.businessOwner": "team-payments"}, "rightChanges": {"assetContext.businessOwner": "team-payments-new"}, "expectedRelation": "EQUAL_TO", "basis": "Business Owner is context/explanation only"}
   ],
   "namedComputedProfiles": [
     {
       "id": "GC-ALL-ADVERSE",
-      "changes": {"technicalSeverity.cvssBase": "9.8", "knownExploitation.status": "LISTED", "exploitProbability.probability": "0.80", "exploitProbability.percentile": "0.99", "assetContext.businessCriticality": "MISSION_CRITICAL", "businessImpact.impacts": [{"businessService": "payments", "impactDimension": "AVAILABILITY", "impactLevel": "SEVERE", "bindingState": "LINKED"}]},
+      "changes": {"technicalSeverity.cvssBase": "9.8", "knownExploitation.status": "LISTED", "exploitProbability.probability": "0.8", "exploitProbability.percentile": "0.99", "assetContext.businessCriticality": "MISSION_CRITICAL", "businessImpact.impacts": [{"businessService": "payments", "impactDimension": "AVAILABILITY", "impactLevel": "SEVERE", "bindingState": "LINKED"}]},
       "resultState": "COMPUTED"
     },
     {
       "id": "GC-CRITICAL-NOT-LISTED-LOW-EPSS",
-      "changes": {"technicalSeverity.cvssBase": "9.8", "knownExploitation.status": "NOT_LISTED", "exploitProbability.probability": "0.01", "exploitProbability.percentile": "0.20"},
+      "changes": {"technicalSeverity.cvssBase": "9.8", "knownExploitation.status": "NOT_LISTED", "exploitProbability.probability": "0.01", "exploitProbability.percentile": "0.2"},
       "resultState": "COMPUTED"
     },
     {
@@ -123,12 +123,12 @@
     },
     {
       "id": "GC-HIGH-TECH-LOW-IMPACT-ISOLATED",
-      "changes": {"technicalSeverity.cvssBase": "9", "knownExploitation.status": "NOT_LISTED", "exploitProbability.probability": "0.10", "assetContext.businessCriticality": "LOW", "reachability.subgrains": [{"originScope": "INTERNET", "originLabel": "edge-a", "transportProtocol": "TCP", "targetPort": 443, "status": "NOT_REACHABLE", "bindingState": "LINKED"}], "businessImpact.impacts": [{"businessService": "payments", "impactDimension": "AVAILABILITY", "impactLevel": "LOW", "bindingState": "LINKED"}]},
+      "changes": {"technicalSeverity.cvssBase": "9", "knownExploitation.status": "NOT_LISTED", "exploitProbability.probability": "0.1", "assetContext.businessCriticality": "LOW", "reachability.subgrains": [{"originScope": "INTERNET", "originLabel": "edge-a", "transportProtocol": "TCP", "targetPort": 443, "status": "NOT_REACHABLE", "bindingState": "LINKED"}], "businessImpact.impacts": [{"businessService": "payments", "impactDimension": "AVAILABILITY", "impactLevel": "LOW", "bindingState": "LINKED"}]},
       "resultState": "COMPUTED"
     },
     {
       "id": "GC-LOWER-TECH-MISSION-REACHABLE",
-      "changes": {"technicalSeverity.cvssBase": "6.5", "knownExploitation.status": "NOT_LISTED", "exploitProbability.probability": "0.10", "assetContext.businessCriticality": "MISSION_CRITICAL", "reachability.subgrains": [{"originScope": "INTERNET", "originLabel": "edge-a", "transportProtocol": "TCP", "targetPort": 443, "status": "REACHABLE", "bindingState": "LINKED"}], "businessImpact.impacts": [{"businessService": "payments", "impactDimension": "AVAILABILITY", "impactLevel": "SEVERE", "bindingState": "LINKED"}]},
+      "changes": {"technicalSeverity.cvssBase": "6.5", "knownExploitation.status": "NOT_LISTED", "exploitProbability.probability": "0.1", "assetContext.businessCriticality": "MISSION_CRITICAL", "reachability.subgrains": [{"originScope": "INTERNET", "originLabel": "edge-a", "transportProtocol": "TCP", "targetPort": 443, "status": "REACHABLE", "bindingState": "LINKED"}], "businessImpact.impacts": [{"businessService": "payments", "impactDimension": "AVAILABILITY", "impactLevel": "SEVERE", "bindingState": "LINKED"}]},
       "resultState": "COMPUTED"
     }
   ],
