@@ -34,10 +34,12 @@ public final class PostgresEvidenceAwareCatalog implements DomainCatalog {
     private static final String TENANT_KEY = "local";
     private final DomainCatalog delegate;
     private final JdbcConnectionFactory connections;
+    private final PostgresDedicatedIntelligenceSummaryCatalog summaryCatalog;
 
     public PostgresEvidenceAwareCatalog(DomainCatalog delegate, JdbcConnectionFactory connections) {
         this.delegate = Objects.requireNonNull(delegate, "delegate");
         this.connections = Objects.requireNonNull(connections, "connections");
+        this.summaryCatalog = new PostgresDedicatedIntelligenceSummaryCatalog(delegate, connections);
     }
 
     @Override
@@ -54,7 +56,7 @@ public final class PostgresEvidenceAwareCatalog implements DomainCatalog {
 
     @Override
     public CatalogSnapshot snapshot() {
-        return delegate.snapshot();
+        return summaryCatalog.snapshot();
     }
 
     @Override
@@ -70,7 +72,12 @@ public final class PostgresEvidenceAwareCatalog implements DomainCatalog {
                 return value instanceof Boolean actual && actual == expected;
             }).toList();
         }
-        return new CasePage(page.catalogRevision(), page.summary(), cases, page.nextCursor());
+        return new CasePage(
+                page.catalogRevision(),
+                summaryCatalog.replaceSummary(page.summary()),
+                cases,
+                page.nextCursor()
+        );
     }
 
     @Override
