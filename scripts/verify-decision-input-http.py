@@ -111,7 +111,9 @@ for marker in (
     'EvaluationConflictException',
     'if (!result.snapshot().isV3())',
     'stored.snapshotSha256().equals(result.snapshot().snapshotSha256())',
-    'java.util.Arrays.equals(stored.canonicalPayload(), result.snapshot().canonicalPayload())',
+    'java.util.Arrays.equals(',
+    'stored.canonicalPayload()',
+    'result.snapshot().canonicalPayload()',
 ):
     require(marker in ACCESS, f"Decision Input runtime access missing invariant {marker!r}")
 
