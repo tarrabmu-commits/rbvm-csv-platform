@@ -1,0 +1,54 @@
+openapi: 3.1.2
+info:
+  title: RBVM CSV Import API with Finding Context Associations
+  version: 0.23.2
+  description: >-
+    Composed OpenAPI view retaining every published 0.23.2 operation and adding the
+    explicit Finding Context Association V1 routes. Referenced path items remain owned by
+    their source contracts so this composition cannot silently simplify existing schemas.
+servers:
+  - url: http://127.0.0.1:8080/api/v1
+security:
+  - bearerAuth: []
+paths:
+  /health: {$ref: './openapi.yaml#/paths/~1health'}
+  /live: {$ref: './openapi.yaml#/paths/~1live'}
+  /ready: {$ref: './openapi.yaml#/paths/~1ready'}
+  /metrics: {$ref: './openapi.yaml#/paths/~1metrics'}
+  /catalog/summary: {$ref: './openapi.yaml#/paths/~1catalog~1summary'}
+  /applicability-findings.csv: {$ref: './openapi.yaml#/paths/~1applicability-findings.csv'}
+  /applicability-imports: {$ref: './openapi.yaml#/paths/~1applicability-imports'}
+  /cvss-v31-evidence: {$ref: './openapi.yaml#/paths/~1cvss-v31-evidence'}
+  /cvss-v31-imports: {$ref: './openapi.yaml#/paths/~1cvss-v31-imports'}
+  /cisa-kev-evidence: {$ref: './openapi.yaml#/paths/~1cisa-kev-evidence'}
+  /cisa-kev-imports: {$ref: './openapi.yaml#/paths/~1cisa-kev-imports'}
+  /epss-evidence: {$ref: './openapi.yaml#/paths/~1epss-evidence'}
+  /epss-imports: {$ref: './openapi.yaml#/paths/~1epss-imports'}
+  /asset-context-evidence: {$ref: './openapi.yaml#/paths/~1asset-context-evidence'}
+  /asset-context-imports: {$ref: './openapi.yaml#/paths/~1asset-context-imports'}
+  /network-reachability-evidence: {$ref: './openapi.yaml#/paths/~1network-reachability-evidence'}
+  /network-reachability-imports: {$ref: './openapi.yaml#/paths/~1network-reachability-imports'}
+  /business-impact-evidence: {$ref: './openapi.yaml#/paths/~1business-impact-evidence'}
+  /business-impact-imports: {$ref: './openapi.yaml#/paths/~1business-impact-imports'}
+  /cases: {$ref: './openapi.yaml#/paths/~1cases'}
+  /cases/{caseId}: {$ref: './openapi.yaml#/paths/~1cases~1{caseId}'}
+  /cases/{caseId}/actions: {$ref: './openapi.yaml#/paths/~1cases~1{caseId}~1actions'}
+  /csv-imports: {$ref: './openapi.yaml#/paths/~1csv-imports'}
+  /csv-imports/{importId}: {$ref: './openapi.yaml#/paths/~1csv-imports~1{importId}'}
+  /csv-imports/{importId}/confirm: {$ref: './openapi.yaml#/paths/~1csv-imports~1{importId}~1confirm'}
+  /managed-assets: {$ref: './openapi.yaml#/paths/~1managed-assets'}
+  /managed-assets/{managedAssetId}: {$ref: './openapi.yaml#/paths/~1managed-assets~1{managedAssetId}'}
+  /managed-assets/{managedAssetId}/revisions: {$ref: './openapi.yaml#/paths/~1managed-assets~1{managedAssetId}~1revisions'}
+  /scanner-assets: {$ref: './openapi.yaml#/paths/~1scanner-assets'}
+  /scanner-assets/{scannerAssetId}/managed-asset-link: {$ref: './openapi.yaml#/paths/~1scanner-assets~1{scannerAssetId}~1managed-asset-link'}
+  /scanner-assets/{scannerAssetId}/managed-asset-link/revisions: {$ref: './openapi.yaml#/paths/~1scanner-assets~1{scannerAssetId}~1managed-asset-link~1revisions'}
+  /findings/{findingId}/reachability-links: {$ref: './finding-context-association-v1.openapi.yaml#/paths/~1findings~1{findingId}~1reachability-links'}
+  /findings/{findingId}/reachability-links/current: {$ref: './finding-context-association-v1.openapi.yaml#/paths/~1findings~1{findingId}~1reachability-links~1current'}
+  /findings/{findingId}/reachability-links/revisions: {$ref: './finding-context-association-v1.openapi.yaml#/paths/~1findings~1{findingId}~1reachability-links~1revisions'}
+  /findings/{findingId}/business-service-links: {$ref: './finding-context-association-v1.openapi.yaml#/paths/~1findings~1{findingId}~1business-service-links'}
+  /findings/{findingId}/business-service-links/current: {$ref: './finding-context-association-v1.openapi.yaml#/paths/~1findings~1{findingId}~1business-service-links~1current'}
+  /findings/{findingId}/business-service-links/revisions: {$ref: './finding-context-association-v1.openapi.yaml#/paths/~1findings~1{findingId}~1business-service-links~1revisions'}
+components:
+  securitySchemes:
+    bearerAuth:
+      $ref: './openapi.yaml#/components/securitySchemes/bearerAuth'
