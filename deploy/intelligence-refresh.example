@@ -7,17 +7,18 @@ RBVM_API_BASE_URL=http://127.0.0.1:8080
 # RBVM_EPSS_API_KEY=optional-source-specific-override
 # RBVM_KEV_API_KEY=optional-source-specific-override
 
-RBVM_INTELLIGENCE_WORK_DIR=/var/lib/rbvm-platform/canonical-intelligence-refresh
+# The supplied user service is sandboxed for these default per-user locations:
+#   $HOME/.local/share/rbvm-platform/canonical-intelligence-refresh
+#   $HOME/.local/share/rbvm-platform/cvss-v31
+#   $HOME/.cache/rbvm-platform/cvss-v31
+#   $HOME/.local/share/rbvm-platform/epss
+#   $HOME/.local/share/rbvm-platform/cisa-kev
+# Leave RBVM_*_OUTPUT_DIR / RBVM_*_CACHE_DIR / RBVM_INTELLIGENCE_WORK_DIR unset when using
+# the supplied service. If you intentionally choose other paths, update its ReadWritePaths too.
 
-RBVM_CVSS_OUTPUT_DIR=/var/lib/rbvm-platform/cvss-v31
-RBVM_CVSS_CACHE_DIR=/var/cache/rbvm-platform/cvss-v31
 RBVM_CVSS_KEEP=14
 RBVM_CVSS_OFFLINE=false
-
-RBVM_EPSS_OUTPUT_DIR=/var/lib/rbvm-platform/epss
 RBVM_EPSS_KEEP=14
-
-RBVM_KEV_OUTPUT_DIR=/var/lib/rbvm-platform/cisa-kev
 RBVM_KEV_KEEP=14
 
 # NVD_API_KEY is optional. When present it is sent only in the NVD apiKey header.
