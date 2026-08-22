@@ -60,10 +60,17 @@ for marker in (
 for marker in (
     'returnsReplayVerifiedExactResultByExplanationIdentity',
     'returnsReplayVerifiedExactResultBySnapshotAndFormulaIdentity',
+    'returnsComputedDecimalsAndExactBindingProvenance',
     'rejectsInvalidAndMissingIdentities',
     'failsClosedWhenHistoricalReplayDoesNotMatchStorage',
     'canonicalPayloadBase64',
     'relativeRiskIndex") == null',
+    'relativeRiskIndex").equals("45.00")',
+    'weightedContribution").equals("0.13")',
+    'FINDING_REACHABILITY_SCOPE_LINK_EVENT',
+    'bindingSha256',
+    'bindingSource',
+    'recordedAt',
 ):
     require(marker in SELF_TEST, f"Formula Result API self-test missing {marker!r}")
 
