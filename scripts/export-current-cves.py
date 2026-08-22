@@ -9,12 +9,18 @@ from pathlib import Path
 import re
 import tempfile
 from urllib.parse import urlencode, urlparse
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 CVE_PATTERN = re.compile(r"^CVE-[0-9]{4}-[0-9]{4,}$")
 DEFAULT_API_BASE = "http://127.0.0.1:8080"
+LOCAL_HTTP_HOSTS = {"127.0.0.1", "localhost", "::1"}
 PAGE_LIMIT = 100
 MAX_PAGES = 10000
+
+
+class NoRedirects(HTTPRedirectHandler):
+    def redirect_request(self, request, file_pointer, code, message, headers, new_url):
+        return None
 
 
 def arguments():
@@ -35,6 +41,8 @@ def validated_api_base(value):
         raise RuntimeError("RBVM API base must be an absolute HTTP(S) URL")
     if parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise RuntimeError("RBVM API base must not contain credentials, query parameters, or fragments")
+    if parsed.scheme == "http" and parsed.hostname.lower() not in LOCAL_HTTP_HOSTS:
+        raise RuntimeError("remote RBVM API endpoints must use HTTPS; HTTP is trusted-local only")
     return base
 
 
@@ -47,7 +55,8 @@ def request_json(url):
     if token:
         headers["Authorization"] = f"Bearer {token}"
     request = Request(url, headers=headers)
-    with urlopen(request, timeout=60) as response:  # nosec: operator-configured RBVM endpoint
+    opener = build_opener(NoRedirects)
+    with opener.open(request, timeout=60) as response:  # nosec: validated local HTTP or HTTPS RBVM endpoint
         if response.status != 200:
             raise RuntimeError(f"RBVM Cases API returned HTTP {response.status}")
         payload = response.read()
