@@ -1,0 +1,147 @@
+{
+  "contractId": "RBVM_FORMULA_GOLDEN_CASES_V1",
+  "semantics": "PREIMPLEMENTATION_FORMULA_PARTIAL_ORDER_AND_TERMINAL_BEHAVIOR",
+  "inputContractId": "RBVM_DECISION_INPUT_SNAPSHOT_V3",
+  "readinessDecisionContractId": "RBVM_FORMULA_READINESS_DECISIONS_V1",
+  "formulaCanonicalizationContractId": "RBVM_FORMULA_CANONICALIZATION_V1",
+  "fixtureKind": "FORMULA_CONSUMED_SEMANTIC_PROFILE_GENERATOR",
+  "nativeEvidenceImportable": false,
+  "numericOutputsFrozen": false,
+  "decimalRepresentation": "CANONICAL_DECIMAL_STRING",
+  "baseProfile": {
+    "applicability": {"state": "PRESENT", "status": "APPLICABLE"},
+    "technicalSeverity": {"state": "PRESENT", "cvssVersion": "3.1", "cvssBase": "6.5"},
+    "knownExploitation": {"state": "PRESENT", "status": "NOT_LISTED"},
+    "exploitProbability": {"state": "PRESENT", "probability": "0.10", "percentile": "0.70"},
+    "assetContext": {
+      "state": "PRESENT",
+      "businessCriticality": "MODERATE",
+      "environment": "PRODUCTION",
+      "businessService": "payments",
+      "businessOwner": "team-payments"
+    },
+    "reachability": {
+      "state": "PRESENT",
+      "subgrains": [
+        {"originScope": "INTERNET", "originLabel": "edge-a", "transportProtocol": "TCP", "targetPort": 443, "status": "REACHABLE", "bindingState": "LINKED"}
+      ]
+    },
+    "businessImpact": {
+      "state": "PRESENT",
+      "impacts": [
+        {"businessService": "payments", "impactDimension": "AVAILABILITY", "impactLevel": "MODERATE", "bindingState": "LINKED"}
+      ]
+    }
+  },
+  "parameterizedStateMatrix": {
+    "caseIdPattern": "GSM-{DIMENSION}-{STATE}",
+    "dimensions": [
+      "APPLICABILITY",
+      "TECHNICAL_SEVERITY",
+      "KNOWN_EXPLOITATION",
+      "EXPLOITATION_PROBABILITY",
+      "ASSET_CONTEXT",
+      "NETWORK_REACHABILITY",
+      "BUSINESS_MISSION_IMPACT"
+    ],
+    "states": ["MISSING", "STALE", "AMBIGUOUS"],
+    "derivation": "replace exactly one base dimension state; MISSING removes its consumed value, STALE preserves its historical value, AMBIGUOUS represents non-reducible retained references",
+    "expectedResultState": "NON_COMPUTABLE",
+    "reasonCodePattern": "{DIMENSION}_{STATE}",
+    "numericOutput": null
+  },
+  "terminalValueCases": [
+    {"id": "GC-NOT-APPLICABLE", "changes": {"applicability.status": "NOT_APPLICABLE"}, "resultState": "NOT_APPLICABLE", "reasonCode": "NOT_APPLICABLE"},
+    {"id": "GC-APPLICABILITY-UNKNOWN", "changes": {"applicability.status": "UNKNOWN"}, "resultState": "NON_COMPUTABLE", "reasonCode": "APPLICABILITY_UNKNOWN"},
+    {"id": "GC-KEV-UNKNOWN", "changes": {"knownExploitation.status": "UNKNOWN"}, "resultState": "NON_COMPUTABLE", "reasonCode": "KEV_VALUE_UNKNOWN"},
+    {"id": "GC-BUSINESS-CRITICALITY-UNKNOWN", "changes": {"assetContext.businessCriticality": "UNKNOWN"}, "resultState": "NON_COMPUTABLE", "reasonCode": "BUSINESS_CRITICALITY_UNKNOWN"},
+    {"id": "GC-REACHABILITY-VALUE-UNKNOWN", "changes": {"reachability.subgrains": [{"originScope": "INTERNET", "originLabel": "edge-a", "transportProtocol": "TCP", "targetPort": 443, "status": "UNKNOWN", "bindingState": "LINKED"}]}, "resultState": "NON_COMPUTABLE", "reasonCode": "REACHABILITY_VALUE_UNKNOWN"},
+    {"id": "GC-BUSINESS-IMPACT-VALUE-UNKNOWN", "changes": {"businessImpact.impacts": [{"businessService": "payments", "impactDimension": "AVAILABILITY", "impactLevel": "UNKNOWN", "bindingState": "LINKED"}]}, "resultState": "NON_COMPUTABLE", "reasonCode": "BUSINESS_IMPACT_VALUE_UNKNOWN"}
+  ],
+  "structuralCases": [
+    {
+      "id": "GC-REACHABILITY-MULTI-SUBGRAIN",
+      "changes": {"reachability.subgrains": [
+        {"originScope": "INTERNET", "originLabel": "edge-a", "transportProtocol": "TCP", "targetPort": 443, "status": "REACHABLE", "bindingState": "LINKED"},
+        {"originScope": "INTERNAL_ENTERPRISE", "originLabel": "corp-a", "transportProtocol": "TCP", "targetPort": 8443, "status": "REACHABLE", "bindingState": "LINKED"}
+      ]},
+      "resultState": "NON_COMPUTABLE",
+      "reasonCode": "REACHABILITY_MULTI_SUBGRAIN"
+    },
+    {
+      "id": "GC-BUSINESS-IMPACT-MULTI-SERVICE",
+      "changes": {"businessImpact.impacts": [
+        {"businessService": "payments", "impactDimension": "AVAILABILITY", "impactLevel": "HIGH", "bindingState": "LINKED"},
+        {"businessService": "identity", "impactDimension": "AVAILABILITY", "impactLevel": "HIGH", "bindingState": "LINKED"}
+      ]},
+      "resultState": "NON_COMPUTABLE",
+      "reasonCode": "BUSINESS_IMPACT_MULTI_SERVICE"
+    },
+    {
+      "id": "GC-BUSINESS-IMPACT-MULTI-DIMENSION-SAME-SERVICE",
+      "changes": {"businessImpact.impacts": [
+        {"businessService": "payments", "impactDimension": "AVAILABILITY", "impactLevel": "MODERATE", "bindingState": "LINKED"},
+        {"businessService": "payments", "impactDimension": "INTEGRITY", "impactLevel": "HIGH", "bindingState": "LINKED"}
+      ]},
+      "resultState": "COMPUTED"
+    },
+    {
+      "id": "GC-UNLINKED-NO-INDEPENDENT-ASSET-CONTEXT",
+      "changes": {"assetContext.state": "MISSING", "assetContext.businessCriticality": null, "assetContext.environment": null, "assetContext.businessService": null, "assetContext.businessOwner": null},
+      "resultState": "NON_COMPUTABLE",
+      "reasonCode": "ASSET_CONTEXT_MISSING"
+    }
+  ],
+  "materialSensitivityPairs": [
+    {"id": "GS-CVSS", "lowChanges": {"technicalSeverity.cvssBase": "4"}, "highChanges": {"technicalSeverity.cvssBase": "9"}, "expectedRelation": "GREATER_THAN", "basis": "technical severity must be materially risk-increasing in a non-saturated controlled pair"},
+    {"id": "GS-KEV", "lowChanges": {"knownExploitation.status": "NOT_LISTED"}, "highChanges": {"knownExploitation.status": "LISTED"}, "expectedRelation": "GREATER_THAN", "basis": "known exploitation must be materially risk-increasing in a controlled pair"},
+    {"id": "GS-EPSS", "lowChanges": {"exploitProbability.probability": "0.01", "exploitProbability.percentile": "0.20"}, "highChanges": {"exploitProbability.probability": "0.60", "exploitProbability.percentile": "0.95"}, "expectedRelation": "GREATER_THAN", "formulaRelevantDifference": "exploitProbability.probability", "basis": "percentile differs only as excluded context; probability is the Formula-relevant change"},
+    {"id": "GS-CRITICALITY", "lowChanges": {"assetContext.businessCriticality": "LOW"}, "highChanges": {"assetContext.businessCriticality": "MISSION_CRITICAL"}, "expectedRelation": "GREATER_THAN", "basis": "customer-confirmed business criticality must be materially risk-increasing"},
+    {"id": "GS-REACHABILITY", "lowChanges": {"reachability.subgrains": [{"originScope": "INTERNET", "originLabel": "edge-a", "transportProtocol": "TCP", "targetPort": 443, "status": "NOT_REACHABLE", "bindingState": "LINKED"}]}, "highChanges": {"reachability.subgrains": [{"originScope": "INTERNET", "originLabel": "edge-a", "transportProtocol": "TCP", "targetPort": 443, "status": "REACHABLE", "bindingState": "LINKED"}]}, "expectedRelation": "GREATER_THAN", "basis": "same exact linked target changes only reachability status"},
+    {"id": "GS-IMPACT", "lowChanges": {"businessImpact.impacts": [{"businessService": "payments", "impactDimension": "AVAILABILITY", "impactLevel": "LOW", "bindingState": "LINKED"}]}, "highChanges": {"businessImpact.impacts": [{"businessService": "payments", "impactDimension": "AVAILABILITY", "impactLevel": "SEVERE", "bindingState": "LINKED"}]}, "expectedRelation": "GREATER_THAN", "basis": "same service and impact dimension changes only customer impact level"}
+  ],
+  "arithmeticExclusionPairs": [
+    {"id": "GI-EPSS-PERCENTILE", "leftChanges": {"exploitProbability.probability": "0.20", "exploitProbability.percentile": "0.40"}, "rightChanges": {"exploitProbability.probability": "0.20", "exploitProbability.percentile": "0.95"}, "expectedRelation": "EQUAL_TO", "basis": "EPSS percentile is excluded from Formula V1 arithmetic"},
+    {"id": "GI-ENVIRONMENT", "leftChanges": {"assetContext.environment": "PRODUCTION"}, "rightChanges": {"assetContext.environment": "DEVELOPMENT"}, "expectedRelation": "EQUAL_TO", "basis": "Environment is context/explanation only when Business Criticality is unchanged"},
+    {"id": "GI-OWNER", "leftChanges": {"assetContext.businessOwner": "team-payments"}, "rightChanges": {"assetContext.businessOwner": "team-payments-new"}, "expectedRelation": "EQUAL_TO", "basis": "Business Owner is context/explanation only"}
+  ],
+  "namedComputedProfiles": [
+    {
+      "id": "GC-ALL-ADVERSE",
+      "changes": {"technicalSeverity.cvssBase": "9.8", "knownExploitation.status": "LISTED", "exploitProbability.probability": "0.80", "exploitProbability.percentile": "0.99", "assetContext.businessCriticality": "MISSION_CRITICAL", "businessImpact.impacts": [{"businessService": "payments", "impactDimension": "AVAILABILITY", "impactLevel": "SEVERE", "bindingState": "LINKED"}]},
+      "resultState": "COMPUTED"
+    },
+    {
+      "id": "GC-CRITICAL-NOT-LISTED-LOW-EPSS",
+      "changes": {"technicalSeverity.cvssBase": "9.8", "knownExploitation.status": "NOT_LISTED", "exploitProbability.probability": "0.01", "exploitProbability.percentile": "0.20"},
+      "resultState": "COMPUTED"
+    },
+    {
+      "id": "GC-MEDIUM-KEV-HIGH-EPSS",
+      "changes": {"technicalSeverity.cvssBase": "6", "knownExploitation.status": "LISTED", "exploitProbability.probability": "0.65", "exploitProbability.percentile": "0.97"},
+      "resultState": "COMPUTED"
+    },
+    {
+      "id": "GC-HIGH-TECH-LOW-IMPACT-ISOLATED",
+      "changes": {"technicalSeverity.cvssBase": "9", "knownExploitation.status": "NOT_LISTED", "exploitProbability.probability": "0.10", "assetContext.businessCriticality": "LOW", "reachability.subgrains": [{"originScope": "INTERNET", "originLabel": "edge-a", "transportProtocol": "TCP", "targetPort": 443, "status": "NOT_REACHABLE", "bindingState": "LINKED"}], "businessImpact.impacts": [{"businessService": "payments", "impactDimension": "AVAILABILITY", "impactLevel": "LOW", "bindingState": "LINKED"}]},
+      "resultState": "COMPUTED"
+    },
+    {
+      "id": "GC-LOWER-TECH-MISSION-REACHABLE",
+      "changes": {"technicalSeverity.cvssBase": "6.5", "knownExploitation.status": "NOT_LISTED", "exploitProbability.probability": "0.10", "assetContext.businessCriticality": "MISSION_CRITICAL", "reachability.subgrains": [{"originScope": "INTERNET", "originLabel": "edge-a", "transportProtocol": "TCP", "targetPort": 443, "status": "REACHABLE", "bindingState": "LINKED"}], "businessImpact.impacts": [{"businessService": "payments", "impactDimension": "AVAILABILITY", "impactLevel": "SEVERE", "bindingState": "LINKED"}]},
+      "resultState": "COMPUTED"
+    }
+  ],
+  "partialOrderRelations": [
+    {"left": "GC-ALL-ADVERSE", "relation": "GREATER_THAN", "right": "BASE_PROFILE", "basis": "dominance: several Formula-relevant inputs are more adverse and none improve"},
+    {"left": "GC-CRITICAL-NOT-LISTED-LOW-EPSS", "relation": "UNORDERED_BY_READINESS", "right": "GC-MEDIUM-KEV-HIGH-EPSS", "basis": "severity trades off against known exploitation and exploitation probability; Formula V1 must choose the trade-off"},
+    {"left": "GC-HIGH-TECH-LOW-IMPACT-ISOLATED", "relation": "UNORDERED_BY_READINESS", "right": "GC-LOWER-TECH-MISSION-REACHABLE", "basis": "severity trades off against criticality, reachability, and impact; readiness must not smuggle weights"}
+  ],
+  "historicalReplayInvariants": [
+    {"id": "GR-HISTORICAL-ASOF-LINK", "rule": "Later scanner-managed-asset or Finding-context association revisions cannot change the Risk Result identity of an already materialized historical Decision Input snapshot."},
+    {"id": "GR-HISTORICAL-EVIDENCE", "rule": "Later native evidence cannot replace exact evidence references retained by a historical Decision Input snapshot."},
+    {"id": "GR-FORMULA-IDENTITY", "rule": "Changing Formula version or Formula SHA creates a distinct Risk Result identity even when the Decision Input and displayed numeric value happen to match."},
+    {"id": "GR-PRIORITY-INDEPENDENCE", "rule": "Changing Priority, Treatment, or SLA policy cannot change the underlying historical Risk Result identity."},
+    {"id": "GR-EXACT-REPLAY", "rule": "Exact Decision Input plus exact Formula identity must reproduce byte-equivalent canonical result and explanation semantics."}
+  ]
+}
