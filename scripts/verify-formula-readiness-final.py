@@ -3,6 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 decisions = (ROOT / "docs/RBVM_FORMULA_READINESS_DECISIONS_V1.md").read_text(encoding="utf-8")
+canonical = (ROOT / "docs/RBVM_FORMULA_CANONICALIZATION_V1.md").read_text(encoding="utf-8")
 readiness = (ROOT / "docs/RBVM_FORMULA_READINESS_V1.md").read_text(encoding="utf-8")
 v3 = (ROOT / "docs/DECISION_INPUT_V3.md").read_text(encoding="utf-8")
 
@@ -39,6 +40,28 @@ for state in ("MISSING", "STALE", "AMBIGUOUS"):
     if f"`{state}` -> `NON_COMPUTABLE" not in decisions:
         raise AssertionError(f"strict evidence-quality gate missing {state}")
 
+required_canonical = (
+    "RBVM_FORMULA_CANONICALIZATION_V1",
+    "RBVM_FORMULA_CANONICAL_BINARY_V1",
+    "RBVM_FORMULA_EXPLANATION_CANONICAL_BINARY_V1",
+    "lowercase hexadecimal SHA-256",
+    "32-bit unsigned big-endian byte length",
+    "strict UTF-8",
+    "Canonical decimal encoding",
+    "no exponent notation",
+    "negative zero is forbidden",
+    "inputContractId = RBVM_DECISION_INPUT_SNAPSHOT_V3",
+    "outputName = RBVM Relative Risk Index",
+    "output display scale = `2`",
+    "Factor definitions are encoded by ascending ordinal",
+    "Every numeric constant, category mapping, transform identifier, threshold, gate, coefficient, bound",
+    "UI prose and localization are derived views and are excluded",
+    "does not authorize `RBVM_FORMULA_V1` runtime implementation",
+)
+for marker in required_canonical:
+    if marker.lower() not in canonical.lower():
+        raise AssertionError(f"Formula canonicalization contract missing {marker!r}")
+
 for forbidden in (
     "MISSING => 0",
     "STALE => latest current row",
@@ -63,7 +86,7 @@ for forbidden in (
     "PATCH_IN_3_DAYS",
     "formula equation =",
 ):
-    if forbidden.lower() in decisions.lower():
+    if forbidden.lower() in decisions.lower() or forbidden.lower() in canonical.lower():
         raise AssertionError(f"Stage 7 leaked later policy/scoring construct {forbidden!r}")
 
 print("Formula readiness final decision checks: PASS")
