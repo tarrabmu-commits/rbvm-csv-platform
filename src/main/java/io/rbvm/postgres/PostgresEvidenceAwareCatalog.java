@@ -137,7 +137,8 @@ public final class PostgresEvidenceAwareCatalog implements DomainCatalog {
             readKev(connection, tenantId, cves, output);
             return output;
         } catch (SQLException exception) {
-            throw PostgresErrors.sanitized("PostgreSQL dedicated intelligence read failed", exception);
+            throw new java.io.UncheckedIOException(
+                    PostgresErrors.sanitized("PostgreSQL dedicated intelligence read failed", exception));
         }
     }
 
