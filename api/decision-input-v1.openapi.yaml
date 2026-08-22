@@ -13,6 +13,7 @@ paths:
     get:
       operationId: getDecisionInputSnapshotBySha256
       summary: Read one exact persisted Decision Input snapshot
+      description: Historical V1/V2 and current V3 immutable snapshots remain readable by exact SHA.
       parameters:
         - name: snapshotSha256
           in: path
@@ -87,6 +88,7 @@ paths:
         Requires OPERATOR. The command accepts an explicit Finding, exact registered
         methodology revision/SHA, and exact evaluation instant. It never selects a current
         Finding, methodology, evaluation time, or evidence source winner on behalf of the caller.
+        A successful materialization always returns RBVM_DECISION_INPUT_SNAPSHOT_V3.
       requestBody:
         required: true
         content:
@@ -95,7 +97,7 @@ paths:
               $ref: '#/components/schemas/MaterializationRequest'
       responses:
         '200':
-          description: Exact immutable snapshot replayed idempotently
+          description: Exact immutable V3 snapshot replayed idempotently
           headers:
             ETag:
               schema: { type: string }
@@ -106,7 +108,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/MaterializationResponse'
         '201':
-          description: Exact immutable snapshot inserted
+          description: Exact immutable V3 snapshot inserted
           headers:
             ETag:
               schema: { type: string }
@@ -231,7 +233,9 @@ components:
           type: string
           enum: [INSERTED, REPLAYED]
         snapshot:
-          $ref: '#/components/schemas/Snapshot'
+          allOf:
+            - $ref: '#/components/schemas/Snapshot'
+          description: Always RBVM_DECISION_INPUT_SNAPSHOT_V3 for this mutation contract.
     SnapshotResponse:
       type: object
       additionalProperties: false
@@ -287,10 +291,16 @@ components:
       properties:
         contractId:
           type: string
-          enum: [RBVM_DECISION_INPUT_SNAPSHOT_V3]
+          enum:
+            - RBVM_DECISION_INPUT_SNAPSHOT_V1
+            - RBVM_DECISION_INPUT_SNAPSHOT_V2
+            - RBVM_DECISION_INPUT_SNAPSHOT_V3
         semantics:
           type: string
-          enum: [FINDING_SCOPED_POLICY_BOUND_TYPED_ASSOCIATION_PROVENANCE_SNAPSHOT]
+          enum:
+            - FINDING_SCOPED_POLICY_BOUND_EVIDENCE_REFERENCE_SNAPSHOT
+            - FINDING_SCOPED_POLICY_BOUND_TYPED_EVIDENCE_REFERENCE_SNAPSHOT
+            - FINDING_SCOPED_POLICY_BOUND_TYPED_ASSOCIATION_PROVENANCE_SNAPSHOT
         snapshotSha256:
           $ref: '#/components/schemas/Sha256'
         findingId:
@@ -306,7 +316,10 @@ components:
           format: date-time
         canonicalPayloadFormat:
           type: string
-          enum: [RBVM_DECISION_INPUT_SNAPSHOT_CANONICAL_BINARY_V3]
+          enum:
+            - RBVM_DECISION_INPUT_SNAPSHOT_CANONICAL_BINARY_V1
+            - RBVM_DECISION_INPUT_SNAPSHOT_CANONICAL_BINARY_V2
+            - RBVM_DECISION_INPUT_SNAPSHOT_CANONICAL_BINARY_V3
         canonicalPayloadBase64:
           type: string
           format: byte
@@ -330,6 +343,10 @@ components:
       properties:
         contractId:
           type: string
+          enum:
+            - RBVM_DECISION_INPUT_SNAPSHOT_V1
+            - RBVM_DECISION_INPUT_SNAPSHOT_V2
+            - RBVM_DECISION_INPUT_SNAPSHOT_V3
         snapshotSha256:
           $ref: '#/components/schemas/Sha256'
         findingId:
