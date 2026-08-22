@@ -96,9 +96,9 @@ GET /api/v1/formula-results/{explanationSha256}
 GET /api/v1/formula-results?inputSnapshotSha256={sha256}&formulaSha256={sha256}
 ```
 
-The Formula Result runtime requires PostgreSQL schema V23+, is Viewer-protected before capability lookup, and deliberately has no `latest` selector. Browser presentation and production Formula-result materialization from an exact persisted Decision Input V3 identity are not implemented yet.
+The Formula Result runtime requires PostgreSQL schema V23+, is Viewer-protected before capability lookup, and deliberately has no `latest` selector. The production `FORMULA_RESULT_MATERIALIZATION_V1` runtime path now takes only one exact already-persisted Decision Input V3 SHA, resolves only that snapshot's captured evidence/bindings, evaluates Formula V1, append/replay installs the canonical explanation, reloads it, and requires historical replay before returning. A Formula materialization HTTP write route and browser presentation are not implemented yet.
 
-See [`docs/DECISION_INPUT_V3.md`](docs/DECISION_INPUT_V3.md) for the immutable Decision Input boundary, [`docs/RBVM_FORMULA_V1.md`](docs/RBVM_FORMULA_V1.md) for the accepted Formula contract, [`docs/RBVM_FORMULA_CANONICALIZATION_V1.md`](docs/RBVM_FORMULA_CANONICALIZATION_V1.md) for canonical Formula/explanation identity, and [`docs/FORMULA_RESULT_API_V1.md`](docs/FORMULA_RESULT_API_V1.md) for exact replay-verified Formula Result reads.
+See [`docs/DECISION_INPUT_V3.md`](docs/DECISION_INPUT_V3.md) for the immutable Decision Input boundary, [`docs/RBVM_FORMULA_V1.md`](docs/RBVM_FORMULA_V1.md) for the accepted Formula contract, [`docs/RBVM_FORMULA_CANONICALIZATION_V1.md`](docs/RBVM_FORMULA_CANONICALIZATION_V1.md) for canonical Formula/explanation identity, [`docs/FORMULA_RESULT_API_V1.md`](docs/FORMULA_RESULT_API_V1.md) for exact replay-verified Formula Result reads, and [`docs/FORMULA_RESULT_MATERIALIZATION_V1.md`](docs/FORMULA_RESULT_MATERIALIZATION_V1.md) for exact production materialization semantics.
 
 ## External intelligence refresh
 
@@ -206,6 +206,7 @@ The platform includes:
 - Canonical `RBVM_FORMULA_V1` identity plus a deterministic pure evaluator over resolved Decision Input V3.
 - Deterministic `RBVM_FORMULA_EXPLANATION_CANONICAL_BINARY_V1` bytes and SHA-256 identity for exact Formula result provenance/replay semantics.
 - Append-only Formula V1 result/explanation persistence with exact Decision Input V3 binding and deterministic historical replay verification.
+- Exact persisted-Decision-Input Formula V1 materialization with INSERTED/REPLAYED semantics, conflict fail-closed behavior, and replay verification before return.
 - Viewer-protected, exact-identity Formula Result HTTP/API reads with replay verification and no implicit current/latest selection.
 - TLS `verify-full` support, backup/restore tooling, readiness/liveness, metrics, and reconciliation health.
 - Backend API-key/RBAC capability for hardened deployments.
@@ -232,7 +233,7 @@ Formula V1 is an explicit, versioned RBVM policy for a relative risk result. Pri
 
 ## Verification
 
-The repository verification pipeline includes Java/domain/API/SQL/web/script checks, Formula V1 contract/runtime/canonical-explanation/persistence/replay checks, Formula Result API/HTTP/runtime/OpenAPI checks, Frontend System V2 structural checks, reproducible distribution verification, PostgreSQL integration coverage, and CodeQL.
+The repository verification pipeline includes Java/domain/API/SQL/web/script checks, Formula V1 contract/runtime/canonical-explanation/persistence/replay checks, Formula Result materialization/API/HTTP/runtime/OpenAPI checks, Frontend System V2 structural checks, reproducible distribution verification, PostgreSQL integration coverage, and CodeQL.
 
 Frontend V2 itself is additionally guarded for:
 
@@ -246,6 +247,6 @@ Frontend V2 itself is additionally guarded for:
 
 ## Formula implementation and roadmap boundary
 
-Formula-readiness semantics, canonicalization, the Stage 8 golden-case corpus, the canonical `RBVM_FORMULA_V1` artifact, the pure Java evaluator, deterministic canonical explanation identity, append-only Formula-result persistence/replay, and exact replay-verified read transport are implemented and verified. Formula evaluation consumes exactly one resolved `RBVM_DECISION_INPUT_SNAPSHOT_V3`, preserves terminal `NOT_APPLICABLE / NON_COMPUTABLE` behavior, rejects missing/stale/ambiguous required evidence, applies only the accepted SHA-bound mappings/weights, reproduces the frozen numeric examples, and produces replay-stable explanation bytes bound to exact evidence and association provenance.
+Formula-readiness semantics, canonicalization, the Stage 8 golden-case corpus, the canonical `RBVM_FORMULA_V1` artifact, the pure Java evaluator, deterministic canonical explanation identity, append-only Formula-result persistence/replay, exact replay-verified read transport, and exact persisted-snapshot production materialization are implemented and verified. Formula evaluation consumes exactly one resolved `RBVM_DECISION_INPUT_SNAPSHOT_V3`, preserves terminal `NOT_APPLICABLE / NON_COMPUTABLE` behavior, rejects missing/stale/ambiguous required evidence, applies only the accepted SHA-bound mappings/weights, reproduces the frozen numeric examples, and produces replay-stable explanation bytes bound to exact evidence and association provenance.
 
-The next Formula-layer increment is a production materialization path that evaluates and installs a Formula result from one exact already-persisted Decision Input V3 identity without re-selecting current evidence. Browser presentation can then consume the exact read API. Priority, Treatment, SLA, remediation deadlines, and workflow policy remain separate later contracts and must not be hidden inside Formula V1.
+The next Formula-layer increment is an explicit Operator transport for the exact materializer; browser presentation can then consume the existing replay-verified read API and invoke materialization without rebuilding Decision Inputs. Priority, Treatment, SLA, remediation deadlines, and workflow policy remain separate later contracts and must not be hidden inside Formula V1.
