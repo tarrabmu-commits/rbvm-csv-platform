@@ -11,6 +11,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts/evaluate-rbvm-v2-method-candidates.py"
 DOC = (ROOT / "docs/RBVM_V2_METHOD_ADMISSION_V1.md").read_text(encoding="utf-8")
+READINESS = (ROOT / "docs/RBVM_FORMULA_V2_READINESS_V2.md").read_text(encoding="utf-8")
 
 for token in (
     "RBVM_V2_METHOD_ADMISSION_V1",
@@ -23,6 +24,17 @@ for token in (
 ):
     if token not in DOC:
         raise AssertionError(f"V2 method admission document missing {token}")
+
+for token in (
+    "RBVM_FORMULA_V2_READINESS_V2",
+    "contextual CVSS v4 technical severity is now **computable",
+    "no approved `RBVM_FORMULA_V2` identity/version/SHA",
+    "exact Finding/endpoint Reachability",
+    "Business/Mission Impact evidence",
+    "NO_V2_PRIMARY_METHOD_ADMITTED",
+):
+    if token not in READINESS:
+        raise AssertionError(f"V2 readiness document missing {token}")
 
 with tempfile.TemporaryDirectory(prefix="rbvm-v2-admission-") as temp:
     temp = Path(temp)
