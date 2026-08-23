@@ -6,33 +6,11 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
   id-token: write
   attestations: write
 
 jobs:
-  resolved-active-risk-method-bootstrap:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'policy/resolved-active-risk-method-api-v1' && github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          ref: policy/resolved-active-risk-method-api-v1
-      - name: Finalize resolved active risk method API
-        run: python3 scripts/finalize-resolved-active-risk-method-api-v1.py
-      - name: Commit finalization
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/main/java/io/rbvm/csv/RiskMethodSelectionPolicyApi.java api/openapi.yaml api/openapi-v21.yaml
-          if git diff --cached --quiet; then
-            exit 0
-          fi
-          git diff --cached --check
-          git commit -m 'Finalize resolved active risk method projection'
-          git push origin HEAD:policy/resolved-active-risk-method-api-v1
-
   dependency-free-verification:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
