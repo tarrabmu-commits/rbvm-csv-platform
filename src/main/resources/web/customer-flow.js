@@ -3,42 +3,39 @@
 
   const CONTRACT = 'CSV_FIRST_CUSTOMER_ASSET_SETUP_UI_V1';
   const BUNDLE_CONTRACT = 'RBVM_CUSTOMER_ASSET_BUNDLE_V1';
-  const SETUP_KEY = 'rbvm.customerAssetSetup.v1';
   const MAX_BUNDLE_ASSETS = 5000;
   let queued = false;
+  let activeSetup = null;
 
   document.documentElement.dataset.csvFirstCustomerAssetUi = CONTRACT;
 
   const el = (tag, attrs = {}, ...children) => {
     const node = document.createElement(tag);
-    for (const [key, value] of Object.entries(attrs)) {
-      if (value === null || value === undefined || value === false) continue;
+    Object.entries(attrs).forEach(([key, value]) => {
+      if (value === null || value === undefined || value === false) return;
       if (key === 'class') node.className = value;
       else if (key === 'text') node.textContent = String(value);
       else if (key === 'style') node.style.cssText = String(value);
       else if (key.startsWith('on') && typeof value === 'function') node.addEventListener(key.slice(2).toLowerCase(), value);
       else if (key in node && !key.startsWith('aria') && !key.startsWith('data-')) node[key] = value;
       else node.setAttribute(key, String(value));
-    }
-    for (const child of children.flat()) {
-      if (child === null || child === undefined || child === false) continue;
+    });
+    children.flat().forEach(child => {
+      if (child === null || child === undefined || child === false) return;
       node.append(child instanceof Node ? child : document.createTextNode(String(child)));
-    }
+    });
     return node;
   };
 
   const button = (label, kind = 'secondary') => el('button', {
-    type: 'button',
-    class: `button button-${kind}`,
-    text: label,
+    type: 'button', class: `button button-${kind}`, text: label,
   });
-
-  const callout = (text, kind = 'info') => el('div', {
-    class: `callout callout-${kind}`,
-    text,
-  });
-
+  const callout = (text, kind = 'info') => el('div', {class: `callout callout-${kind}`, text});
   const field = (label, input) => el('div', {class: 'field'}, el('label', {}, el('span', {text: label}), input));
+  const setStatus = (node, message, kind = '') => {
+    node.textContent = message;
+    node.className = `status-message${kind ? ` ${kind}` : ''}`;
+  };
 
   function currentView() {
     const params = new URLSearchParams(location.search);
@@ -52,20 +49,18 @@
     queued = true;
     queueMicrotask(() => {
       queued = false;
-      patch();
+      const root = document.getElementById('page-content');
+      if (!root) return;
+      const view = currentView();
+      if (view === 'imports') injectCsvFirstImport(root);
+      if (view === 'assets') injectCustomerAssetSetup(root);
     });
   }
 
-  function pageContent() {
-    return document.getElementById('page-content');
-  }
-
-  function patch() {
-    const root = pageContent();
-    if (!root) return;
-    const view = currentView();
-    if (view === 'imports') injectCsvFirstImport(root);
-    if (view === 'assets') injectCustomerAssetSetup(root);
+  function spaGo(path) {
+    history.pushState({}, '', path);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    schedule();
   }
 
   async function api(path, options = {}) {
@@ -83,14 +78,7 @@
     return response;
   }
 
-  function setStatus(node, message, kind = '') {
-    node.textContent = message;
-    node.className = `status-message${kind ? ` ${kind}` : ''}`;
-  }
-
-  function normalizeHeader(value) {
-    return String(value || '').normalize('NFKC').toLowerCase().replace(/[^a-z0-9]/g, '');
-  }
+  const normalizeHeader = value => String(value || '').normalize('NFKC').toLowerCase().replace(/[^a-z0-9]/g, '');
 
   function parseCsv(text) {
     const rows = [];
@@ -110,9 +98,7 @@
         } else {
           cell += ch;
         }
-        continue;
-      }
-      if (ch === '"') {
+      } else if (ch === '"') {
         quoted = true;
       } else if (ch === ',') {
         row.push(cell);
@@ -147,18 +133,18 @@
     const rows = parseCsv(text);
     if (rows.length < 2) throw new Error('CSV must contain a header and at least one data row.');
     const headers = rows[0].map(value => String(value).replace(/^\uFEFF/, '').trim());
-    const cveIndex = firstColumn(headers, ['CVE_ID', 'CVE ID', 'cve']);
-    if (cveIndex < 0) throw new Error('CSV must contain a CVE_ID column.');
+    if (firstColumn(headers, ['CVE_ID', 'CVE ID', 'cve']) < 0) throw new Error('CSV must contain a CVE_ID column.');
     const keyIndex = firstColumn(headers, ['Agent_ID', 'Agent ID', 'Asset_ID', 'Asset ID', 'agent.id', 'agent_id']);
     const nameIndex = firstColumn(headers, ['Agent', 'Agent_Name', 'Agent Name', 'Asset', 'Asset_Name', 'Hostname', 'Host', 'agent.name', 'agent_name']);
     if (keyIndex < 0 && nameIndex < 0) {
       throw new Error('CSV needs an asset identity column such as Agent/Agent_ID, Asset/Asset_ID, or Hostname.');
     }
+
     const seen = new Map();
-    for (const values of rows.slice(1)) {
+    rows.slice(1).forEach(values => {
       const key = keyIndex >= 0 ? String(values[keyIndex] || '').trim() : '';
       const name = nameIndex >= 0 ? String(values[nameIndex] || '').trim() : '';
-      if (!key && !name) continue;
+      if (!key && !name) return;
       const identity = key ? `key:${key}` : `name:${name.normalize('NFKC').toLowerCase()}`;
       if (!seen.has(identity)) {
         seen.set(identity, {
@@ -173,24 +159,9 @@
           guideRevision: 1,
         });
       }
-    }
+    });
     if (!seen.size) throw new Error('No usable asset identities were found in the CSV.');
     return [...seen.values()];
-  }
-
-  function saveSetup(setup) {
-    try {
-      sessionStorage.setItem(SETUP_KEY, JSON.stringify(setup));
-    } catch (_) { }
-  }
-
-  function loadSetup() {
-    try {
-      const raw = sessionStorage.getItem(SETUP_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch (_) {
-      return null;
-    }
   }
 
   function injectCsvFirstImport(root) {
@@ -202,20 +173,16 @@
     const status = el('div', {class: 'status-message', role: 'status', 'aria-live': 'polite'});
     const run = button('Enrich CSV & continue to Assets', 'primary');
     const panel = el('section', {'data-csv-first-import': 'true', class: 'panel'},
-      el('div', {class: 'panel-header'},
-        el('div', {},
-          el('h2', {class: 'panel-title', text: 'CSV-first customer run'}),
-          el('p', {class: 'panel-subtitle', text: 'This CSV defines the complete run scope. Public CVE intelligence is collected first; customer-only context is completed on Assets next.'})
-        )
-      ),
-      el('div', {class: 'panel-body'},
-        el('div', {class: 'stack'},
-          callout('Automatic: CVSS v4, EPSS, KEV, CISA SSVC, CWE/CPE and source provenance. Customer-specific business context is never guessed from public data.'),
-          el('div', {class: 'form-grid'}, field('Customer vulnerability CSV', file)),
-          el('div', {class: 'inline-actions'}, run),
-          status
-        )
-      )
+      el('div', {class: 'panel-header'}, el('div', {},
+        el('h2', {class: 'panel-title', text: 'CSV-first customer run'}),
+        el('p', {class: 'panel-subtitle', text: 'The uploaded CSV defines the complete run. Public vulnerability intelligence is collected first; customer-only context is completed on Assets next.'})
+      )),
+      el('div', {class: 'panel-body'}, el('div', {class: 'stack'},
+        callout('Automatic: CVSS v4, EPSS, KEV, CISA SSVC, CWE/CPE and source provenance. Customer-specific business context is never guessed from public data.'),
+        el('div', {class: 'form-grid'}, field('Customer vulnerability CSV', file)),
+        el('div', {class: 'inline-actions'}, run),
+        status
+      ))
     );
 
     run.addEventListener('click', async () => {
@@ -228,25 +195,22 @@
       try {
         setStatus(status, `Reading asset identities from ${selected.name}…`);
         const candidates = candidatesFromCsv(await selected.text());
-        const setup = {
+        activeSetup = {
           contractId: CONTRACT,
           sourceFileName: selected.name,
           createdAt: new Date().toISOString(),
           candidates,
           run: null,
         };
-        saveSetup(setup);
-        setStatus(status, `Collecting public intelligence for ${selected.name}. This can take a little while…`);
+        setStatus(status, `Collecting public intelligence for ${selected.name}…`);
         const response = await api('/api/v1/csv-first-enrichments', {
           method: 'POST',
           headers: {'Content-Type': 'text/csv; charset=utf-8'},
           body: selected,
         });
-        const data = await response.json();
-        setup.run = data;
-        saveSetup(setup);
+        activeSetup.run = await response.json();
         setStatus(status, `Public enrichment complete. Opening Assets for ${candidates.length} customer asset${candidates.length === 1 ? '' : 's'}…`, 'success');
-        location.assign(data.next || `/assets?tab=managed&setup=1&runId=${encodeURIComponent(data.runId || '')}`);
+        spaGo(activeSetup.run.next || `/assets?tab=managed&setup=1&runId=${encodeURIComponent(activeSetup.run.runId || '')}`);
       } catch (error) {
         setStatus(status, error.message, 'error');
         run.disabled = false;
@@ -256,15 +220,10 @@
     header.insertAdjacentElement('afterend', panel);
   }
 
-  function textInput(value = '', placeholder = '') {
-    return el('input', {type: 'text', value, placeholder});
-  }
-
+  const textInput = (value = '', placeholder = '') => el('input', {type: 'text', value, placeholder});
   function selectInput(values, current) {
     const select = el('select');
-    for (const value of values) {
-      select.append(el('option', {value, text: value.replaceAll('_', ' '), selected: value === current}));
-    }
+    values.forEach(value => select.append(el('option', {value, text: value.replaceAll('_', ' '), selected: value === current})));
     return select;
   }
 
@@ -285,18 +244,16 @@
 
     const details = el('details', {class: 'panel', open: index < 3},
       el('summary', {style: 'cursor:pointer;padding:16px 20px;font-weight:700;', text: asset.displayName || asset.customerAssetKey || `Asset ${index + 1}`}),
-      el('div', {class: 'panel-body'},
-        el('div', {class: 'form-grid'},
-          field('Customer asset key', key),
-          field('Display name', name),
-          field('Environment', environment),
-          field('Business criticality', criticality),
-          field('Business service', service),
-          field('Business owner', owner),
-          field('Classification method', method),
-          guideWrap
-        )
-      )
+      el('div', {class: 'panel-body'}, el('div', {class: 'form-grid'},
+        field('Customer asset key', key),
+        field('Display name', name),
+        field('Environment', environment),
+        field('Business criticality', criticality),
+        field('Business service', service),
+        field('Business owner', owner),
+        field('Classification method', method),
+        guideWrap
+      ))
     );
 
     return {
@@ -326,12 +283,12 @@
     if (!Array.isArray(value.assets) || value.assets.length > MAX_BUNDLE_ASSETS) throw new Error('Customer data bundle has an invalid asset list.');
     return value.assets.map((asset, index) => {
       if (!asset || typeof asset !== 'object' || Array.isArray(asset)) throw new Error(`Asset ${index + 1} is invalid.`);
-      const key = String(asset.customerAssetKey || '').trim();
-      const name = String(asset.displayName || '').trim();
-      if (!key && !name) throw new Error(`Asset ${index + 1} needs customerAssetKey or displayName.`);
+      const customerAssetKey = String(asset.customerAssetKey || '').trim();
+      const displayName = String(asset.displayName || '').trim();
+      if (!customerAssetKey && !displayName) throw new Error(`Asset ${index + 1} needs customerAssetKey or displayName.`);
       return {
-        customerAssetKey: key,
-        displayName: name || key,
+        customerAssetKey,
+        displayName: displayName || customerAssetKey,
         environment: String(asset.environment || 'UNKNOWN'),
         businessService: String(asset.businessService || ''),
         businessOwner: String(asset.businessOwner || ''),
@@ -400,17 +357,15 @@
   }
 
   function mergeBundleIntoSetup(current, imported) {
-    if (!current || !Array.isArray(current.candidates) || !current.candidates.length) {
-      return imported;
-    }
+    if (!current || !Array.isArray(current.candidates) || !current.candidates.length) return imported;
     const byKey = new Map(imported.filter(asset => asset.customerAssetKey).map(asset => [asset.customerAssetKey, asset]));
     const byName = new Map();
-    for (const asset of imported) {
+    imported.forEach(asset => {
       const name = asset.displayName.normalize('NFKC').trim().toLowerCase();
-      if (!name) continue;
+      if (!name) return;
       if (byName.has(name)) byName.set(name, null);
       else byName.set(name, asset);
-    }
+    });
     return current.candidates.map(candidate => {
       const matched = candidate.customerAssetKey
         ? byKey.get(candidate.customerAssetKey)
@@ -425,8 +380,8 @@
     if (asset.customerAssetKey) {
       existing = existingAssets.find(value => value.customerAssetKey === asset.customerAssetKey) || null;
     } else {
-      const name = asset.displayName.normalize('NFKC').trim().toLowerCase();
-      const matches = existingAssets.filter(value => String(value.currentRevision?.displayName || '').normalize('NFKC').trim().toLowerCase() === name);
+      const normalizedName = asset.displayName.normalize('NFKC').trim().toLowerCase();
+      const matches = existingAssets.filter(value => String(value.currentRevision?.displayName || '').normalize('NFKC').trim().toLowerCase() === normalizedName);
       if (matches.length > 1) throw new Error(`Display name ${asset.displayName} matches multiple managed assets; add a customer asset key.`);
       existing = matches[0] || null;
     }
@@ -448,9 +403,7 @@
     if (!existing) {
       if (asset.customerAssetKey) payload.customerAssetKey = asset.customerAssetKey;
       return (await api('/api/v1/managed-assets', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(payload),
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload),
       })).json();
     }
 
@@ -472,7 +425,7 @@
     const header = root.querySelector('.page-header');
     if (!header) return;
 
-    let setup = loadSetup();
+    let setup = activeSetup;
     const status = el('div', {class: 'status-message', role: 'status', 'aria-live': 'polite'});
     const editorsHost = el('div', {class: 'stack'});
     const upload = el('input', {type: 'file', accept: '.json,application/json', hidden: true});
@@ -488,7 +441,7 @@
       editors = [];
       const candidates = Array.isArray(setup?.candidates) ? setup.candidates : [];
       if (!candidates.length) {
-        editorsHost.append(callout('No current CSV asset candidates. Upload a saved customer data bundle to load them here, or use Create asset for one-by-one manual entry.', 'warning'));
+        editorsHost.append(callout('No current CSV asset candidates. Upload a saved customer data bundle here, or use Create asset for one-by-one manual entry.', 'warning'));
         saveButton.disabled = true;
         return;
       }
@@ -510,7 +463,7 @@
         const imported = validateBundle(JSON.parse(await file.text()));
         setup = setup || {contractId: CONTRACT, sourceFileName: '', createdAt: new Date().toISOString(), run: null, candidates: []};
         setup.candidates = mergeBundleIntoSetup(setup, imported);
-        saveSetup(setup);
+        activeSetup = setup;
         renderEditors();
         setStatus(status, `Loaded customer context for ${imported.length} asset${imported.length === 1 ? '' : 's'}. Review and save.`, 'success');
       } catch (error) {
@@ -547,8 +500,8 @@
           existing = await fetchAllManagedAssets();
         }
         setup.candidates = values;
-        saveSetup(setup);
-        setStatus(status, `Saved ${saved} customer asset record${saved === 1 ? '' : 's'}. You can download the customer data file now and reuse it on the next CSV.`, 'success');
+        activeSetup = setup;
+        setStatus(status, `Saved ${saved} customer asset record${saved === 1 ? '' : 's'}. Download customer data now to reuse it with the next CSV.`, 'success');
       } catch (error) {
         setStatus(status, error.status === 412 ? 'An asset changed while saving. Refresh Assets and retry after reviewing the latest revision.' : error.message, 'error');
       } finally {
@@ -558,23 +511,18 @@
       }
     });
 
-    const actions = el('div', {class: 'inline-actions'}, uploadButton, downloadButton, saveButton, enrichedButton);
     const panel = el('section', {'data-customer-asset-setup': 'true', class: 'panel'},
-      el('div', {class: 'panel-header'},
-        el('div', {},
-          el('h2', {class: 'panel-title', text: 'Customer asset context'}),
-          el('p', {class: 'panel-subtitle', text: 'Enter customer-only information manually, or upload the reusable file you downloaded from a previous run.'})
-        )
-      ),
-      el('div', {class: 'panel-body'},
-        el('div', {class: 'stack'},
-          callout('Reusable bundle contains organizational asset context only. It does not mix customer truth with CVSS, EPSS, KEV or other public evidence.'),
-          upload,
-          actions,
-          status,
-          editorsHost
-        )
-      )
+      el('div', {class: 'panel-header'}, el('div', {},
+        el('h2', {class: 'panel-title', text: 'Customer asset context'}),
+        el('p', {class: 'panel-subtitle', text: 'Enter customer-only information manually, or upload the reusable file downloaded from a previous run.'})
+      )),
+      el('div', {class: 'panel-body'}, el('div', {class: 'stack'},
+        callout('Reusable bundle contains organizational asset context only. It does not mix customer truth with CVSS, EPSS, KEV or other public evidence.'),
+        upload,
+        el('div', {class: 'inline-actions'}, uploadButton, downloadButton, saveButton, enrichedButton),
+        status,
+        editorsHost
+      ))
     );
 
     renderEditors();
