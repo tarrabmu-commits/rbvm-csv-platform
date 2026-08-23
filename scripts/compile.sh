@@ -42,6 +42,17 @@ if [[ -f "$ROOT_DIR/src/main/resources/web/csv-canonical-handoff.js" ]]; then
   printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
   cat "$ROOT_DIR/src/main/resources/web/csv-canonical-handoff.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
 fi
+# Dashboard V3 adapts the legacy VA operational dashboard to current RBVM
+# semantics. It consumes existing APIs only and does not invent risk, SLA,
+# exploitation, or historical trend values.
+if [[ -f "$ROOT_DIR/src/main/resources/web/rbvm-dashboard.js" ]]; then
+  printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
+  cat "$ROOT_DIR/src/main/resources/web/rbvm-dashboard.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
+fi
+if [[ -f "$ROOT_DIR/src/main/resources/web/rbvm-dashboard.css" ]]; then
+  printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.css"
+  cat "$ROOT_DIR/src/main/resources/web/rbvm-dashboard.css" >> "$MAIN_CLASSES/web/rbvm-ui.css"
+fi
 mkdir -p "$MAIN_CLASSES/db/migration"
 cp "$ROOT_DIR"/db/migration/*.sql "$MAIN_CLASSES/db/migration/"
 
