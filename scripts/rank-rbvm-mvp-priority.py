@@ -18,8 +18,16 @@ from pathlib import Path
 
 METHOD_ID = "RBVM_MVP_PRIORITY_POLICY_V1"
 REPORT_CONTRACT = "RBVM_MVP_PRIORITY_REPORT_V1"
+EXPLAINABILITY_CONTRACT = "RBVM_MVP_PRIORITY_EXPLAINABILITY_V1"
 CRITICALITY = {"LOW": 1, "MODERATE": 2, "HIGH": 3, "MISSION_CRITICAL": 4}
 INTERNET = {"NO": 0, "YES": 1}
+BLOCKER_LABELS = {
+    "KEV_STATE_MISSING_OR_INVALID": "CISA KEV state",
+    "INTERNET_FACING_MISSING_OR_INVALID": "customer Internet Facing",
+    "ASSET_CRITICALITY_MISSING_OR_INVALID": "customer Asset Criticality",
+    "EPSS_MISSING_OR_INVALID": "FIRST EPSS probability",
+    "CVSS4_CONTEXT_SCORE_MISSING_OR_INVALID": "contextual CVSS v4 score",
+}
 
 CANONICAL = {
     "methodId": METHOD_ID,
@@ -78,6 +86,7 @@ OUTPUT_COLUMNS = [
     "RBVM_MVP_Priority_Dominated_By",
     "RBVM_MVP_Priority_Dominates",
     "RBVM_MVP_Priority_Blockers",
+    "RBVM_MVP_Priority_Explanation",
     "RBVM_MVP_Priority_Method_SHA256",
 ]
 
@@ -177,6 +186,29 @@ def canonical_file_sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def ranked_explanation(row, front, dominated_by, dominates_rows):
+    kev = "LISTED" if parse_bool(row.get("KEV_Listed")) == 1 else "NOT_LISTED"
+    internet = str(row.get("Internet_Facing") or "").strip().upper()
+    criticality = str(row.get("Asset_Criticality") or "").strip().upper()
+    epss = str(row.get("EPSS_Probability") or "").strip()
+    cvss = str(row.get("CVSS4_Context_Score") or "").strip()
+    return (
+        f"Front {front}: complete admitted evidence; KEV={kev}, Internet Facing={internet}, "
+        f"Asset Criticality={criticality}, EPSS={epss}, Contextual CVSS v4={cvss}; "
+        f"dominated by {dominated_by} row(s), dominates {dominates_rows} row(s). "
+        "Relative Pareto treatment priority only; not Organizational Risk or an SLA."
+    )
+
+
+def unrankable_explanation(blockers):
+    labels = [BLOCKER_LABELS.get(blocker, blocker) for blocker in blockers]
+    return (
+        "Unrankable because required evidence is missing or invalid: "
+        + ", ".join(labels)
+        + ". Missing evidence is not imputed."
+    )
+
+
 def main():
     args = arguments()
     with args.analysis_csv.open("r", encoding="utf-8-sig", newline="") as handle:
@@ -217,12 +249,19 @@ def main():
         joined = dict(row)
         if index in vectors:
             front = fronts[index]
+            explanation = ranked_explanation(
+                row,
+                front,
+                dominated_by_count[index],
+                dominates_count[index],
+            )
             joined.update({
                 "RBVM_MVP_Priority_Status": "RANKED_RELATIVE_ONLY",
                 "RBVM_MVP_Priority_Front": str(front),
                 "RBVM_MVP_Priority_Dominated_By": str(dominated_by_count[index]),
                 "RBVM_MVP_Priority_Dominates": str(dominates_count[index]),
                 "RBVM_MVP_Priority_Blockers": "",
+                "RBVM_MVP_Priority_Explanation": explanation,
                 "RBVM_MVP_Priority_Method_SHA256": METHOD_SHA256,
             })
             front_counts[str(front)] = front_counts.get(str(front), 0) + 1
@@ -234,6 +273,7 @@ def main():
                 "RBVM_MVP_Priority_Dominated_By": "",
                 "RBVM_MVP_Priority_Dominates": "",
                 "RBVM_MVP_Priority_Blockers": "|".join(blockers),
+                "RBVM_MVP_Priority_Explanation": unrankable_explanation(blockers),
                 "RBVM_MVP_Priority_Method_SHA256": METHOD_SHA256,
             })
             for blocker in blockers:
@@ -256,6 +296,12 @@ def main():
         "organizationalRiskComputed": False,
         "riskStatus": "NON_COMPUTABLE",
         "prioritySemantics": CANONICAL["outputSemantics"],
+        "explainability": {
+            "contractId": EXPLAINABILITY_CONTRACT,
+            "rowColumn": "RBVM_MVP_Priority_Explanation",
+            "derivation": "DETERMINISTIC_RENDERING_OF_ADMITTED_INPUTS_FRONT_AND_DOMINANCE_COUNTS",
+            "changesPriority": False,
+        },
         "rows": len(rows),
         "rankedRows": len(vectors),
         "unrankableRows": len(rows) - len(vectors),
@@ -267,6 +313,7 @@ def main():
             "Internet Facing is customer-declared asset-level context and is not exact Finding/endpoint reachability.",
             "KEV NOT_LISTED is not interpreted as no exploitation risk.",
             "No EPSS threshold, CVSS threshold, weighted sum, or EPSS×CVSS multiplication is used.",
+            "The explanation column renders already-admitted evidence and Pareto relationships; it does not add scoring logic.",
         ],
     }
     report_payload = json.dumps(report, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
