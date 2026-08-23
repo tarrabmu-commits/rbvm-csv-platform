@@ -43,7 +43,8 @@ public final class PostgresMigrator {
             new Migration(21, "V21__finding_context_association.sql"),
             new Migration(22, "V22__decision_input_v3_context_bindings.sql"),
             new Migration(23, "V23__formula_result_persistence.sql"),
-            new Migration(24, "V24__derived_risk_result_persistence.sql")
+            new Migration(24, "V24__derived_risk_result_persistence.sql"),
+            new Migration(25, "V25__risk_method_selection_policy.sql")
     );
 
     private final JdbcConnectionFactory connections;
