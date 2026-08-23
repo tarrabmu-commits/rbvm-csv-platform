@@ -8,6 +8,11 @@ public final class JsonOutput {
     private JsonOutput() {
     }
 
+    /** Compatibility alias for transports that need deterministic JSON bytes. */
+    public static String object(Object value) {
+        return pretty(value);
+    }
+
     public static String pretty(Object value) {
         StringBuilder output = new StringBuilder();
         write(value, output, 0);
@@ -97,4 +102,3 @@ public final class JsonOutput {
         output.append("  ".repeat(depth));
     }
 }
-
