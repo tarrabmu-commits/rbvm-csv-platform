@@ -6,6 +6,7 @@ import com.sun.net.httpserver.HttpHandler;
 
 import io.rbvm.security.ApiKeyAuthenticator;
 import io.rbvm.security.ApiRole;
+import io.rbvm.security.AuthPrincipal;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -13,12 +14,12 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
@@ -135,6 +136,7 @@ public final class CsvFirstEnrichmentHttpHandler implements HttpHandler {
         Path snapshot = run.resolve("public-intel.json");
         Path report = run.resolve("report.json");
         Path collectorReport = run.resolve("collector-report.json");
+        Path processLog = run.resolve("process.log");
 
         try (InputStream body = exchange.getRequestBody();
              OutputStream staged = Files.newOutputStream(input)) {
@@ -157,11 +159,8 @@ public final class CsvFirstEnrichmentHttpHandler implements HttpHandler {
         );
         builder.directory(script.getParent().getParent().toFile());
         builder.redirectErrorStream(true);
+        builder.redirectOutput(processLog.toFile());
         Process process = builder.start();
-        byte[] processOutput;
-        try (InputStream stream = process.getInputStream()) {
-            processOutput = stream.readNBytes(MAX_PROCESS_OUTPUT_BYTES + 1);
-        }
         boolean finished;
         try {
             finished = process.waitFor(PROCESS_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
@@ -179,6 +178,9 @@ public final class CsvFirstEnrichmentHttpHandler implements HttpHandler {
             return;
         }
         if (process.exitValue() != 0 || !Files.isRegularFile(output) || !Files.isRegularFile(report)) {
+            byte[] processOutput = Files.isRegularFile(processLog)
+                    ? Files.readAllBytes(processLog)
+                    : new byte[0];
             String diagnostic = new String(
                     processOutput,
                     0,
@@ -190,6 +192,7 @@ public final class CsvFirstEnrichmentHttpHandler implements HttpHandler {
                     diagnostic.isBlank() ? "CSV-first enrichment failed" : diagnostic);
             return;
         }
+        Files.deleteIfExists(processLog);
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("contractId", CONTRACT_ID);
@@ -241,10 +244,11 @@ public final class CsvFirstEnrichmentHttpHandler implements HttpHandler {
     }
 
     private void requireRole(HttpExchange exchange, ApiRole role) {
-        // Authentication is disabled in the default trusted-local launcher. In
-        // hardened mode this call preserves the same role boundary as the
-        // platform's other import/read transports.
-        authenticator.authenticate(exchange.getRequestHeaders(), role);
+        String authorization = exchange.getRequestHeaders().getFirst("Authorization");
+        Optional<AuthPrincipal> principal = authenticator.authenticate(authorization);
+        if (principal.isEmpty() || !principal.get().role().permits(role)) {
+            throw new SecurityException("insufficient role");
+        }
     }
 
     private static boolean isCsvContentType(String value) {
