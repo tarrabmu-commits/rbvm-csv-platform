@@ -72,4 +72,5 @@ else
   printf 'Launcher authentication: from environment (%s)\n' "${RBVM_AUTH_MODE:-DISABLED}"
 fi
 
-exec java -cp "$CLASSPATH" io.rbvm.csv.CsvPlatformServer
+export RBVM_REPOSITORY_ROOT="${RBVM_REPOSITORY_ROOT:-$ROOT_DIR}"
+exec java -cp "$CLASSPATH" io.rbvm.csv.RbvmPlatformMain
