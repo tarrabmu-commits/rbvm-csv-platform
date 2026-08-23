@@ -46,7 +46,7 @@ jobs:
           printf 'RBVM_POSTGRES_DRIVER_JAR=%s\n' "$driver" >> "$GITHUB_ENV"
       - name: Compile application and tests
         run: ./scripts/compile.sh --tests
-      - name: Run live V18-V27 persistence, Decision Input V3, Formula, derived-risk, policy, activation, and execution-binding integration
+      - name: Run live V18-V27 persistence, decision, and exact import-Finding integration
         env:
           RBVM_PROJECTION_BACKEND: POSTGRESQL
           RBVM_JDBC_URL: jdbc:postgresql://127.0.0.1:5432/rbvm?sslmode=disable
@@ -63,3 +63,4 @@ jobs:
           java -ea -cp "$classpath" io.rbvm.postgres.PostgresV27ActiveRiskMethodExecutionBindingLiveSelfTest
           java -ea -cp "$classpath" io.rbvm.postgres.PostgresEvidenceAwareCatalogLiveSelfTest
           java -ea -cp "$classpath" io.rbvm.postgres.PostgresDedicatedIntelligenceSummaryLiveSelfTest
+          java -ea -cp "$classpath" io.rbvm.postgres.PostgresCanonicalImportFindingManifestLiveSelfTest
