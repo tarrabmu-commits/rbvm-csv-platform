@@ -1208,6 +1208,14 @@ paths:
         '503': { $ref: '#/components/responses/Problem' }
 
 
+  /risk-method-selection-policy-activation/current:
+    $ref: './risk-method-selection-policy-activation-v1.openapi.yaml#/paths/~1api~1v1~1risk-method-selection-policy-activation~1current'
+  /risk-method-selection-policy-activations/{activationRevision}/{eventSha256}:
+    $ref: './risk-method-selection-policy-activation-v1.openapi.yaml#/paths/~1api~1v1~1risk-method-selection-policy-activations~1{activationRevision}~1{eventSha256}'
+  /risk-method-selection-policy-activation-events/{activationRevision}/ACTIVE/{policyRevision}/{policySha256}/{recordedAt}:
+    $ref: './risk-method-selection-policy-activation-v1.openapi.yaml#/paths/~1api~1v1~1risk-method-selection-policy-activation-events~1{activationRevision}~1ACTIVE~1{policyRevision}~1{policySha256}~1{recordedAt}'
+  /risk-method-selection-policy-activation-events/{activationRevision}/CLEARED/{recordedAt}:
+    $ref: './risk-method-selection-policy-activation-v1.openapi.yaml#/paths/~1api~1v1~1risk-method-selection-policy-activation-events~1{activationRevision}~1CLEARED~1{recordedAt}'
   /risk-method-selection-policies/{revision}/{policySha256}:
     get:
       operationId: getRiskMethodSelectionPolicy

@@ -1,0 +1,273 @@
+openapi: 3.0.3
+info:
+  title: RBVM Risk Method Selection Policy Activation API V1
+  version: 1.0.0
+  description: >-
+    Explicit append-only activation transport for one exact tenant-scoped Risk Method Selection
+    Policy identity. Current means only the greatest persisted activation revision. Policy revision
+    order and catalog order never select the active policy. Never-activated is distinct from an
+    explicit CLEARED event.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/risk-method-selection-policy-activation/current:
+    get:
+      operationId: getCurrentRiskMethodSelectionPolicyActivation
+      summary: Read the greatest explicit activation revision
+      description: >-
+        Requires VIEWER. Returns ACTIVE or CLEARED exactly as persisted. Returns 404 when no
+        activation event has ever been persisted; absence is never synthesized as CLEARED.
+      responses:
+        '200':
+          $ref: '#/components/responses/ActivationRead'
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/InsufficientRole' }
+        '404': { $ref: '#/components/responses/ActivationNotFound' }
+        '503': { $ref: '#/components/responses/CapabilityUnavailable' }
+  /api/v1/risk-method-selection-policy-activations/{activationRevision}/{eventSha256}:
+    get:
+      operationId: getExactRiskMethodSelectionPolicyActivation
+      summary: Read one exact immutable activation revision and event SHA
+      parameters:
+        - $ref: '#/components/parameters/ActivationRevision'
+        - $ref: '#/components/parameters/EventSha256'
+      responses:
+        '200':
+          $ref: '#/components/responses/ActivationRead'
+        '400': { $ref: '#/components/responses/InvalidIdentity' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/InsufficientRole' }
+        '404': { $ref: '#/components/responses/ActivationNotFound' }
+        '503': { $ref: '#/components/responses/CapabilityUnavailable' }
+  /api/v1/risk-method-selection-policy-activation-events/{activationRevision}/ACTIVE/{policyRevision}/{policySha256}/{recordedAt}:
+    post:
+      operationId: activateExactRiskMethodSelectionPolicy
+      summary: Append or replay one exact ACTIVE activation event
+      description: >-
+        Requires OPERATOR. activationRevision, exact policy revision+SHA, and recordedAt are all
+        explicit. changedBy is the authenticated actor and changeNote is empty in V1. Repeating the
+        same path as the same actor reproduces the same canonical event identity. No revision is
+        auto-generated and no policy is selected from catalog or revision order.
+      parameters:
+        - $ref: '#/components/parameters/ActivationRevision'
+        - $ref: '#/components/parameters/PolicyRevision'
+        - $ref: '#/components/parameters/PolicySha256'
+        - $ref: '#/components/parameters/RecordedAt'
+      responses:
+        '201':
+          $ref: '#/components/responses/ActivationInstalled'
+        '200':
+          $ref: '#/components/responses/ActivationReplayed'
+        '400': { $ref: '#/components/responses/InvalidIdentity' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/InsufficientRole' }
+        '404': { $ref: '#/components/responses/PolicyNotFound' }
+        '409': { $ref: '#/components/responses/ActivationConflict' }
+        '503': { $ref: '#/components/responses/CapabilityUnavailable' }
+  /api/v1/risk-method-selection-policy-activation-events/{activationRevision}/CLEARED/{recordedAt}:
+    post:
+      operationId: clearRiskMethodSelectionPolicyActivation
+      summary: Append or replay one explicit CLEARED activation event
+      description: >-
+        Requires OPERATOR. CLEARED explicitly records that no risk-method policy is active. It
+        carries no policy identity and is not equivalent to an absent activation history.
+      parameters:
+        - $ref: '#/components/parameters/ActivationRevision'
+        - $ref: '#/components/parameters/RecordedAt'
+      responses:
+        '201':
+          $ref: '#/components/responses/ActivationInstalled'
+        '200':
+          $ref: '#/components/responses/ActivationReplayed'
+        '400': { $ref: '#/components/responses/InvalidIdentity' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/InsufficientRole' }
+        '409': { $ref: '#/components/responses/ActivationConflict' }
+        '503': { $ref: '#/components/responses/CapabilityUnavailable' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    ActivationRevision:
+      name: activationRevision
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+    PolicyRevision:
+      name: policyRevision
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+    PolicySha256:
+      name: policySha256
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/Sha256' }
+    EventSha256:
+      name: eventSha256
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/Sha256' }
+    RecordedAt:
+      name: recordedAt
+      in: path
+      required: true
+      description: Explicit canonical event timestamp. Use an ISO-8601 instant such as 2026-08-23T05:00:00Z.
+      schema:
+        type: string
+        format: date-time
+  schemas:
+    Sha256:
+      type: string
+      pattern: '^[a-f0-9]{64}$'
+    Activation:
+      type: object
+      additionalProperties: false
+      required:
+        - activationContractId
+        - semantics
+        - activationRevision
+        - activationState
+        - policyRevision
+        - policySha256
+        - changedBy
+        - changeNote
+        - recordedAt
+        - eventSha256
+        - canonicalPayloadFormat
+        - canonicalPayloadBase64
+      properties:
+        activationContractId:
+          type: string
+          enum: [RBVM_RISK_METHOD_SELECTION_POLICY_ACTIVATION_EVENT_V1]
+        semantics:
+          type: string
+          enum: [TENANT_SCOPED_EXPLICIT_ACTIVE_POLICY_POINTER_APPEND_ONLY]
+        activationRevision: { type: integer, minimum: 1 }
+        activationState:
+          type: string
+          enum: [ACTIVE, CLEARED]
+        policyRevision:
+          type: integer
+          minimum: 1
+          nullable: true
+        policySha256:
+          allOf:
+            - $ref: '#/components/schemas/Sha256'
+          nullable: true
+        changedBy: { type: string, minLength: 1 }
+        changeNote:
+          type: string
+          enum: ['']
+        recordedAt:
+          type: string
+          format: date-time
+        eventSha256: { $ref: '#/components/schemas/Sha256' }
+        canonicalPayloadFormat:
+          type: string
+          enum: [RBVM_RISK_METHOD_SELECTION_POLICY_ACTIVATION_EVENT_CANONICAL_BINARY_V1]
+        canonicalPayloadBase64:
+          type: string
+          format: byte
+    ActivationReadResponse:
+      type: object
+      additionalProperties: false
+      required: [contractId, activationSemantics, activation]
+      properties:
+        contractId:
+          type: string
+          enum: [RBVM_RISK_METHOD_SELECTION_POLICY_ACTIVATION_API_V1]
+        activationSemantics:
+          type: string
+          enum: [CURRENT_IS_GREATEST_EXPLICIT_ACTIVATION_REVISION_NEVER_POLICY_REVISION]
+        activation:
+          $ref: '#/components/schemas/Activation'
+    ActivationInstallationResponse:
+      type: object
+      additionalProperties: false
+      required: [contractId, installationStatus, activationSemantics, activation]
+      properties:
+        contractId:
+          type: string
+          enum: [RBVM_RISK_METHOD_SELECTION_POLICY_ACTIVATION_INSTALLATION_API_V1]
+        installationStatus:
+          type: string
+          enum: [INSERTED, REPLAYED]
+        activationSemantics:
+          type: string
+          enum: [CURRENT_IS_GREATEST_EXPLICIT_ACTIVATION_REVISION_NEVER_POLICY_REVISION]
+        activation:
+          $ref: '#/components/schemas/Activation'
+    Problem:
+      type: object
+      additionalProperties: true
+      required: [type, title, status, detail]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+  responses:
+    ActivationRead:
+      description: Exact persisted activation event
+      headers:
+        ETag: { schema: { type: string } }
+        Location: { schema: { type: string } }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ActivationReadResponse' }
+    ActivationInstalled:
+      description: Immutable activation event inserted
+      headers:
+        ETag: { schema: { type: string } }
+        Location: { schema: { type: string } }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ActivationInstallationResponse' }
+    ActivationReplayed:
+      description: Exact immutable activation event replayed
+      headers:
+        ETag: { schema: { type: string } }
+        Location: { schema: { type: string } }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ActivationInstallationResponse' }
+    InvalidIdentity:
+      description: Invalid activation, policy, SHA, or recordedAt identity
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    AuthenticationRequired:
+      description: Authentication required
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    InsufficientRole:
+      description: Authenticated principal lacks the required route role
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    ActivationNotFound:
+      description: No exact activation event exists; never-activated is not synthesized as CLEARED
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    PolicyNotFound:
+      description: Exact policy revision and SHA requested for ACTIVE do not exist
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    ActivationConflict:
+      description: Activation revision conflicts with another event or is older than current explicit activation revision
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    CapabilityUnavailable:
+      description: PostgreSQL V26 activation persistence is unavailable after authorization
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
