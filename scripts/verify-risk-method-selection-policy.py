@@ -77,7 +77,7 @@ for marker in [
     'Status.REPLAYED',
     'Status.REVISION_CONFLICT',
     'canonicalPayload()',
-    'RBVM_RISK_METHOD_SELECTION_POLICY_CANONICAL_BINARY_V1',
+    'RbvmRiskMethodSelectionPolicy.CANONICAL_PAYLOAD_FORMAT',
 ]:
     assert marker in store or marker in store_api, f"risk method store missing {marker!r}"
 
