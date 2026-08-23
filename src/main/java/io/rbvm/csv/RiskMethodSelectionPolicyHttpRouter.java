@@ -7,21 +7,39 @@ import io.rbvm.security.AuthPrincipal;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Exact HTTP transport for immutable primary risk-method selection policies. */
+/** Exact HTTP transport for immutable primary risk-method selection policies and activation. */
 final class RiskMethodSelectionPolicyHttpRouter {
     private static final String POLICY_NAMESPACE = "/api/v1/risk-method-selection-policies";
     private static final String INSTALLATION_NAMESPACE =
             "/api/v1/risk-method-selection-policy-installations";
+    private static final String ACTIVATION_CURRENT =
+            "/api/v1/risk-method-selection-policy-activation/current";
+    private static final String ACTIVATION_NAMESPACE =
+            "/api/v1/risk-method-selection-policy-activations";
+    private static final String ACTIVATION_EVENT_NAMESPACE =
+            "/api/v1/risk-method-selection-policy-activation-events";
     private static final Pattern POLICY_ITEM = Pattern.compile(
             "^/api/v1/risk-method-selection-policies/([1-9][0-9]*)/([a-f0-9]{64})$"
     );
     private static final Pattern INSTALLATION_ITEM = Pattern.compile(
             "^/api/v1/risk-method-selection-policy-installations/([1-9][0-9]*)/"
                     + "(RBVM_FORMULA|STANDARD_DERIVED)/([^/]+)/([1-9][0-9]*)/([a-f0-9]{64})$"
+    );
+    private static final Pattern ACTIVATION_ITEM = Pattern.compile(
+            "^/api/v1/risk-method-selection-policy-activations/([1-9][0-9]*)/([a-f0-9]{64})$"
+    );
+    private static final Pattern ACTIVE_EVENT = Pattern.compile(
+            "^/api/v1/risk-method-selection-policy-activation-events/([1-9][0-9]*)/ACTIVE/"
+                    + "([1-9][0-9]*)/([a-f0-9]{64})/([^/]+)$"
+    );
+    private static final Pattern CLEARED_EVENT = Pattern.compile(
+            "^/api/v1/risk-method-selection-policy-activation-events/([1-9][0-9]*)/CLEARED/([^/]+)$"
     );
 
     private final RiskMethodSelectionPolicyApi api;
@@ -34,15 +52,24 @@ final class RiskMethodSelectionPolicyHttpRouter {
         return POLICY_NAMESPACE.equals(path)
                 || path.startsWith(POLICY_NAMESPACE + '/')
                 || INSTALLATION_NAMESPACE.equals(path)
-                || path.startsWith(INSTALLATION_NAMESPACE + '/');
+                || path.startsWith(INSTALLATION_NAMESPACE + '/')
+                || ACTIVATION_CURRENT.equals(path)
+                || ACTIVATION_NAMESPACE.equals(path)
+                || path.startsWith(ACTIVATION_NAMESPACE + '/')
+                || ACTIVATION_EVENT_NAMESPACE.equals(path)
+                || path.startsWith(ACTIVATION_EVENT_NAMESPACE + '/');
     }
 
     static boolean handles(String path) {
         return POLICY_ITEM.matcher(path).matches()
-                || INSTALLATION_ITEM.matcher(path).matches();
+                || INSTALLATION_ITEM.matcher(path).matches()
+                || ACTIVATION_CURRENT.equals(path)
+                || ACTIVATION_ITEM.matcher(path).matches()
+                || ACTIVE_EVENT.matcher(path).matches()
+                || CLEARED_EVENT.matcher(path).matches();
     }
 
-    /** Resolve route-specific RBAC before capability lookup so V25 availability is not leaked. */
+    /** Resolve route-specific RBAC before capability lookup so persistence availability is not leaked. */
     static ApiRole requiredRole(HttpExchange exchange, String method) {
         Objects.requireNonNull(exchange, "exchange");
         Objects.requireNonNull(method, "method");
@@ -60,13 +87,27 @@ final class RiskMethodSelectionPolicyHttpRouter {
             return ApiRole.OPERATOR;
         }
 
-        if (POLICY_ITEM.matcher(path).matches()) {
+        if (ACTIVE_EVENT.matcher(path).matches() || CLEARED_EVENT.matcher(path).matches()) {
+            if (!"POST".equals(method)) {
+                exchange.getResponseHeaders().set("Allow", "POST");
+                throw new RiskMethodSelectionPolicyApi.ApiProblem(
+                        405,
+                        "METHOD_NOT_ALLOWED",
+                        "Use POST for explicit risk method selection policy activation events"
+                );
+            }
+            return ApiRole.OPERATOR;
+        }
+
+        if (POLICY_ITEM.matcher(path).matches()
+                || ACTIVATION_CURRENT.equals(path)
+                || ACTIVATION_ITEM.matcher(path).matches()) {
             if (!"GET".equals(method)) {
                 exchange.getResponseHeaders().set("Allow", "GET");
                 throw new RiskMethodSelectionPolicyApi.ApiProblem(
                         405,
                         "METHOD_NOT_ALLOWED",
-                        "Use GET for exact risk method selection policy lookup"
+                        "Use GET for exact risk method selection policy reads"
                 );
             }
             return ApiRole.VIEWER;
@@ -112,6 +153,50 @@ final class RiskMethodSelectionPolicyHttpRouter {
             return;
         }
 
+        if (ACTIVATION_CURRENT.equals(path)) {
+            if (!"GET".equals(method)) requiredRole(exchange, method);
+            rejectBody(exchange, "Current explicit activation read does not accept a request body");
+            send(exchange, api.currentActivation());
+            return;
+        }
+
+        Matcher activation = ACTIVATION_ITEM.matcher(path);
+        if (activation.matches()) {
+            if (!"GET".equals(method)) requiredRole(exchange, method);
+            rejectBody(exchange, "Exact activation lookup does not accept a request body");
+            send(exchange, api.getActivation(
+                    positiveInteger(activation.group(1), "activationRevision"),
+                    activation.group(2)
+            ));
+            return;
+        }
+
+        Matcher activeEvent = ACTIVE_EVENT.matcher(path);
+        if (activeEvent.matches()) {
+            if (!"POST".equals(method)) requiredRole(exchange, method);
+            rejectBody(exchange, "ACTIVE event accepts exact identity and timestamp in the path only");
+            send(exchange, api.activate(
+                    positiveInteger(activeEvent.group(1), "activationRevision"),
+                    positiveInteger(activeEvent.group(2), "policyRevision"),
+                    activeEvent.group(3),
+                    principal.actorId(),
+                    recordedAt(activeEvent.group(4))
+            ));
+            return;
+        }
+
+        Matcher clearedEvent = CLEARED_EVENT.matcher(path);
+        if (clearedEvent.matches()) {
+            if (!"POST".equals(method)) requiredRole(exchange, method);
+            rejectBody(exchange, "CLEARED event accepts exact revision and timestamp in the path only");
+            send(exchange, api.clearActivation(
+                    positiveInteger(clearedEvent.group(1), "activationRevision"),
+                    principal.actorId(),
+                    recordedAt(clearedEvent.group(2))
+            ));
+            return;
+        }
+
         throw new RiskMethodSelectionPolicyApi.ApiProblem(
                 404,
                 "NOT_FOUND",
@@ -129,6 +214,18 @@ final class RiskMethodSelectionPolicyHttpRouter {
                     400,
                     "INVALID_RISK_METHOD_SELECTION_POLICY_IDENTITY",
                     field + " must be a positive 32-bit integer"
+            );
+        }
+    }
+
+    private static Instant recordedAt(String value) {
+        try {
+            return Instant.parse(value);
+        } catch (DateTimeParseException exception) {
+            throw new RiskMethodSelectionPolicyApi.ApiProblem(
+                    400,
+                    "INVALID_RISK_METHOD_SELECTION_POLICY_ACTIVATION_IDENTITY",
+                    "recordedAt must be an explicit ISO-8601 instant such as 2026-08-23T05:00:00Z"
             );
         }
     }
