@@ -6,6 +6,7 @@ import io.rbvm.decision.RbvmRiskMethodSelectionPolicy;
 import io.rbvm.decision.RbvmRiskMethodSelectionPolicy.MethodFamily;
 import io.rbvm.decision.RbvmRiskMethodSelectionPolicyActivationEvent;
 
+import java.io.IOException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -132,7 +133,23 @@ public final class PostgresV27ActiveRiskMethodExecutionBindingLiveSelfTest {
         require(bindingRowCount(runtimeConnections) == 2,
                 "live fixture must contain exactly Formula plus derived execution bindings");
 
-        proveDatabaseRejectsCrossMethodResult(runtimeConnections, activateDerived, derived, snapshotSha);
+        RbvmRiskMethodSelectionPolicyActivationEvent invalidDerivedActivation =
+                RbvmRiskMethodSelectionPolicyActivationEvent.activate(
+                        7,
+                        derived,
+                        "binding-live-operator",
+                        "prove result identity FK",
+                        T1.plusSeconds(60)
+                );
+        require(activations.install(invalidDerivedActivation).status()
+                        == RiskMethodSelectionPolicyActivationInstallResult.Status.INSERTED,
+                "FK proof requires a fresh exact activation execution key");
+        proveDatabaseRejectsCrossMethodResult(
+                runtimeConnections,
+                invalidDerivedActivation,
+                derived,
+                snapshotSha
+        );
         proveAppendOnly(runtimeConnections);
 
         System.out.println(
@@ -146,65 +163,69 @@ public final class PostgresV27ActiveRiskMethodExecutionBindingLiveSelfTest {
             JdbcConnectionFactory connections,
             RbvmRiskMethodSelectionPolicy policy,
             String snapshotSha
-    ) throws Exception {
-        if (policy.methodFamily() == MethodFamily.RBVM_FORMULA) {
+    ) throws IOException {
+        try {
+            if (policy.methodFamily() == MethodFamily.RBVM_FORMULA) {
+                try (Connection connection = connections.open();
+                     PreparedStatement statement = connection.prepareStatement("""
+                             SELECT formula_id, formula_version, formula_sha256, explanation_sha256
+                             FROM rbvm.formula_result
+                             WHERE input_snapshot_sha256 = ?
+                               AND formula_id = ?
+                               AND formula_version = ?
+                               AND formula_sha256 = ?
+                             """)) {
+                    statement.setString(1, snapshotSha);
+                    statement.setString(2, policy.methodId());
+                    statement.setInt(3, policy.methodVersion());
+                    statement.setString(4, policy.methodSha256());
+                    try (ResultSet rows = statement.executeQuery()) {
+                        require(rows.next(), "Formula live result must already exist for exact snapshot/method");
+                        ActiveRiskMethodNativeResult result = new ActiveRiskMethodNativeResult(
+                                snapshotSha,
+                                policy.methodFamily(),
+                                rows.getString(1),
+                                rows.getInt(2),
+                                rows.getString(3).trim(),
+                                ResultFamily.RBVM_FORMULA_RESULT,
+                                rows.getString(4).trim()
+                        );
+                        require(!rows.next(), "Formula exact snapshot/method identity must resolve one row");
+                        return result;
+                    }
+                }
+            }
+
             try (Connection connection = connections.open();
                  PreparedStatement statement = connection.prepareStatement("""
-                         SELECT formula_id, formula_version, formula_sha256, explanation_sha256
-                         FROM rbvm.formula_result
+                         SELECT methodology_id, methodology_version, methodology_sha256, result_sha256
+                         FROM rbvm.derived_risk_result
                          WHERE input_snapshot_sha256 = ?
-                           AND formula_id = ?
-                           AND formula_version = ?
-                           AND formula_sha256 = ?
+                           AND methodology_id = ?
+                           AND methodology_version = ?
+                           AND methodology_sha256 = ?
                          """)) {
                 statement.setString(1, snapshotSha);
                 statement.setString(2, policy.methodId());
                 statement.setInt(3, policy.methodVersion());
                 statement.setString(4, policy.methodSha256());
                 try (ResultSet rows = statement.executeQuery()) {
-                    require(rows.next(), "Formula live result must already exist for exact snapshot/method");
+                    require(rows.next(), "derived live result must already exist for exact snapshot/method");
                     ActiveRiskMethodNativeResult result = new ActiveRiskMethodNativeResult(
                             snapshotSha,
                             policy.methodFamily(),
                             rows.getString(1),
                             rows.getInt(2),
                             rows.getString(3).trim(),
-                            ResultFamily.RBVM_FORMULA_RESULT,
+                            ResultFamily.DERIVED_RISK_RESULT,
                             rows.getString(4).trim()
                     );
-                    require(!rows.next(), "Formula exact snapshot/method identity must resolve one row");
+                    require(!rows.next(), "derived exact snapshot/method identity must resolve one row");
                     return result;
                 }
             }
-        }
-
-        try (Connection connection = connections.open();
-             PreparedStatement statement = connection.prepareStatement("""
-                     SELECT methodology_id, methodology_version, methodology_sha256, result_sha256
-                     FROM rbvm.derived_risk_result
-                     WHERE input_snapshot_sha256 = ?
-                       AND methodology_id = ?
-                       AND methodology_version = ?
-                       AND methodology_sha256 = ?
-                     """)) {
-            statement.setString(1, snapshotSha);
-            statement.setString(2, policy.methodId());
-            statement.setInt(3, policy.methodVersion());
-            statement.setString(4, policy.methodSha256());
-            try (ResultSet rows = statement.executeQuery()) {
-                require(rows.next(), "derived live result must already exist for exact snapshot/method");
-                ActiveRiskMethodNativeResult result = new ActiveRiskMethodNativeResult(
-                        snapshotSha,
-                        policy.methodFamily(),
-                        rows.getString(1),
-                        rows.getInt(2),
-                        rows.getString(3).trim(),
-                        ResultFamily.DERIVED_RISK_RESULT,
-                        rows.getString(4).trim()
-                );
-                require(!rows.next(), "derived exact snapshot/method identity must resolve one row");
-                return result;
-            }
+        } catch (SQLException exception) {
+            throw PostgresErrors.sanitized("Could not resolve existing native risk result", exception);
         }
     }
 
@@ -304,13 +325,8 @@ public final class PostgresV27ActiveRiskMethodExecutionBindingLiveSelfTest {
         try {
             action.run();
             return false;
-        } catch (java.io.IOException exception) {
-            Throwable cause = exception;
-            while (cause != null) {
-                if (cause instanceof SQLException sql && "23503".equals(sql.getSQLState())) return true;
-                cause = cause.getCause();
-            }
-            return exception.getMessage().contains("execution binding install failed");
+        } catch (IOException exception) {
+            return exception.getMessage().contains("[SQLState=23503]");
         }
     }
 
