@@ -9,6 +9,7 @@ server = (ROOT / "src/main/java/io/rbvm/csv/CsvPlatformServer.java").read_text()
 api_test = (ROOT / "src/test/java/io/rbvm/csv/RiskMethodSelectionPolicyApiSelfTest.java").read_text()
 http_test = (ROOT / "src/test/java/io/rbvm/csv/CsvRiskMethodSelectionPolicyHttpSelfTest.java").read_text()
 openapi = (ROOT / "api/risk-method-selection-policy-v1.openapi.yaml").read_text()
+combined_openapi = (ROOT / "api/openapi.yaml").read_text()
 doc = (ROOT / "docs/RISK_METHOD_SELECTION_POLICY_API_V1.md").read_text()
 platform = (ROOT / "src/test/java/io/rbvm/csv/PlatformSelfTest.java").read_text()
 
@@ -86,6 +87,18 @@ for marker in [
     'RBVM_RISK_METHOD_SELECTION_POLICY_API_V1',
 ]:
     assert marker in openapi, f"risk method policy OpenAPI missing {marker!r}"
+
+for marker in [
+    '/risk-method-selection-policies/{revision}/{policySha256}:',
+    '/risk-method-selection-policy-installations/{revision}/{methodFamily}/{methodId}/{methodVersion}/{methodSha256}:',
+    'RBVM_FORMULA, STANDARD_DERIVED',
+    'current, latest, default, fallback, catalog-order, or score-averaging semantic',
+]:
+    assert marker in combined_openapi, f"combined OpenAPI missing risk method policy marker {marker!r}"
+
+assert '/risk-method-selection-policies:' not in combined_openapi, (
+    'combined OpenAPI must not expose a policy collection route that could imply ordering/current semantics'
+)
 
 normalized_doc = ' '.join(doc.split())
 for marker in [
