@@ -60,7 +60,7 @@ for token in [
     'LEGACY_V2_INTELLIGENCE_PRIORITY_HEURISTIC_V1',
     'LEGACY_REFERENCE_ONLY_NOT_RBVM_MVP_PRIORITY_OR_ORGANIZATIONAL_RISK',
     'legacyHeuristicTier()',
-    '@Deprecated(forRemoval = false)',
+    'Compatibility accessor; API consumers must inspect priorityTierSemantics.',
     'output.put("priorityTierDeprecated", true)',
     'output.put("priorityTierSemantics", LEGACY_HEURISTIC_SEMANTICS)',
 ]:
