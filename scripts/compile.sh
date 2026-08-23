@@ -64,6 +64,17 @@ if [[ -f "$ROOT_DIR/src/main/resources/web/rbvm-dashboard-v4.css" ]]; then
   printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.css"
   cat "$ROOT_DIR/src/main/resources/web/rbvm-dashboard-v4.css" >> "$MAIN_CLASSES/web/rbvm-ui.css"
 fi
+# Dashboard V5 adds lifecycle/time evidence and semantic guardrails after V4.
+# It visualizes explicit workflow state and first-observed cohorts without
+# fabricating remediation history or converting external KEV dates into SLA.
+if [[ -f "$ROOT_DIR/src/main/resources/web/rbvm-dashboard-v5.js" ]]; then
+  printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
+  cat "$ROOT_DIR/src/main/resources/web/rbvm-dashboard-v5.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
+fi
+if [[ -f "$ROOT_DIR/src/main/resources/web/rbvm-dashboard-v5.css" ]]; then
+  printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.css"
+  cat "$ROOT_DIR/src/main/resources/web/rbvm-dashboard-v5.css" >> "$MAIN_CLASSES/web/rbvm-ui.css"
+fi
 mkdir -p "$MAIN_CLASSES/db/migration"
 cp "$ROOT_DIR"/db/migration/*.sql "$MAIN_CLASSES/db/migration/"
 
