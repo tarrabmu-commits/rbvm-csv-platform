@@ -23,8 +23,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -46,6 +47,8 @@ public final class CsvFirstEnrichmentJobHttpHandler implements HttpHandler {
             "^/api/v1/csv-first-enrichment-jobs/([0-9a-fA-F-]{36})$");
     private static final Duration PROCESS_TIMEOUT = Duration.ofMinutes(10);
     private static final int MAX_PROCESS_OUTPUT_BYTES = 64 * 1024;
+    private static final int MAX_CONCURRENT_JOBS = 2;
+    private static final int MAX_QUEUED_JOBS = 8;
 
     private final Path dataDirectory;
     private final Path repositoryRoot;
@@ -54,7 +57,7 @@ public final class CsvFirstEnrichmentJobHttpHandler implements HttpHandler {
     private final String python;
     private final long maximumUploadBytes;
     private final ApiKeyAuthenticator authenticator;
-    private final ExecutorService workers;
+    private final ThreadPoolExecutor workers;
 
     public CsvFirstEnrichmentJobHttpHandler(
             Path dataDirectory,
@@ -70,11 +73,19 @@ public final class CsvFirstEnrichmentJobHttpHandler implements HttpHandler {
         this.enrichmentScript = repositoryRoot.resolve("scripts/enrich-uploaded-csv.py").normalize();
         this.cacheDirectory = this.dataDirectory.resolve("public-cve-intel-cache").normalize();
         this.python = System.getenv().getOrDefault("RBVM_PYTHON", "python3");
-        this.workers = Executors.newFixedThreadPool(2, runnable -> {
-            Thread thread = new Thread(runnable, "rbvm-csv-first-enrichment-job");
-            thread.setDaemon(true);
-            return thread;
-        });
+        this.workers = new ThreadPoolExecutor(
+                MAX_CONCURRENT_JOBS,
+                MAX_CONCURRENT_JOBS,
+                0L,
+                TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(MAX_QUEUED_JOBS),
+                runnable -> {
+                    Thread thread = new Thread(runnable, "rbvm-csv-first-enrichment-job");
+                    thread.setDaemon(true);
+                    return thread;
+                },
+                new ThreadPoolExecutor.AbortPolicy()
+        );
     }
 
     @Override
@@ -145,7 +156,14 @@ public final class CsvFirstEnrichmentJobHttpHandler implements HttpHandler {
 
         String createdAt = Instant.now().toString();
         writeStatus(run, statusValue(runId, "QUEUED", "WAITING_FOR_WORKER", createdAt, null, null));
-        workers.submit(() -> execute(runId, createdAt));
+        try {
+            workers.execute(() -> execute(runId, createdAt));
+        } catch (RejectedExecutionException exception) {
+            deleteTree(run);
+            problem(exchange, 503, "CSV_FIRST_ENRICHMENT_JOB_CAPACITY",
+                    "CSV-first enrichment capacity is temporarily full; retry after an active job completes");
+            return;
+        }
 
         Map<String, Object> response = statusValue(
                 runId, "QUEUED", "WAITING_FOR_WORKER", createdAt, null, null);
