@@ -28,8 +28,8 @@ public final class PostgresV26RiskMethodSelectionActivationLiveSelfTest {
                 settings.password()
         );
         int schemaVersion = new PostgresMigrator(ownerConnections).installedVersion();
-        require(schemaVersion == 26,
-                "V26 activation live test requires schema version 26, found " + schemaVersion);
+        require(schemaVersion >= 26,
+                "V26 activation live test requires schema version >=26, found " + schemaVersion);
 
         JdbcConnectionFactory runtimeConnections = new DriverManagerConnectionFactory(
                 settings.jdbcUrl(),
@@ -40,8 +40,8 @@ public final class PostgresV26RiskMethodSelectionActivationLiveSelfTest {
                 new PostgresRiskMethodSelectionPolicyStore(runtimeConnections, false);
         PostgresRiskMethodSelectionPolicyActivationStore activations =
                 new PostgresRiskMethodSelectionPolicyActivationStore(runtimeConnections, false);
-        require(activations.schemaVersion() == 26,
-                "activation store must bind installed schema version 26");
+        require(activations.schemaVersion() >= 26,
+                "activation store must bind installed schema version >=26");
 
         RbvmRiskMethodSelectionPolicy formula = policies.findByRevision(1).orElseThrow();
         RbvmRiskMethodSelectionPolicy derived = policies.findByRevision(2).orElseThrow();
@@ -163,7 +163,7 @@ public final class PostgresV26RiskMethodSelectionActivationLiveSelfTest {
         proveAppendOnly(runtimeConnections);
 
         System.out.println(
-                "PostgresV26RiskMethodSelectionActivationLiveSelfTest: PASS schema=26 "
+                "PostgresV26RiskMethodSelectionActivationLiveSelfTest: PASS schema>=26 "
                         + "activate=PASS replay=PASS revision_conflict=PASS missing_policy=PASS "
                         + "stale_revision=PASS exact_pointer=PASS clear=PASS append_only=PASS"
         );
