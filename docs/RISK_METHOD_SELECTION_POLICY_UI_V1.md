@@ -54,9 +54,11 @@ There is no policy collection lookup and no max-revision, latest, current, activ
 
 ## Activation boundary
 
-Persisting a Risk Method Selection Policy revision does **not** establish which revision is operationally active. Multiple immutable revisions may coexist. A future operational activation mechanism must be a separate versioned, auditable contract that references an exact policy revision and policy SHA.
+Persisting a Risk Method Selection Policy revision does **not** establish which revision is operationally active. Multiple immutable revisions may coexist.
 
-Until such a contract exists, the UI never labels a policy revision as current, active, latest, or default and never highlights a result methodology as organizationally selected merely because a policy revision exists.
+Operational activation is now implemented as the separate V26 `RBVM_RISK_METHOD_SELECTION_POLICY_ACTIVATION_EVENT_V1` contract and the independent `RISK_METHOD_SELECTION_POLICY_ACTIVATION_UI_V1` browser surface. Activation references one exact policy revision + policy SHA and orders only explicit activation revisions; it never selects from policy revision order.
+
+This Policy Administration V1 surface itself still never labels a persisted revision as current, active, latest, preferred, or default. See [`RISK_METHOD_SELECTION_POLICY_ACTIVATION_UI_V1.md`](RISK_METHOD_SELECTION_POLICY_ACTIVATION_UI_V1.md) for the explicit ACTIVE/CLEARED browser contract.
 
 ## Scoring boundary
 
