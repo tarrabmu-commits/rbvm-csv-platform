@@ -23,6 +23,13 @@ find "$ROOT_DIR/src/main/java" -name '*.java' -print > "$BUILD_DIR/main-sources.
 if [[ -d "$ROOT_DIR/src/main/resources" ]]; then
   cp -R "$ROOT_DIR/src/main/resources/." "$MAIN_CLASSES/"
 fi
+# Frontend System V2 remains one served dependency-free bundle. Keep the
+# CSV-first customer workflow isolated in source, then concatenate it
+# deterministically into the runtime rbvm-ui.js artifact.
+if [[ -f "$ROOT_DIR/src/main/resources/web/customer-flow.js" ]]; then
+  printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
+  cat "$ROOT_DIR/src/main/resources/web/customer-flow.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
+fi
 mkdir -p "$MAIN_CLASSES/db/migration"
 cp "$ROOT_DIR"/db/migration/*.sql "$MAIN_CLASSES/db/migration/"
 
