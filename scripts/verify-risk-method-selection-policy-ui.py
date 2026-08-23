@@ -24,8 +24,11 @@ contract = "RISK_METHOD_SELECTION_POLICY_ADMIN_UI_V1"
 if host.count(contract) != 1:
     raise AssertionError("Risk Method Selection Policy UI contract marker must occur exactly once")
 start = host.index(contract)
-end = host.index('<script src="/ui/rbvm-ui.js" defer></script>', start)
-ui = host[start:end]
+script_start = host.rfind("<script>", 0, start)
+script_end = host.index("</script>", start)
+if script_start < 0 or script_end <= start:
+    raise AssertionError("Risk Method Selection Policy UI must be contained in one inline script")
+ui = host[script_start:script_end]
 
 required = (
     "EXPLICIT_ID_AND_SHA_ONLY_NO_DEFAULT",
@@ -95,13 +98,11 @@ for forbidden in (
             f"Risk Method Selection Policy UI contains forbidden implicit construct {forbidden!r}"
         )
 
-# The exact policy collection itself must never be fetched; only exact revision+SHA reads are valid.
 if re.search(r"api\(\s*['\"]\/api\/v1\/risk-method-selection-policies['\"]", ui):
     raise AssertionError("Risk Method Selection Policy UI must not list policy revisions")
 if "/api/v1/risk-method-selection-policies?" in ui:
     raise AssertionError("Risk Method Selection Policy UI must not query a policy collection")
 
-# Both installation selectors begin empty after their options/attributes are created.
 method_option = ui.index("Select exact risk method identity…")
 method_empty = ui.index("methodSelect.value=''", method_option)
 revision_input = ui.index("'aria-label':'Policy revision'", method_empty)
@@ -110,7 +111,6 @@ install_handler = ui.index("Install exact policy revision", revision_empty)
 if not method_option < method_empty < revision_input < revision_empty < install_handler:
     raise AssertionError("Policy installation must start with explicit empty method and revision selectors")
 
-# Exact historical read also begins empty and requires both immutable identifiers.
 read_revision = ui.index("'aria-label':'Exact policy revision to read'", install_handler)
 read_revision_empty = ui.index("readRevision.value=''", read_revision)
 read_sha = ui.index("'aria-label':'Exact policy SHA-256 to read'", read_revision_empty)
