@@ -43,13 +43,10 @@ public final class DefaultActiveRiskMethodExecutionBindingMaterializer {
             ActiveRiskMethodResultMaterializer results,
             ActiveRiskMethodExecutionBindingStore bindings
     ) {
-        this(
-                policies,
-                Objects.requireNonNull(policies, "policies").activationStore()
-                        .orElseThrow(ActivationPersistenceUnavailableException::new),
-                results,
-                bindings
-        );
+        this.policies = Objects.requireNonNull(policies, "policies");
+        this.activations = policies.activationStore().orElse(null);
+        this.results = Objects.requireNonNull(results, "results");
+        this.bindings = Objects.requireNonNull(bindings, "bindings");
     }
 
     public ActiveRiskMethodExecutionBindingMaterializationResult materialize(
@@ -62,6 +59,9 @@ public final class DefaultActiveRiskMethodExecutionBindingMaterializer {
         }
         requireSha(activationEventSha256, "activationEventSha256");
         requireSha(inputSnapshotSha256, "inputSnapshotSha256");
+        if (activations == null) {
+            throw new ActivationPersistenceUnavailableException();
+        }
 
         RbvmRiskMethodSelectionPolicyActivationEvent activation = activations
                 .findByActivationRevision(activationRevision)
