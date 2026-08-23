@@ -56,6 +56,22 @@
     return meaningful.slice(1).map(values => Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ''])));
   }
 
+  function visualRows(rows) {
+    return rows.map(row => {
+      const value = {...row};
+      if (!String(value.EPSS_Probability || '').trim()) value.EPSS_Probability = 'MISSING';
+      if (value.CVSS4_Context_Score_Status !== 'CALCULATED_FIRST_REFERENCE_COMPATIBLE'
+          || !String(value.CVSS4_Context_Score || '').trim()) {
+        value.CVSS4_Context_Score = 'MISSING';
+      }
+      if (value.RBVM_MVP_Priority_Status !== 'RANKED_RELATIVE_ONLY') {
+        value.RBVM_MVP_Priority_Dominates = 'MISSING';
+        value.RBVM_MVP_Priority_Dominated_By = 'MISSING';
+      }
+      return value;
+    });
+  }
+
   function identifiers(panel) {
     const runId = new URLSearchParams(location.search).get('runId') || '';
     if (!new RegExp(`^${UUID}$`).test(runId)) return null;
@@ -93,7 +109,7 @@
         loadJson(`${analysisRoot}/method-admission`, 'Method-admission report'),
       ]);
       if (!csvResponse.ok) throw new Error(`Priority-ranked CSV could not be loaded (HTTP ${csvResponse.status}).`);
-      const rows = parseCsv(await csvResponse.text());
+      const rows = visualRows(parseCsv(await csvResponse.text()));
       if (current !== generation || !panel.isConnected) return;
       const visual = window.rbvmCsvRunVisuals.render(rows, report, admission);
       loading.replaceWith(visual);
