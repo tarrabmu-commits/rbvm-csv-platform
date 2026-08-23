@@ -20,7 +20,7 @@ The submit operation is exactly:
 
 The request has no query selector and no request body. Operator authorization remains a server concern. The UI never exposes a **Run current** action and never calls a current/resolved activation endpoint to choose what should execute.
 
-An exact retry may return `REPLAYED`; the UI presents this as replay of the immutable execution binding, not as a fresh selection or a new risk-method execution.
+An exact retry may return `REPLAYED`; the UI presents this as replay of the immutable execution binding. Replay does not re-execute the risk method, does not make a fresh selection, and does not substitute another policy or method.
 
 ## Exact binding read
 
