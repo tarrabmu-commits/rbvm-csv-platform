@@ -36,6 +36,21 @@ if [[ -f "$ROOT_DIR/src/main/resources/web/csv-run-review.js" ]]; then
   printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
   cat "$ROOT_DIR/src/main/resources/web/csv-run-review.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
 fi
+# CSV run decision visuals are a read-only projection over the immutable
+# priority CSV/report and method-admission artifacts already used by review.
+# They do not execute or reproduce the priority methodology in the browser.
+if [[ -f "$ROOT_DIR/src/main/resources/web/csv-run-visuals.js" ]]; then
+  printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
+  cat "$ROOT_DIR/src/main/resources/web/csv-run-visuals.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
+fi
+if [[ -f "$ROOT_DIR/src/main/resources/web/csv-run-visuals-mount.js" ]]; then
+  printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
+  cat "$ROOT_DIR/src/main/resources/web/csv-run-visuals-mount.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
+fi
+if [[ -f "$ROOT_DIR/src/main/resources/web/csv-run-visuals.css" ]]; then
+  printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.css"
+  cat "$ROOT_DIR/src/main/resources/web/csv-run-visuals.css" >> "$MAIN_CLASSES/web/rbvm-ui.css"
+fi
 # Canonical handoff is a separate explicit operator workflow. It reuses the
 # established canonical CSV import/confirm API and never auto-confirms.
 if [[ -f "$ROOT_DIR/src/main/resources/web/csv-canonical-handoff.js" ]]; then
