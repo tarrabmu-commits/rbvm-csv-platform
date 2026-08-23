@@ -1,8 +1,11 @@
 (() => {
   'use strict';
 
-  const CONTRACT = 'CSV_FIRST_FINDING_REVIEW_UI_V2';
+  const CONTRACT = 'CSV_FIRST_FINDING_REVIEW_UI_V3';
   const BUNDLE_CONTRACT = 'RBVM_CUSTOMER_ASSET_BUNDLE_V3';
+  const PRIORITY_CONTRACT = 'CSV_FIRST_MVP_PRIORITY_HTTP_V1';
+  const PRIORITY_METHOD = 'RBVM_MVP_PRIORITY_POLICY_V1';
+  const PRIORITY_METHOD_SHA = '88d5cdb8702c6c0ed2c033c3df6b8abbe1aa392f44f4507685b54082a16dc388';
   const PAGE_SIZE = 100;
   const SECURITY_REQUIREMENTS = new Set(['X', 'L', 'M', 'H']);
   let queued = false;
@@ -134,6 +137,14 @@
     return `C:${row.CVSS4_CR_Resolved || 'X'} I:${row.CVSS4_IR_Resolved || 'X'} A:${row.CVSS4_AR_Resolved || 'X'}`;
   }
 
+  function priorityDisplay(row) {
+    if (row.RBVM_MVP_Priority_Status === 'RANKED_RELATIVE_ONLY' && row.RBVM_MVP_Priority_Front) {
+      return `Front ${row.RBVM_MVP_Priority_Front}`;
+    }
+    if (row.RBVM_MVP_Priority_Status === 'UNRANKABLE_MISSING_EVIDENCE') return 'Unrankable';
+    return row.RBVM_MVP_Priority_Status || '—';
+  }
+
   function metric(label, value, detail = '') {
     return el('div', {class: 'metric'}, el('div', {class: 'metric-label', text: label}), el('div', {class: 'metric-value', text: value}), detail ? el('div', {class: 'metric-detail', text: detail}) : null);
   }
@@ -164,12 +175,13 @@
       const rows = filtered.slice(start, start + PAGE_SIZE);
       const table = el('table', {class: 'data-table'},
         el('thead', {}, el('tr', {}, ...[
-          'Asset', 'CVE', 'Product', 'Scanner', 'Context CVSS', 'Public CVSS', 'CR / IR / AR',
+          'Asset', 'CVE', 'MVP Priority', 'Product', 'Scanner', 'Context CVSS', 'Public CVSS', 'CR / IR / AR',
           'EPSS', 'KEV', 'Exploitation', 'Automatable', 'Technical Impact', 'Criticality', 'Internet', 'Context'
         ].map(label => el('th', {text: label})))),
         el('tbody', {}, ...rows.map(row => el('tr', {},
           el('td', {text: row.Agent || row.Agent_ID || '—'}),
           el('td', {class: 'mono', text: row.CVE_ID || '—'}),
+          el('td', {text: priorityDisplay(row), title: row.RBVM_MVP_Priority_Blockers || ''}),
           el('td', {text: row.Affected_Product || '—'}),
           el('td', {text: row.Severity || '—'}),
           el('td', {text: contextualCvssDisplay(row)}),
@@ -197,7 +209,7 @@
     render();
   }
 
-  function reviewPanel(rows, run, admission) {
+  function reviewPanel(rows, run, admission, priority, priorityReport) {
     const runId = run.runId;
     const analysisId = run.analysisId;
     const uniqueCves = new Set(rows.map(row => row.CVE_ID).filter(Boolean)).size;
@@ -211,8 +223,13 @@
     const contextMissing = rows.filter(row => !String(row.Customer_Context_Status || '').startsWith('MATCHED')).length;
     const admissionState = admission?.selection?.state || 'UNKNOWN';
     const riskRows = Number(admission?.selection?.riskComputedRows || 0);
+    const rankedRows = Number(priorityReport?.rankedRows || 0);
+    const unrankableRows = Number(priorityReport?.unrankableRows || 0);
+    const frontOne = Number(priorityReport?.frontCounts?.['1'] || 0);
     const host = el('div');
 
+    const downloadPriority = artifactButton('Download priority-ranked CSV', priority.priorityCsv, `rbvm-mvp-priority-${runId}-${analysisId}.csv`, 'primary');
+    const downloadPriorityReport = artifactButton('Download priority report', priority.priorityReport, `rbvm-mvp-priority-report-${runId}-${analysisId}.json`);
     const downloadAnalysis = artifactButton('Download contextual analysis CSV', run.analysisCsv, `rbvm-contextual-analysis-${runId}-${analysisId}.csv`);
     const downloadAdmission = artifactButton('Download method admission', run.methodAdmission, `rbvm-method-admission-${runId}-${analysisId}.json`);
     const downloadBundle = artifactButton('Download exact customer bundle', run.customerBundle, `rbvm-customer-bundle-${runId}-${analysisId}.json`, 'ghost');
@@ -228,19 +245,22 @@
       el('div', {class: 'panel-header'},
         el('div', {},
           el('h2', {class: 'panel-title', text: 'Finding Evidence Review — CSV Run'}),
-          el('p', {class: 'panel-subtitle', text: `Immutable contextual analysis ${analysisId}. Server-side CVSS v4 context + public threat intelligence + direct customer context; Organizational Risk is not inferred.`})
+          el('p', {class: 'panel-subtitle', text: `Immutable contextual analysis ${analysisId}. Server-side CVSS v4 context + public threat intelligence + direct customer context + relative MVP treatment priority; Organizational Risk remains NON_COMPUTABLE.`})
         ),
-        el('div', {class: 'inline-actions'}, downloadAnalysis, downloadAdmission, downloadBundle, close)
+        el('div', {class: 'inline-actions'}, downloadPriority, downloadPriorityReport, downloadAnalysis, downloadAdmission, downloadBundle, close)
       ),
       el('div', {class: 'panel-body'}, el('div', {class: 'stack'},
+        callout('MVP Priority is RBVM local policy: a relative Pareto frontier within this exact CSV analysis. Front 1 means nondominated treatment priority, not Critical/High risk, not an SLA, and not Organizational Risk.', 'warning'),
         callout('Contextual CVSS remains technical vulnerability severity. CR/IR/AR are direct customer CVSS v4 Security Requirements; Asset Criticality is not mapped to them, Internet Facing is not mapped to MAV, and EPSS is not multiplied by CVSS.'),
         callout(`Risk-method admission: ${admissionState}. Risk rows computed: ${riskRows}. Existing methods are not auto-selected by catalog order or score magnitude.`, admissionState === 'NO_V2_PRIMARY_METHOD_ADMITTED' ? 'warning' : 'info'),
         el('div', {class: 'metrics'},
           metric('Finding rows', rows.length),
+          metric('Priority ranked', rankedRows, `Front 1: ${frontOne}`),
+          metric('Priority unrankable', unrankableRows, 'Missing evidence is not imputed'),
           metric('Unique CVEs', uniqueCves),
           metric('Assets', uniqueAssets),
-          metric('CVSS4 present', cvssPresent),
           metric('Contextual CVSS', contextualCalculated, `${be} BE · ${bte} BTE`),
+          metric('CVSS4 present', cvssPresent),
           metric('EPSS present', epssPresent),
           metric('KEV listed', kevListed),
           metric('Context unmatched', contextMissing)
@@ -270,7 +290,7 @@
     }
     buttonNode.disabled = true;
     try {
-      status.textContent = 'Creating an immutable contextual analysis and evaluating risk-method admission…';
+      status.textContent = 'Creating immutable contextual analysis, method admission and relative MVP priority…';
       status.className = 'status-message';
       const bundle = customerBundle(panel);
       const response = await fetch(`/api/v1/csv-first-enrichments/${encodeURIComponent(runId)}/analyses`, {
@@ -285,21 +305,47 @@
         throw new Error('Unexpected contextual-analysis response contract.');
       }
 
-      const [analysisResponse, admissionResponse] = await Promise.all([
-        fetch(run.analysisCsv, {cache: 'no-store'}),
+      const priorityResponse = await fetch(
+        `/api/v1/csv-first-priorities/${encodeURIComponent(runId)}/${encodeURIComponent(run.analysisId)}`,
+        {method: 'POST', cache: 'no-store'}
+      );
+      if (!priorityResponse.ok) {
+        throw new Error(await responseProblem(priorityResponse, `MVP priority derivation failed (HTTP ${priorityResponse.status}).`));
+      }
+      const priority = await priorityResponse.json();
+      if (priority.contractId !== PRIORITY_CONTRACT
+          || priority.methodId !== PRIORITY_METHOD
+          || priority.methodSha256 !== PRIORITY_METHOD_SHA
+          || priority.organizationalRisk !== 'NON_COMPUTABLE'
+          || priority.sourceAnalysisImmutable !== true
+          || priority.derivedArtifactsImmutable !== true) {
+        throw new Error('Unexpected MVP-priority response contract.');
+      }
+
+      const [priorityCsvResponse, admissionResponse, priorityReportResponse] = await Promise.all([
+        fetch(priority.priorityCsv, {cache: 'no-store'}),
         fetch(run.methodAdmission, {cache: 'no-store'}),
+        fetch(priority.priorityReport, {cache: 'no-store'}),
       ]);
-      if (!analysisResponse.ok) throw new Error(`Contextual analysis CSV could not be loaded (HTTP ${analysisResponse.status}).`);
+      if (!priorityCsvResponse.ok) throw new Error(`Priority-ranked CSV could not be loaded (HTTP ${priorityCsvResponse.status}).`);
       if (!admissionResponse.ok) throw new Error(`Method-admission report could not be loaded (HTTP ${admissionResponse.status}).`);
-      const rows = parseCsv(await analysisResponse.text());
+      if (!priorityReportResponse.ok) throw new Error(`Priority report could not be loaded (HTTP ${priorityReportResponse.status}).`);
+      const rows = parseCsv(await priorityCsvResponse.text());
       const admission = await admissionResponse.json();
-      loaded = {run, rows, admission};
+      const priorityReport = await priorityReportResponse.json();
+      if (priorityReport.methodId !== PRIORITY_METHOD
+          || priorityReport.methodSha256 !== PRIORITY_METHOD_SHA
+          || priorityReport.organizationalRiskComputed !== false
+          || priorityReport.riskStatus !== 'NON_COMPUTABLE') {
+        throw new Error('Unexpected MVP-priority report contract.');
+      }
+      loaded = {run, rows, admission, priority, priorityReport};
 
       document.querySelector('[data-csv-run-review]')?.remove();
-      const review = reviewPanel(rows, run, admission);
+      const review = reviewPanel(rows, run, admission, priority, priorityReport);
       panel.insertAdjacentElement('afterend', review);
       panel.hidden = true;
-      status.textContent = `Contextual review ${run.analysisId} ready for ${rows.length} finding rows.`;
+      status.textContent = `Contextual review ${run.analysisId} ready: ${priorityReport.rankedRows} ranked, ${priorityReport.unrankableRows} unrankable; Organizational Risk remains NON_COMPUTABLE.`;
       status.className = 'status-message success';
       review.scrollIntoView({block: 'start'});
     } catch (error) {
