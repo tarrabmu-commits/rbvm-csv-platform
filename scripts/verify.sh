@@ -64,6 +64,8 @@ python3 "$ROOT_DIR/scripts/verify-managed-assets-ui.py" "$ROOT_DIR/src/main/reso
 python3 "$ROOT_DIR/scripts/verify-asset-links-ui.py"
 python3 "$ROOT_DIR/scripts/verify-workflows.py"
 python3 "$ROOT_DIR/scripts/verify-enrichment.py"
+python3 "$ROOT_DIR/scripts/verify-public-vulnerability-intel.py"
+python3 "$ROOT_DIR/scripts/verify-csv-first-enrichment.py"
 python3 "$ROOT_DIR/scripts/verify-nvd-cvss-v31.py"
 python3 "$ROOT_DIR/scripts/verify-cvss-v31-handoff.py"
 python3 "$ROOT_DIR/scripts/verify-cisa-kev-source.py"
