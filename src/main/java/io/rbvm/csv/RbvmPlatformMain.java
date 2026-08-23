@@ -128,6 +128,8 @@ public final class RbvmPlatformMain {
         System.out.println("RBVM CSV Platform is running at " + application.baseUri());
         System.out.println("CSV-first enrichment API: "
                 + application.baseUri().resolve("/api/v1/csv-first-enrichments"));
+        System.out.println("CSV-first MVP priority API: "
+                + application.baseUri().resolve("/api/v1/csv-first-priorities/{runId}/{analysisId}"));
         System.out.println("CSV-first source API: "
                 + application.baseUri().resolve("/api/v1/csv-first-sources/{runId}"));
         System.out.println("CSV-first canonical public evidence API: "
@@ -160,6 +162,10 @@ public final class RbvmPlatformMain {
         server.createContext(
                 "/api/v1/csv-first-enrichments",
                 new CsvFirstEnrichmentHttpHandler(dataDirectory, maximumUploadBytes, authenticator)
+        );
+        server.createContext(
+                "/api/v1/csv-first-priorities",
+                new CsvFirstMvpPriorityHttpHandler(dataDirectory, authenticator)
         );
         server.createContext(
                 "/api/v1/csv-first-sources",
