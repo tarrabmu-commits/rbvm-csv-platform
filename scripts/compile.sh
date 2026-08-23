@@ -51,6 +51,10 @@ if [[ -f "$ROOT_DIR/src/main/resources/web/csv-run-visuals.css" ]]; then
   printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.css"
   cat "$ROOT_DIR/src/main/resources/web/csv-run-visuals.css" >> "$MAIN_CLASSES/web/rbvm-ui.css"
 fi
+if [[ -f "$ROOT_DIR/src/main/resources/web/csv-run-visuals-mount.css" ]]; then
+  printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.css"
+  cat "$ROOT_DIR/src/main/resources/web/csv-run-visuals-mount.css" >> "$MAIN_CLASSES/web/rbvm-ui.css"
+fi
 # Canonical handoff is a separate explicit operator workflow. It reuses the
 # established canonical CSV import/confirm API and never auto-confirms.
 if [[ -f "$ROOT_DIR/src/main/resources/web/csv-canonical-handoff.js" ]]; then
