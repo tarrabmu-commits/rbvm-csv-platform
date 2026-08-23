@@ -5,6 +5,8 @@ import com.sun.net.httpserver.HttpServer;
 import io.rbvm.context.FindingBusinessServiceLinkRegistry;
 import io.rbvm.context.FindingReachabilityScopeLinkRegistry;
 import io.rbvm.postgres.ActiveRiskMethodExecutionRuntimeFactory;
+import io.rbvm.postgres.CanonicalImportFindingExporter;
+import io.rbvm.postgres.CanonicalImportFindingRuntimeFactory;
 import io.rbvm.postgres.CanonicalProjectionFactory;
 import io.rbvm.postgres.CanonicalProjectionFactory.RuntimeComponents;
 import io.rbvm.postgres.DerivedRiskResultRuntimeFactory;
@@ -43,6 +45,8 @@ public final class RbvmPlatformMain {
         RuntimeComponents runtime = CanonicalProjectionFactory.runtimeFromEnvironment(environment);
         Optional<CanonicalProjectionFactory.FindingContextAssociationRuntime> associationRuntime =
                 CanonicalProjectionFactory.findingContextAssociationRuntimeFromEnvironment(environment);
+        Optional<CanonicalImportFindingExporter> canonicalImportFindings =
+                CanonicalImportFindingRuntimeFactory.fromEnvironment(environment);
         Optional<FormulaResultRuntimeFactory.Runtime> formulaResultRuntime =
                 FormulaResultRuntimeFactory.fromEnvironment(environment);
         Optional<DerivedRiskResultRuntimeFactory.Runtime> derivedRiskResultRuntime =
@@ -82,7 +86,13 @@ public final class RbvmPlatformMain {
                 rateLimiter
         );
 
-        registerCsvFirstTransport(application, dataDirectory, maximumUploadBytes, authenticator);
+        registerProductExtensions(
+                application,
+                dataDirectory,
+                maximumUploadBytes,
+                canonicalImportFindings,
+                authenticator
+        );
 
         associationRuntime.ifPresent(context -> application.enableFindingContextAssociationApi(
                 context.reachabilityLinks(),
@@ -116,6 +126,8 @@ public final class RbvmPlatformMain {
                 + application.baseUri().resolve("/api/v1/csv-first-enrichments"));
         System.out.println("CSV-first source API: "
                 + application.baseUri().resolve("/api/v1/csv-first-sources/{runId}"));
+        System.out.println("Canonical import Finding manifest API: "
+                + application.baseUri().resolve("/api/v1/canonical-imports/{importId}/findings.csv"));
         System.out.println("Managed Assets operator UI: " + application.baseUri().resolve("/assets"));
         System.out.println("Data directory: " + dataDirectory.toAbsolutePath().normalize());
         System.out.println("Canonical projection: " + canonicalProjection.health().get("backend"));
@@ -123,16 +135,17 @@ public final class RbvmPlatformMain {
         new CountDownLatch(1).await();
     }
 
-    private static void registerCsvFirstTransport(
+    private static void registerProductExtensions(
             CsvPlatformServer application,
             Path dataDirectory,
             long maximumUploadBytes,
+            Optional<CanonicalImportFindingExporter> canonicalImportFindings,
             ApiKeyAuthenticator authenticator
     ) throws ReflectiveOperationException {
         // Transitional registration seam: CsvPlatformServer predates extension
         // contexts and keeps its HttpServer private. Keep the reflection isolated
-        // here so the established adapter does not need a broad rewrite for this
-        // fast CSV-first product increment.
+        // here so the established adapter does not need a broad rewrite for these
+        // narrow CSV-first and exact import-scoped read transports.
         Field serverField = CsvPlatformServer.class.getDeclaredField("server");
         serverField.setAccessible(true);
         HttpServer server = (HttpServer) serverField.get(application);
@@ -143,6 +156,10 @@ public final class RbvmPlatformMain {
         server.createContext(
                 "/api/v1/csv-first-sources",
                 new CsvFirstSourceHttpHandler(dataDirectory, authenticator)
+        );
+        server.createContext(
+                "/api/v1/canonical-imports",
+                new CanonicalImportFindingHttpHandler(canonicalImportFindings, authenticator)
         );
     }
 
