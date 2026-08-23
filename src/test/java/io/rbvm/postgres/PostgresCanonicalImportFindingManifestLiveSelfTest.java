@@ -3,6 +3,7 @@ package io.rbvm.postgres;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Optional;
@@ -45,7 +46,6 @@ public final class PostgresCanonicalImportFindingManifestLiveSelfTest {
     }
 
     private static Seed seed(JdbcConnectionFactory connections) throws Exception {
-        UUID tenantId = UUID.randomUUID();
         UUID sourceProfileId = UUID.randomUUID();
         UUID importId = UUID.randomUUID();
         UUID otherImportId = UUID.randomUUID();
@@ -65,9 +65,7 @@ public final class PostgresCanonicalImportFindingManifestLiveSelfTest {
         try (Connection connection = connections.open()) {
             connection.setAutoCommit(false);
             try {
-                execute(connection,
-                        "INSERT INTO rbvm.tenant (id, tenant_key, display_name, created_at) VALUES (?, ?, ?, ?)",
-                        tenantId, "manifest-" + tenantId, "Manifest live tenant", time);
+                UUID tenantId = localTenant(connection, time);
                 execute(connection, """
                         INSERT INTO rbvm.source_profile
                             (id, tenant_id, external_key, source_type, contract_id, semantics, enabled, created_at)
@@ -128,6 +126,20 @@ public final class PostgresCanonicalImportFindingManifestLiveSelfTest {
             }
         }
         return new Seed(importId, findingId, unrelatedFindingId, profileKey);
+    }
+
+    private static UUID localTenant(Connection connection, Instant time) throws Exception {
+        try (PreparedStatement select = connection.prepareStatement(
+                "SELECT id FROM rbvm.tenant WHERE tenant_key = 'local'")) {
+            try (ResultSet rows = select.executeQuery()) {
+                if (rows.next()) return rows.getObject(1, UUID.class);
+            }
+        }
+        UUID tenantId = UUID.randomUUID();
+        execute(connection,
+                "INSERT INTO rbvm.tenant (id, tenant_key, display_name, created_at) VALUES (?, 'local', ?, ?)",
+                tenantId, "Local tenant", time);
+        return tenantId;
     }
 
     private static void insertImport(
