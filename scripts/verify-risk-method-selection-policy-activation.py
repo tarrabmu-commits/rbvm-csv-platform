@@ -36,7 +36,7 @@ for marker in [
     'event.canonicalPayload().length == 241',
     'distinguishesActivationRevisionFromPolicyRevision',
     'supportsExplicitClearedState',
-    'rehydrateRejectsCanonicalTampering' if False else 'rejectsInvalidStateShapeAndTampering',
+    'rejectsInvalidStateShapeAndTampering',
 ]:
     assert marker in self_test, f'activation self-test missing {marker!r}'
 
@@ -104,7 +104,7 @@ for forbidden in [
 
 for marker in [
     'PostgresV26RiskMethodSelectionActivationLiveSelfTest',
-    'schema version 26',
+    'schema version >=26',
     'Status.INSERTED',
     'Status.REPLAYED',
     'Status.REVISION_CONFLICT',
@@ -134,6 +134,6 @@ for marker in [
 
 assert 'RbvmRiskMethodSelectionPolicyActivationEventSelfTest.main(args);' in platform
 assert 'PostgresV26RiskMethodSelectionActivationLiveSelfTest' in workflow
-assert 'V18-V26' in workflow
+assert 'V18-V27' in workflow
 
 print('Risk Method Selection Policy Activation V1 structural checks: PASS')
