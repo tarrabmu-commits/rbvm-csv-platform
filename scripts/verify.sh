@@ -10,6 +10,7 @@ TEST_CLASSES="$ROOT_DIR/build/manual/test"
 java -ea -cp "$MAIN_CLASSES:$TEST_CLASSES" io.rbvm.csv.PlatformSelfTest
 python3 "$ROOT_DIR/scripts/verify-api.py"
 python3 "$ROOT_DIR/scripts/verify-sql.py"
+python3 "$ROOT_DIR/scripts/verify-findings-read-hotpath.py"
 python3 "$ROOT_DIR/scripts/verify-managed-asset-registry.py"
 python3 "$ROOT_DIR/scripts/verify-scanner-managed-asset-link.py"
 python3 "$ROOT_DIR/scripts/verify-scanner-managed-asset-link-api.py"
