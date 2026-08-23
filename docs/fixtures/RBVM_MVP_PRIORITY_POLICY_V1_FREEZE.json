@@ -4,10 +4,11 @@
   "status": "FROZEN_FOR_MVP",
   "frozenOn": "2026-08-24",
   "classification": "RBVM_POLICY",
+  "methodSha256": "88d5cdb8702c6c0ed2c033c3df6b8abbe1aa392f44f4507685b54082a16dc388",
   "method": {
     "methodId": "RBVM_MVP_PRIORITY_POLICY_V1",
     "methodVersion": 1,
-    "methodSha256": "88d5cdb8702c6c0ed2c033c3df6b8abbe1aa392f44f4507685b54082a16dc388",
+    "classification": "RBVM_POLICY",
     "outputSemantics": "RELATIVE_TREATMENT_PRIORITY_PARETO_FRONT_WITHIN_INPUT_SET",
     "organizationalRisk": false,
     "dimensions": [
