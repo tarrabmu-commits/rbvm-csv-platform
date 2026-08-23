@@ -52,11 +52,11 @@ public final class PostgresCanonicalImportFindingManifestLiveSelfTest {
         UUID assetId = UUID.randomUUID();
         UUID vulnerabilityId = UUID.randomUUID();
         UUID componentId = UUID.randomUUID();
+        UUID unrelatedComponentId = UUID.randomUUID();
         UUID observationOne = UUID.randomUUID();
         UUID observationTwo = UUID.randomUUID();
         UUID unrelatedObservation = UUID.randomUUID();
         UUID caseId = UUID.randomUUID();
-        UUID unrelatedCaseId = UUID.randomUUID();
         UUID findingId = UUID.randomUUID();
         UUID unrelatedFindingId = UUID.randomUUID();
         String profileKey = "manifest-live-" + sourceProfileId;
@@ -82,23 +82,21 @@ public final class PostgresCanonicalImportFindingManifestLiveSelfTest {
                              first_observed_at, last_observed_at, created_at, updated_at)
                         VALUES (?, ?, ?, 'manifest-host', 'manifest-host', 'Linux',
                                 'SOURCE_NAME_ONLY', 'LOW', ?, ?, ?, ?)
-                        """, assetId, tenantId, sourceProfileId, time, time, time, time);
+                        """, assetId, tenantId, sourceProfileId, time, time.plusSeconds(120), time, time.plusSeconds(120));
                 execute(connection,
                         "INSERT INTO rbvm.vulnerability (id, cve_id, created_at) VALUES (?, 'CVE-2099-999991', ?)",
                         vulnerabilityId, time);
-                execute(connection, """
-                        INSERT INTO rbvm.asset_component
-                            (id, tenant_id, asset_id, observed_product_name, normalized_product_name,
-                             version_status, first_observed_at, last_observed_at, created_at, updated_at)
-                        VALUES (?, ?, ?, 'manifest-package', 'manifest-package', 'UNKNOWN_FROM_SOURCE', ?, ?, ?, ?)
-                        """, componentId, tenantId, assetId, time, time, time, time);
+                insertComponent(connection, componentId, tenantId, assetId,
+                        "manifest-package", time, time.plusSeconds(60));
+                insertComponent(connection, unrelatedComponentId, tenantId, assetId,
+                        "other-package", time.plusSeconds(120), time.plusSeconds(120));
 
                 insertObservation(connection, observationOne, tenantId, sourceProfileId, assetId,
                         vulnerabilityId, componentId, "1".repeat(64), time);
                 insertObservation(connection, observationTwo, tenantId, sourceProfileId, assetId,
                         vulnerabilityId, componentId, "2".repeat(64), time.plusSeconds(60));
                 insertObservation(connection, unrelatedObservation, tenantId, sourceProfileId, assetId,
-                        vulnerabilityId, componentId, "3".repeat(64), time.plusSeconds(120));
+                        vulnerabilityId, unrelatedComponentId, "3".repeat(64), time.plusSeconds(120));
                 execute(connection, """
                         INSERT INTO rbvm.import_observation
                             (tenant_id, import_id, observation_id, source_row_number, linked_at)
@@ -108,13 +106,13 @@ public final class PostgresCanonicalImportFindingManifestLiveSelfTest {
                         tenantId, importId, observationTwo, time.plusSeconds(60),
                         tenantId, otherImportId, unrelatedObservation, time.plusSeconds(120));
 
-                insertCase(connection, caseId, tenantId, sourceProfileId, assetId, vulnerabilityId, time);
-                insertCase(connection, unrelatedCaseId, tenantId, sourceProfileId, assetId,
-                        vulnerabilityId, time.plusSeconds(120));
+                insertCase(connection, caseId, tenantId, sourceProfileId, assetId, vulnerabilityId,
+                        time, time.plusSeconds(120));
                 insertExposure(connection, findingId, tenantId, sourceProfileId, caseId, assetId,
                         vulnerabilityId, componentId, 2, time, time.plusSeconds(60));
-                insertExposure(connection, unrelatedFindingId, tenantId, sourceProfileId, unrelatedCaseId,
-                        assetId, vulnerabilityId, componentId, 1, time.plusSeconds(120), time.plusSeconds(120));
+                insertExposure(connection, unrelatedFindingId, tenantId, sourceProfileId, caseId,
+                        assetId, vulnerabilityId, unrelatedComponentId, 1,
+                        time.plusSeconds(120), time.plusSeconds(120));
                 execute(connection, """
                         INSERT INTO rbvm.exposure_observation (tenant_id, exposure_id, observation_id)
                         VALUES (?, ?, ?), (?, ?, ?), (?, ?, ?)
@@ -151,6 +149,23 @@ public final class PostgresCanonicalImportFindingManifestLiveSelfTest {
                 "file:///manifest-live/" + importId + ".csv", time, time, time);
     }
 
+    private static void insertComponent(
+            Connection connection,
+            UUID id,
+            UUID tenantId,
+            UUID assetId,
+            String product,
+            Instant first,
+            Instant last
+    ) throws Exception {
+        execute(connection, """
+                INSERT INTO rbvm.asset_component
+                    (id, tenant_id, asset_id, observed_product_name, normalized_product_name,
+                     version_status, first_observed_at, last_observed_at, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, 'UNKNOWN_FROM_SOURCE', ?, ?, ?, ?)
+                """, id, tenantId, assetId, product, product, first, last, first, last);
+    }
+
     private static void insertObservation(
             Connection connection,
             UUID id,
@@ -179,7 +194,8 @@ public final class PostgresCanonicalImportFindingManifestLiveSelfTest {
             UUID sourceProfileId,
             UUID assetId,
             UUID vulnerabilityId,
-            Instant time
+            Instant first,
+            Instant last
     ) throws Exception {
         execute(connection, """
                 INSERT INTO rbvm.vulnerability_case
@@ -187,7 +203,7 @@ public final class PostgresCanonicalImportFindingManifestLiveSelfTest {
                      closure_policy, current_severity, first_observed_at, last_observed_at,
                      created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, 'OPEN', 'POSITIVE_ONLY_NO_AUTO_CLOSE', 'HIGH', ?, ?, ?, ?)
-                """, id, tenantId, sourceProfileId, assetId, vulnerabilityId, time, time, time, time);
+                """, id, tenantId, sourceProfileId, assetId, vulnerabilityId, first, last, first, last);
     }
 
     private static void insertExposure(
