@@ -131,7 +131,7 @@ for marker in (
     '0.00 .. 100.00',
     'NOT_APPLICABLE',
     'NON_COMPUTABLE',
-    'latest or current Formula',
+    '`latest` or `current` Formula',
     'default, primary, or preferred Formula',
     'Priority',
     'Treatment',
