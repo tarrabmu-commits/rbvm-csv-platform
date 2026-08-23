@@ -1301,6 +1301,8 @@ paths:
         '429': { $ref: '#/components/responses/RateLimited' }
         '503': { $ref: '#/components/responses/Problem' }
 
+  /active-risk-method-executions/{activationRevision}/{activationEventSha256}/{inputSnapshotSha256}: {$ref: './active-risk-method-execution-v1.openapi.yaml#/paths/~1api~1v1~1active-risk-method-executions~1{activationRevision}~1{activationEventSha256}~1{inputSnapshotSha256}'}
+  /active-risk-method-execution-bindings/{bindingSha256}: {$ref: './active-risk-method-execution-v1.openapi.yaml#/paths/~1api~1v1~1active-risk-method-execution-bindings~1{bindingSha256}'}
 components:
   securitySchemes:
     bearerAuth:
