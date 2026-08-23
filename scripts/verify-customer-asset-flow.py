@@ -22,7 +22,8 @@ required = [
     'classificationMethod',
     'CUSTOMER_DIRECT',
     'GUIDED',
-    'sessionStorage',
+    'activeSetup',
+    'spaGo(',
     'CVE_ID',
 ]
 for token in required:
@@ -37,11 +38,13 @@ for forbidden in [
     "environment: 'PRODUCTION'",
     'EPSS_Probability *',
     'CVSS4_Base_Score *',
+    'sessionStorage',
+    'localStorage',
 ]:
     if forbidden in UI:
-        raise AssertionError(f"customer context must not be inferred from public vulnerability data: {forbidden}")
+        raise AssertionError(f"customer flow contains forbidden inferred/persistent state: {forbidden}")
 
-if "customerAssetKey\n        ? byKey.get" not in UI and "candidate.customerAssetKey\n        ? byKey.get" not in UI:
+if "candidate.customerAssetKey\n        ? byKey.get(candidate.customerAssetKey)" not in UI:
     raise AssertionError('bundle reuse must match customer asset key before display name')
 
 print('CSV-first customer asset UI structural checks: PASS')
