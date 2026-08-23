@@ -53,6 +53,17 @@ if [[ -f "$ROOT_DIR/src/main/resources/web/rbvm-dashboard.css" ]]; then
   printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.css"
   cat "$ROOT_DIR/src/main/resources/web/rbvm-dashboard.css" >> "$MAIN_CLASSES/web/rbvm-ui.css"
 fi
+# Dashboard V4 is a standards-oriented visual layer. It runs after V3 and
+# replaces only the Overview dashboard presentation, preserving all source
+# evidence boundaries and refusing to synthesize unsupported risk semantics.
+if [[ -f "$ROOT_DIR/src/main/resources/web/rbvm-dashboard-v4.js" ]]; then
+  printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
+  cat "$ROOT_DIR/src/main/resources/web/rbvm-dashboard-v4.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
+fi
+if [[ -f "$ROOT_DIR/src/main/resources/web/rbvm-dashboard-v4.css" ]]; then
+  printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.css"
+  cat "$ROOT_DIR/src/main/resources/web/rbvm-dashboard-v4.css" >> "$MAIN_CLASSES/web/rbvm-ui.css"
+fi
 mkdir -p "$MAIN_CLASSES/db/migration"
 cp "$ROOT_DIR"/db/migration/*.sql "$MAIN_CLASSES/db/migration/"
 
