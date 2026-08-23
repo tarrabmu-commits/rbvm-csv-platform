@@ -14,7 +14,6 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Locale;
@@ -30,18 +29,24 @@ import java.util.regex.Pattern;
  * Trusted-local CSV-first public-intelligence and contextual-analysis transport.
  *
  * The uploaded CSV is the complete scope of one enrichment run. The public
- * enrichment stage never reads current Cases or tenant database state. A later
- * contextual-analysis POST may add only the customer-declared bundle for that
- * same run and invokes the repository's deterministic analyzer and method-
- * admission evaluator. Neither stage calculates Organizational Risk.
+ * enrichment stage never reads current Cases or tenant database state. Later
+ * contextual analyses add only customer-declared context to that immutable run.
+ * Every successful contextual analysis gets its own immutable analysisId and
+ * preserves its submitted bundle, contextual technical-severity output, summary,
+ * and risk-method-admission report. No stage calculates Organizational Risk.
  */
 public final class CsvFirstEnrichmentHttpHandler implements HttpHandler {
     public static final String CONTRACT_ID = "CSV_FIRST_PUBLIC_INTELLIGENCE_HTTP_V1";
     public static final String ANALYSIS_CONTRACT_ID = "CSV_FIRST_CONTEXTUAL_ANALYSIS_HTTP_V1";
-    private static final Pattern ARTIFACT_PATH = Pattern.compile(
-            "^/api/v1/csv-first-enrichments/([0-9a-fA-F-]{36})/"
-                    + "(csv|report|snapshot|analysis|analysis-summary|method-admission)$");
+
     private static final String ROOT = "/api/v1/csv-first-enrichments";
+    private static final Pattern RUN_ARTIFACT_PATH = Pattern.compile(
+            "^/api/v1/csv-first-enrichments/([0-9a-fA-F-]{36})/(csv|report|snapshot)$");
+    private static final Pattern ANALYSIS_CREATE_PATH = Pattern.compile(
+            "^/api/v1/csv-first-enrichments/([0-9a-fA-F-]{36})/analyses$");
+    private static final Pattern ANALYSIS_ARTIFACT_PATH = Pattern.compile(
+            "^/api/v1/csv-first-enrichments/([0-9a-fA-F-]{36})/analyses/"
+                    + "([0-9a-fA-F-]{36})/(csv|summary|method-admission|customer-bundle)$");
     private static final Duration PROCESS_TIMEOUT = Duration.ofMinutes(10);
     private static final int MAX_PROCESS_OUTPUT_BYTES = 64 * 1024;
 
@@ -78,6 +83,7 @@ public final class CsvFirstEnrichmentHttpHandler implements HttpHandler {
         try {
             String method = exchange.getRequestMethod().toUpperCase(Locale.ROOT);
             String path = exchange.getRequestURI().getPath();
+
             if (ROOT.equals(path)) {
                 requireRole(exchange, ApiRole.OPERATOR);
                 if (!"POST".equals(method)) {
@@ -88,27 +94,46 @@ public final class CsvFirstEnrichmentHttpHandler implements HttpHandler {
                 return;
             }
 
-            Matcher matcher = ARTIFACT_PATH.matcher(path);
-            if (!matcher.matches()) {
-                problem(exchange, 404, "NOT_FOUND", "The requested CSV-first enrichment route does not exist");
-                return;
-            }
-            UUID runId = parseRunId(exchange, matcher.group(1));
-            if (runId == null) return;
-            String type = matcher.group(2);
-
-            if ("analysis".equals(type) && "POST".equals(method)) {
+            Matcher analysisCreate = ANALYSIS_CREATE_PATH.matcher(path);
+            if (analysisCreate.matches()) {
                 requireRole(exchange, ApiRole.OPERATOR);
-                contextualAnalysis(exchange, runId);
+                if (!"POST".equals(method)) {
+                    methodNotAllowed(exchange, "POST");
+                    return;
+                }
+                UUID runId = parseRunId(exchange, analysisCreate.group(1));
+                if (runId != null) contextualAnalysis(exchange, runId);
                 return;
             }
 
-            requireRole(exchange, ApiRole.VIEWER);
-            if (!"GET".equals(method)) {
-                methodNotAllowed(exchange, "GET");
+            Matcher analysisArtifact = ANALYSIS_ARTIFACT_PATH.matcher(path);
+            if (analysisArtifact.matches()) {
+                requireRole(exchange, ApiRole.VIEWER);
+                if (!"GET".equals(method)) {
+                    methodNotAllowed(exchange, "GET");
+                    return;
+                }
+                UUID runId = parseRunId(exchange, analysisArtifact.group(1));
+                if (runId == null) return;
+                UUID analysisId = parseAnalysisId(exchange, analysisArtifact.group(2));
+                if (analysisId == null) return;
+                analysisArtifact(exchange, runId, analysisId, analysisArtifact.group(3));
                 return;
             }
-            artifact(exchange, runId, type);
+
+            Matcher runArtifact = RUN_ARTIFACT_PATH.matcher(path);
+            if (runArtifact.matches()) {
+                requireRole(exchange, ApiRole.VIEWER);
+                if (!"GET".equals(method)) {
+                    methodNotAllowed(exchange, "GET");
+                    return;
+                }
+                UUID runId = parseRunId(exchange, runArtifact.group(1));
+                if (runId != null) runArtifact(exchange, runId, runArtifact.group(2));
+                return;
+            }
+
+            problem(exchange, 404, "NOT_FOUND", "The requested CSV-first enrichment route does not exist");
         } catch (SecurityException exception) {
             problem(exchange, 403, "FORBIDDEN", "The request is not authorized");
         } catch (Exception exception) {
@@ -194,7 +219,7 @@ public final class CsvFirstEnrichmentHttpHandler implements HttpHandler {
         response.put("enrichedCsv", ROOT + "/" + runId + "/csv");
         response.put("report", ROOT + "/" + runId + "/report");
         response.put("snapshot", ROOT + "/" + runId + "/snapshot");
-        response.put("contextualAnalysis", ROOT + "/" + runId + "/analysis");
+        response.put("contextualAnalyses", ROOT + "/" + runId + "/analyses");
         response.put("next", "/assets?tab=managed&setup=1&runId=" + runId);
         sendJson(exchange, 200, response);
     }
@@ -222,27 +247,24 @@ public final class CsvFirstEnrichmentHttpHandler implements HttpHandler {
             return;
         }
 
-        Path stagedBundle = run.resolve("customer-bundle.json.tmp");
-        Path bundle = run.resolve("customer-bundle.json");
-        Path analysis = run.resolve("analysis.csv");
-        Path summary = run.resolve("analysis-summary.json");
-        Path admission = run.resolve("method-admission.json");
-        Path analysisLog = run.resolve("analysis-process.log");
-        Path admissionLog = run.resolve("admission-process.log");
+        UUID analysisId = UUID.randomUUID();
+        Path analysisDirectory = analysisDirectory(runId, analysisId);
+        Files.createDirectories(analysisDirectory);
+        Path bundle = analysisDirectory.resolve("customer-bundle.json");
+        Path analysis = analysisDirectory.resolve("analysis.csv");
+        Path summary = analysisDirectory.resolve("analysis-summary.json");
+        Path admission = analysisDirectory.resolve("method-admission.json");
+        Path analysisLog = analysisDirectory.resolve("analysis-process.log");
+        Path admissionLog = analysisDirectory.resolve("admission-process.log");
 
-        Files.deleteIfExists(stagedBundle);
         try (InputStream body = exchange.getRequestBody();
-             OutputStream staged = Files.newOutputStream(stagedBundle)) {
+             OutputStream staged = Files.newOutputStream(bundle)) {
             copyBounded(body, staged, maximumUploadBytes);
         } catch (UploadTooLargeException exception) {
-            Files.deleteIfExists(stagedBundle);
+            deleteTree(analysisDirectory);
             problem(exchange, 413, "UPLOAD_TOO_LARGE", "Customer context exceeds the configured upload limit");
             return;
         }
-        Files.move(stagedBundle, bundle, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        Files.deleteIfExists(analysis);
-        Files.deleteIfExists(summary);
-        Files.deleteIfExists(admission);
 
         ProcessBuilder analyzer = new ProcessBuilder(
                 python,
@@ -254,18 +276,18 @@ public final class CsvFirstEnrichmentHttpHandler implements HttpHandler {
         );
         ProcessOutcome analysisOutcome = runProcess(analyzer, analysisLog);
         if (analysisOutcome.interrupted()) {
-            cleanupContextArtifacts(analysis, summary, admission, analysisLog, admissionLog);
+            deleteTree(analysisDirectory);
             problem(exchange, 503, "CSV_FIRST_CONTEXTUAL_ANALYSIS_INTERRUPTED", "Contextual analysis was interrupted");
             return;
         }
         if (analysisOutcome.timedOut()) {
-            cleanupContextArtifacts(analysis, summary, admission, analysisLog, admissionLog);
+            deleteTree(analysisDirectory);
             problem(exchange, 504, "CSV_FIRST_CONTEXTUAL_ANALYSIS_TIMEOUT", "Contextual analysis exceeded the execution limit");
             return;
         }
         if (!analysisOutcome.success() || !Files.isRegularFile(analysis) || !Files.isRegularFile(summary)) {
             String diagnostic = boundedDiagnostic(analysisLog);
-            cleanupContextArtifacts(analysis, summary, admission, analysisLog, admissionLog);
+            deleteTree(analysisDirectory);
             problem(exchange, 422, "CSV_FIRST_CONTEXTUAL_ANALYSIS_FAILED",
                     diagnostic.isBlank() ? "Customer context could not be analyzed" : diagnostic);
             return;
@@ -280,39 +302,43 @@ public final class CsvFirstEnrichmentHttpHandler implements HttpHandler {
         );
         ProcessOutcome admissionOutcome = runProcess(admissionBuilder, admissionLog);
         if (admissionOutcome.interrupted()) {
-            cleanupContextArtifacts(analysis, summary, admission, analysisLog, admissionLog);
+            deleteTree(analysisDirectory);
             problem(exchange, 503, "CSV_FIRST_METHOD_ADMISSION_INTERRUPTED", "Risk-method admission was interrupted");
             return;
         }
         if (admissionOutcome.timedOut()) {
-            cleanupContextArtifacts(analysis, summary, admission, analysisLog, admissionLog);
+            deleteTree(analysisDirectory);
             problem(exchange, 504, "CSV_FIRST_METHOD_ADMISSION_TIMEOUT", "Risk-method admission exceeded the execution limit");
             return;
         }
         if (!admissionOutcome.success() || !Files.isRegularFile(admission)) {
             String diagnostic = boundedDiagnostic(admissionLog);
-            cleanupContextArtifacts(analysis, summary, admission, analysisLog, admissionLog);
+            deleteTree(analysisDirectory);
             problem(exchange, 422, "CSV_FIRST_METHOD_ADMISSION_FAILED",
                     diagnostic.isBlank() ? "Risk-method admission could not be evaluated" : diagnostic);
             return;
         }
         Files.deleteIfExists(admissionLog);
 
+        String analysisRoot = ROOT + "/" + runId + "/analyses/" + analysisId;
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("contractId", ANALYSIS_CONTRACT_ID);
         response.put("status", "COMPLETE");
         response.put("scope", "INPUT_CSV_PLUS_CUSTOMER_DECLARED_CONTEXT");
         response.put("databaseStateUsed", false);
         response.put("runId", runId.toString());
-        response.put("analysisCsv", ROOT + "/" + runId + "/analysis");
-        response.put("analysisSummary", ROOT + "/" + runId + "/analysis-summary");
-        response.put("methodAdmission", ROOT + "/" + runId + "/method-admission");
+        response.put("analysisId", analysisId.toString());
+        response.put("immutable", true);
+        response.put("customerBundle", analysisRoot + "/customer-bundle");
+        response.put("analysisCsv", analysisRoot + "/csv");
+        response.put("analysisSummary", analysisRoot + "/summary");
+        response.put("methodAdmission", analysisRoot + "/method-admission");
         response.put("outputSemantics", "CONTEXTUAL_TECHNICAL_SEVERITY_PLUS_INDEPENDENT_EVIDENCE");
         response.put("organizationalRisk", "NON_COMPUTABLE");
-        sendJson(exchange, 200, response);
+        sendJson(exchange, 201, response);
     }
 
-    private void artifact(HttpExchange exchange, UUID runId, String type) throws IOException {
+    private void runArtifact(HttpExchange exchange, UUID runId, String type) throws IOException {
         Path run = runDirectory(runId);
         Path file;
         String contentType;
@@ -333,25 +359,55 @@ public final class CsvFirstEnrichmentHttpHandler implements HttpHandler {
                 contentType = "application/json; charset=utf-8";
                 downloadName = "rbvm-public-intel-" + runId + ".json";
             }
-            case "analysis" -> {
-                file = run.resolve("analysis.csv");
+            default -> throw new IllegalStateException("unexpected run artifact type");
+        }
+        sendArtifact(exchange, file, contentType, downloadName);
+    }
+
+    private void analysisArtifact(
+            HttpExchange exchange,
+            UUID runId,
+            UUID analysisId,
+            String type
+    ) throws IOException {
+        Path directory = analysisDirectory(runId, analysisId);
+        Path file;
+        String contentType;
+        String downloadName;
+        switch (type) {
+            case "csv" -> {
+                file = directory.resolve("analysis.csv");
                 contentType = "text/csv; charset=utf-8";
-                downloadName = "rbvm-contextual-analysis-" + runId + ".csv";
+                downloadName = "rbvm-contextual-analysis-" + runId + "-" + analysisId + ".csv";
             }
-            case "analysis-summary" -> {
-                file = run.resolve("analysis-summary.json");
+            case "summary" -> {
+                file = directory.resolve("analysis-summary.json");
                 contentType = "application/json; charset=utf-8";
-                downloadName = "rbvm-contextual-analysis-summary-" + runId + ".json";
+                downloadName = "rbvm-contextual-analysis-summary-" + runId + "-" + analysisId + ".json";
             }
             case "method-admission" -> {
-                file = run.resolve("method-admission.json");
+                file = directory.resolve("method-admission.json");
                 contentType = "application/json; charset=utf-8";
-                downloadName = "rbvm-method-admission-" + runId + ".json";
+                downloadName = "rbvm-method-admission-" + runId + "-" + analysisId + ".json";
             }
-            default -> throw new IllegalStateException("unexpected artifact type");
+            case "customer-bundle" -> {
+                file = directory.resolve("customer-bundle.json");
+                contentType = "application/json; charset=utf-8";
+                downloadName = "rbvm-customer-bundle-" + runId + "-" + analysisId + ".json";
+            }
+            default -> throw new IllegalStateException("unexpected analysis artifact type");
         }
+        sendArtifact(exchange, file, contentType, downloadName);
+    }
+
+    private static void sendArtifact(
+            HttpExchange exchange,
+            Path file,
+            String contentType,
+            String downloadName
+    ) throws IOException {
         if (!Files.isRegularFile(file) || Files.isSymbolicLink(file)) {
-            problem(exchange, 404, "ARTIFACT_NOT_FOUND", "CSV-first enrichment artifact does not exist");
+            problem(exchange, 404, "ARTIFACT_NOT_FOUND", "CSV-first artifact does not exist");
             return;
         }
         exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"" + downloadName + "\"");
@@ -365,11 +421,28 @@ public final class CsvFirstEnrichmentHttpHandler implements HttpHandler {
         return run;
     }
 
+    private Path analysisDirectory(UUID runId, UUID analysisId) throws IOException {
+        Path run = runDirectory(runId);
+        Path analyses = run.resolve("analyses").normalize();
+        Path analysis = analyses.resolve(analysisId.toString()).normalize();
+        if (!analysis.startsWith(analyses)) throw new IOException("invalid analysis directory");
+        return analysis;
+    }
+
     private UUID parseRunId(HttpExchange exchange, String value) throws IOException {
         try {
             return UUID.fromString(value);
         } catch (IllegalArgumentException exception) {
             problem(exchange, 400, "INVALID_RUN_ID", "Invalid CSV-first enrichment run identifier");
+            return null;
+        }
+    }
+
+    private UUID parseAnalysisId(HttpExchange exchange, String value) throws IOException {
+        try {
+            return UUID.fromString(value);
+        } catch (IllegalArgumentException exception) {
+            problem(exchange, 400, "INVALID_ANALYSIS_ID", "Invalid CSV-first contextual-analysis identifier");
             return null;
         }
     }
@@ -411,18 +484,6 @@ public final class CsvFirstEnrichmentHttpHandler implements HttpHandler {
                 Math.min(processOutput.length, MAX_PROCESS_OUTPUT_BYTES),
                 StandardCharsets.UTF_8
         ).trim();
-    }
-
-    private static void cleanupContextArtifacts(
-            Path analysis,
-            Path summary,
-            Path admission,
-            Path analysisLog,
-            Path admissionLog
-    ) {
-        for (Path path : new Path[]{analysis, summary, admission, analysisLog, admissionLog}) {
-            try { Files.deleteIfExists(path); } catch (IOException ignored) { }
-        }
     }
 
     private void requireRole(HttpExchange exchange, ApiRole role) {
