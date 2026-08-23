@@ -78,8 +78,8 @@ for marker in (
     'wrongMethod.statusCode() == 405',
     'unauthenticated.statusCode() == 401',
     'viewer.statusCode() == 503',
-    '\"policy\": null',
-    '\"selectedMethod\": null',
+    r'\"policy\": null',
+    r'\"selectedMethod\": null',
 ):
     assert marker in http_test, f"resolved HTTP self-test missing {marker!r}"
 
