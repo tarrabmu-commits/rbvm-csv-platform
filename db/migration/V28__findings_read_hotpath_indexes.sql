@@ -22,10 +22,10 @@ CREATE INDEX case_findings_page_order_idx
         public_id
     );
 
--- Dedicated intelligence summary and other evidence reads identify the
--- tenant-scoped vulnerability set. Keep that lookup index-only/compact instead
--- of forcing observation/case heap scans as data volume grows.
-CREATE INDEX case_tenant_vulnerability_lookup_idx
-    ON rbvm.vulnerability_case (tenant_id, vulnerability_id);
+-- Dedicated intelligence summary semantics are intentionally based on every
+-- canonical observation. Support tenant-scoped DISTINCT vulnerability reads
+-- without changing that evidence scope to the smaller case relation.
+CREATE INDEX observation_tenant_vulnerability_lookup_idx
+    ON rbvm.observation (tenant_id, vulnerability_id);
 
 COMMIT;
