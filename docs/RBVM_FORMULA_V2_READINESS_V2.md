@@ -39,6 +39,8 @@ These values remain semantically distinct.
 
 `NON_COMPUTABLE`
 
+Current method-admission state: `NO_V2_PRIMARY_METHOD_ADMITTED`.
+
 The reason is no longer “CVSS Environmental context is unavailable.”
 
 The current blockers are:
