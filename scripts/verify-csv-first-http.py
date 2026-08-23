@@ -18,8 +18,13 @@ required_handler = [
     'scripts/enrich-uploaded-csv.py',
     'scripts/analyze-csv-run-evidence.py',
     'scripts/evaluate-rbvm-v2-method-candidates.py',
-    'analysis-summary',
+    'ANALYSIS_CREATE_PATH',
+    'ANALYSIS_ARTIFACT_PATH',
+    '/analyses$',
     'method-admission',
+    'customer-bundle',
+    'analysisId',
+    'immutable',
     'organizationalRisk',
     'NON_COMPUTABLE',
     'ApiRole.OPERATOR',
@@ -36,18 +41,23 @@ for token in required_handler:
 for forbidden in [
     'bash -c', 'sh -c', 'Runtime.getRuntime().exec',
     'CVSS4_Base_Score *', 'EPSS_Probability *', 'riskScore', 'priorityScore',
+    'customer-bundle.json.tmp', 'StandardCopyOption.REPLACE_EXISTING',
 ]:
     if forbidden in HANDLER:
-        raise AssertionError(f"CSV-first handler contains forbidden execution/decision logic: {forbidden}")
+        raise AssertionError(f"CSV-first handler contains forbidden execution/decision/overwrite logic: {forbidden}")
 
-if '"analysis".equals(type) && "POST".equals(method)' not in HANDLER:
-    raise AssertionError('contextual analysis must be an explicit POST on the run-scoped analysis resource')
+if 'UUID analysisId = UUID.randomUUID();' not in HANDLER:
+    raise AssertionError('each contextual analysis must receive a distinct immutable analysisId')
+if 'Path analysisDirectory = analysisDirectory(runId, analysisId);' not in HANDLER:
+    raise AssertionError('contextual analysis must use a run-scoped immutable analysis directory')
+if 'deleteTree(analysisDirectory);' not in HANDLER:
+    raise AssertionError('failed contextual analyses must remove partial revision artifacts')
 if 'Files.isRegularFile(enriched)' not in HANDLER or 'RUN_NOT_FOUND' not in HANDLER:
     raise AssertionError('contextual analysis must require an existing completed enrichment run')
-if 'customer-bundle.json' not in HANDLER:
-    raise AssertionError('contextual analysis must preserve the submitted customer bundle as a run artifact')
-if 'cleanupContextArtifacts(' not in HANDLER:
-    raise AssertionError('failed contextual analysis must not leave partial result artifacts')
+if 'response.put("immutable", true);' not in HANDLER:
+    raise AssertionError('successful contextual analysis response must state immutable=true')
+if 'response.put("customerBundle"' not in HANDLER:
+    raise AssertionError('successful analysis must expose the exact submitted customer bundle artifact')
 
 if 'server.createContext(' not in LAUNCHER or 'new CsvFirstEnrichmentHttpHandler' not in LAUNCHER:
     raise AssertionError('CSV-first handler is not registered before platform start')
@@ -56,4 +66,4 @@ if 'io.rbvm.csv.RbvmPlatformMain' not in RUN:
 if 'Main-Class: io.rbvm.csv.RbvmPlatformMain' not in BUILD:
     raise AssertionError('distribution manifest does not use CSV-first enabled main')
 
-print('CSV-first public enrichment + contextual-analysis HTTP structural checks: PASS')
+print('CSV-first public enrichment + immutable contextual-analysis HTTP structural checks: PASS')
