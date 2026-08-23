@@ -10,6 +10,7 @@ required = [
     "RBVM_CUSTOMER_ASSET_BUNDLE_V3",
     "CSV_FIRST_MVP_PRIORITY_HTTP_V1",
     "RBVM_MVP_PRIORITY_POLICY_V1",
+    "RBVM_MVP_PRIORITY_EXPLAINABILITY_V1",
     "88d5cdb8702c6c0ed2c033c3df6b8abbe1aa392f44f4507685b54082a16dc388",
     "Review Findings",
     "Finding Evidence Review — CSV Run",
@@ -24,12 +25,18 @@ required = [
     "priority.organizationalRisk !== 'NON_COMPUTABLE'",
     "priorityReport.organizationalRiskComputed !== false",
     "priorityReport.riskStatus !== 'NON_COMPUTABLE'",
+    "priorityReport.explainability?.contractId !== PRIORITY_EXPLAINABILITY",
+    "priorityReport.explainability?.rowColumn !== 'RBVM_MVP_Priority_Explanation'",
+    "priorityReport.explainability?.changesPriority !== false",
     "RBVM_MVP_Priority_Status",
     "RBVM_MVP_Priority_Front",
     "RBVM_MVP_Priority_Blockers",
+    "RBVM_MVP_Priority_Explanation",
     "RANKED_RELATIVE_ONLY",
     "UNRANKABLE_MISSING_EVIDENCE",
     "MVP Priority",
+    "Why?",
+    "server-generated explanation",
     "Front 1 means nondominated treatment priority",
     "not Critical/High risk",
     "Download priority-ranked CSV",
@@ -92,7 +99,9 @@ if "artifactButton('Download exact customer bundle', run.customerBundle" not in 
     raise AssertionError('finding review must expose the exact immutable customer bundle used by the analysis')
 if "artifactButton('Download contextual analysis CSV', run.analysisCsv" not in UI:
     raise AssertionError('finding review must preserve access to the immutable contextual-analysis source artifact')
+if "function priorityWhy(row)" not in UI or "el('details', {class: 'priority-explanation'}" not in UI:
+    raise AssertionError('finding review must expose server-generated row explainability without client-side scoring')
 if 'csv-run-review.js' not in COMPILE or 'cat "$ROOT_DIR/src/main/resources/web/csv-run-review.js"' not in COMPILE:
     raise AssertionError("runtime frontend bundle does not include csv-run-review.js")
 
-print("CSV-first immutable contextual finding review + MVP priority UI structural checks: PASS")
+print("CSV-first immutable contextual finding review + MVP priority explainability UI structural checks: PASS")
