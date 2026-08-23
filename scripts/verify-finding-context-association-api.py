@@ -205,6 +205,16 @@ for path, item in composed_openapi["paths"].items():
         source_document = resolved_openapi
         expected_source_path = "/api/v1" + path
     else:
+        base_item = base_openapi.get("paths", {}).get(path)
+        if base_item is None:
+            raise AssertionError(f"Composed base path {path} is not present in openapi.yaml")
+        base_reference = base_item.get("$ref") if isinstance(base_item, dict) else None
+        if base_reference:
+            if reference != base_reference:
+                raise AssertionError(
+                    f"Composed path {path} must preserve the base contract external reference"
+                )
+            continue
         source_name = "openapi.yaml"
         source_document = base_openapi
         expected_source_path = path
