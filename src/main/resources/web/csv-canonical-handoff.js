@@ -1,8 +1,9 @@
 (() => {
   'use strict';
 
-  const CONTRACT = 'CSV_FIRST_CANONICAL_HANDOFF_UI_V1';
+  const CONTRACT = 'CSV_FIRST_CANONICAL_HANDOFF_UI_V2';
   const SOURCE_CONTRACT = 'CSV_FIRST_SOURCE_ARTIFACT_HTTP_V1';
+  const MANIFEST_CONTRACT = 'CANONICAL_IMPORT_FINDING_MANIFEST_HTTP_V1';
   const CSV_CONTRACTS = ['WAZUH_CSV_V1', 'WAZUH_CSV_V2'];
   let queued = false;
   let activeImport = null;
@@ -89,6 +90,35 @@
     );
   }
 
+  function manifestUrl(importId) {
+    return `/api/v1/canonical-imports/${encodeURIComponent(importId)}/findings.csv`;
+  }
+
+  function manifestLink(importId) {
+    return el('a', {
+      class: 'button button-secondary',
+      href: manifestUrl(importId),
+      download: `rbvm-findings-${importId}.csv`,
+      text: 'Download exact Finding manifest',
+      'data-finding-manifest-contract': MANIFEST_CONTRACT,
+    });
+  }
+
+  function completedView(data) {
+    return el('div', {class: 'stack'},
+      materializationView(data),
+      callout('The Finding manifest is import-scoped through import_observation → observation → exposure. It does not match by hostname, CVE, product, or filename.'),
+      el('div', {class: 'inline-actions'}, manifestLink(data.importId))
+    );
+  }
+
+  function announceCompleted(data) {
+    document.documentElement.dataset.canonicalImportId = data.importId;
+    window.dispatchEvent(new CustomEvent('rbvm:canonical-import-complete', {
+      detail: {importId: data.importId, manifestUrl: manifestUrl(data.importId), contractId: MANIFEST_CONTRACT},
+    }));
+  }
+
   function patch() {
     const run = runId();
     if (!run) return;
@@ -143,11 +173,13 @@
         });
         const data = await response.json();
         activeImport = data;
-        result.replaceChildren(data.materialization ? materializationView(data) : previewView(data));
         if (data.status === 'COMPLETED') {
-          setStatus(status, `Canonical import ${data.importId} is already complete.`, 'success');
+          result.replaceChildren(completedView(data));
+          announceCompleted(data);
+          setStatus(status, `Canonical import ${data.importId} is already complete. Exact Finding manifest is available.`, 'success');
           confirm.disabled = true;
         } else {
+          result.replaceChildren(previewView(data));
           setStatus(status, `Preview ready for canonical import ${data.importId}. Review counts, then confirm explicitly.`, 'success');
           confirm.disabled = false;
         }
@@ -174,8 +206,9 @@
         });
         const data = await response.json();
         activeImport = data;
-        result.replaceChildren(materializationView(data));
-        setStatus(status, `Canonical import complete. Findings now have canonical identity for Applicability and exact context associations.`, 'success');
+        result.replaceChildren(completedView(data));
+        announceCompleted(data);
+        setStatus(status, 'Canonical import complete. Exact Finding_IDs are now available for Applicability and customer-confirmed context associations.', 'success');
       } catch (error) {
         setStatus(status, error.message, 'error');
         confirm.disabled = false;

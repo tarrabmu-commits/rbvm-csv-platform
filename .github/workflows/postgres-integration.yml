@@ -63,3 +63,4 @@ jobs:
           java -ea -cp "$classpath" io.rbvm.postgres.PostgresV27ActiveRiskMethodExecutionBindingLiveSelfTest
           java -ea -cp "$classpath" io.rbvm.postgres.PostgresEvidenceAwareCatalogLiveSelfTest
           java -ea -cp "$classpath" io.rbvm.postgres.PostgresDedicatedIntelligenceSummaryLiveSelfTest
+          java -ea -cp "$classpath" io.rbvm.postgres.PostgresCanonicalImportFindingManifestLiveSelfTest
