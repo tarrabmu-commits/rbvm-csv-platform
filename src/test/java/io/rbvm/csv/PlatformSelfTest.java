@@ -77,6 +77,7 @@ public final class PlatformSelfTest {
         RiskMethodSelectionPolicyApiSelfTest.main(args);
         RiskMethodSelectionPolicyActivationApiSelfTest.main(args);
         ResolvedActiveRiskMethodApiSelfTest.main(args);
+        ResolvedActiveRiskMethodDerivedApiSelfTest.main(args);
         DecisionInputApiSelfTest.main(args);
         DomainCatalogSelfTest.main(args);
         ApiSecuritySelfTest.main(args);
