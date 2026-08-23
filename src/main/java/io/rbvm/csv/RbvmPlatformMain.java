@@ -114,6 +114,8 @@ public final class RbvmPlatformMain {
         System.out.println("RBVM CSV Platform is running at " + application.baseUri());
         System.out.println("CSV-first enrichment API: "
                 + application.baseUri().resolve("/api/v1/csv-first-enrichments"));
+        System.out.println("CSV-first source API: "
+                + application.baseUri().resolve("/api/v1/csv-first-sources/{runId}"));
         System.out.println("Managed Assets operator UI: " + application.baseUri().resolve("/assets"));
         System.out.println("Data directory: " + dataDirectory.toAbsolutePath().normalize());
         System.out.println("Canonical projection: " + canonicalProjection.health().get("backend"));
@@ -137,6 +139,10 @@ public final class RbvmPlatformMain {
         server.createContext(
                 "/api/v1/csv-first-enrichments",
                 new CsvFirstEnrichmentHttpHandler(dataDirectory, maximumUploadBytes, authenticator)
+        );
+        server.createContext(
+                "/api/v1/csv-first-sources",
+                new CsvFirstSourceHttpHandler(dataDirectory, authenticator)
         );
     }
 
