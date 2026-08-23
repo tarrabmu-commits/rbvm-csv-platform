@@ -1,0 +1,29 @@
+name: bootstrap-risk-method-selection-api-v1
+
+on:
+  push:
+    branches:
+      - policy/risk-method-selection-api-v1
+
+permissions:
+  contents: write
+
+jobs:
+  patch-server:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: policy/risk-method-selection-api-v1
+      - name: Patch server wiring
+        run: python3 scripts/bootstrap-risk-method-selection-api-v1.py
+      - name: Commit server wiring
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/main/java/io/rbvm/csv/CsvPlatformServer.java
+          git diff --cached --check
+          git commit -m 'Wire risk method selection policy HTTP runtime'
+          git push origin HEAD:policy/risk-method-selection-api-v1
