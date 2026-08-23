@@ -1,14 +1,15 @@
 {
-  "contractId": "RBVM_CUSTOMER_ASSET_BUNDLE_V2",
-  "schemaVersion": 2,
+  "contractId": "RBVM_CUSTOMER_ASSET_BUNDLE_V3",
+  "schemaVersion": 3,
   "benchmarkOnly": true,
   "contextSemantics": "SYNTHETIC_ORGANIZATION_CONTEXT_FOR_PIPELINE_COVERAGE_ONLY",
+  "note": "CR/IR/AR values are synthetic direct CVSS v4 requirements for benchmark coverage only; they are not inferred from criticality or Internet Facing.",
   "assets": [
-    {"customerAssetKey":"bench-001","displayName":"benchmark-edge-01","assetCriticality":"HIGH","internetFacing":"YES"},
-    {"customerAssetKey":"bench-002","displayName":"benchmark-app-01","assetCriticality":"MODERATE","internetFacing":"YES"},
-    {"customerAssetKey":"bench-003","displayName":"benchmark-backup-01","assetCriticality":"MISSION_CRITICAL","internetFacing":"NO"},
-    {"customerAssetKey":"bench-004","displayName":"benchmark-cms-01","assetCriticality":"HIGH","internetFacing":"YES"},
-    {"customerAssetKey":"bench-005","displayName":"benchmark-win-01","assetCriticality":"HIGH","internetFacing":"NO"},
-    {"customerAssetKey":"bench-006","displayName":"benchmark-web-02","assetCriticality":"MISSION_CRITICAL","internetFacing":"YES"}
+    {"customerAssetKey":"bench-001","displayName":"benchmark-edge-01","assetCriticality":"HIGH","internetFacing":"YES","cvssConfidentialityRequirement":"H","cvssIntegrityRequirement":"M","cvssAvailabilityRequirement":"H"},
+    {"customerAssetKey":"bench-002","displayName":"benchmark-app-01","assetCriticality":"MODERATE","internetFacing":"YES","cvssConfidentialityRequirement":"X","cvssIntegrityRequirement":"X","cvssAvailabilityRequirement":"X"},
+    {"customerAssetKey":"bench-003","displayName":"benchmark-backup-01","assetCriticality":"MISSION_CRITICAL","internetFacing":"NO","cvssConfidentialityRequirement":"H","cvssIntegrityRequirement":"H","cvssAvailabilityRequirement":"H"},
+    {"customerAssetKey":"bench-004","displayName":"benchmark-cms-01","assetCriticality":"HIGH","internetFacing":"YES","cvssConfidentialityRequirement":"H","cvssIntegrityRequirement":"H","cvssAvailabilityRequirement":"H"},
+    {"customerAssetKey":"bench-005","displayName":"benchmark-win-01","assetCriticality":"HIGH","internetFacing":"NO","cvssConfidentialityRequirement":"M","cvssIntegrityRequirement":"H","cvssAvailabilityRequirement":"H"},
+    {"customerAssetKey":"bench-006","displayName":"benchmark-web-02","assetCriticality":"MISSION_CRITICAL","internetFacing":"YES","cvssConfidentialityRequirement":"H","cvssIntegrityRequirement":"H","cvssAvailabilityRequirement":"H"}
   ]
 }
