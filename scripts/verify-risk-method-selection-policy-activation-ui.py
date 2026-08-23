@@ -142,8 +142,13 @@ if not read_revision < read_sha < read_revision_empty < read_sha_empty < read_ha
     raise AssertionError("Exact activation read must start with empty revision and event SHA")
 
 # Policy Admin V1 and Activation UI V1 must remain separate script contracts.
-if 'end = host.index("</script>", start)' not in policy_verifier:
-    raise AssertionError("Policy Admin V1 verifier must isolate its own script contract")
+for marker in (
+    'script_start = host.rfind("<script>", 0, start)',
+    'script_end = host.index("</script>", start)',
+    'ui = host[script_start:script_end]',
+):
+    if marker not in policy_verifier:
+        raise AssertionError("Policy Admin V1 verifier must isolate its own inline script")
 for marker in (
     "RISK_METHOD_SELECTION_POLICY_ADMIN_UI_V1",
     "DERIVED_RISK_METHODOLOGY_COMPARISON_UI_V1",
