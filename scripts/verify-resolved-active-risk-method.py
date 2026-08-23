@@ -105,7 +105,7 @@ for marker in (
 
 normalized_doc = ' '.join(doc.split())
 for marker in (
-    'current is operational discovery only',
+    '`current` is operational discovery only',
     '`activation.activationRevision`',
     '`activation.eventSha256`',
     'Never-activated is not synthesized as CLEARED.',
