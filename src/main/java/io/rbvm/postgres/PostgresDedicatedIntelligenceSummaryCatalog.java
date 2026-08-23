@@ -175,9 +175,8 @@ public final class PostgresDedicatedIntelligenceSummaryCatalog implements Domain
     private static String summarySql() {
         return """
                 WITH active_vulnerability AS (
-                    SELECT DISTINCT v.id
-                    FROM rbvm.vulnerability v
-                    JOIN rbvm.observation o ON o.vulnerability_id = v.id
+                    SELECT DISTINCT o.vulnerability_id AS id
+                    FROM rbvm.observation o
                     WHERE o.tenant_id = ?
                 ),
                 cvss AS (

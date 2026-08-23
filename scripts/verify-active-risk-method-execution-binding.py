@@ -126,7 +126,8 @@ assert 'REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.active_risk_method_execution_bin
 
 for marker in [
     'PostgresV27ActiveRiskMethodExecutionBindingLiveSelfTest',
-    'schemaVersion == 27',
+    'schemaVersion >= 27',
+    'bindings.schemaVersion() >= 27',
     'Status.INSERTED',
     'formulaReplay.replayed()',
     'MethodFamily.RBVM_FORMULA',

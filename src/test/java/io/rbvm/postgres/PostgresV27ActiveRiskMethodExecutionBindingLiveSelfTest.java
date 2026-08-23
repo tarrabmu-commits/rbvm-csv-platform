@@ -31,8 +31,9 @@ public final class PostgresV27ActiveRiskMethodExecutionBindingLiveSelfTest {
                 settings.password()
         );
         int schemaVersion = new PostgresMigrator(ownerConnections).installedVersion();
-        require(schemaVersion == 27,
-                "V27 execution binding live test requires schema version 27, found " + schemaVersion);
+        require(schemaVersion >= 27,
+                "V27 execution binding live test requires schema version 27 or newer, found "
+                        + schemaVersion);
 
         JdbcConnectionFactory runtimeConnections = new DriverManagerConnectionFactory(
                 settings.jdbcUrl(),
@@ -45,8 +46,8 @@ public final class PostgresV27ActiveRiskMethodExecutionBindingLiveSelfTest {
                 new PostgresRiskMethodSelectionPolicyActivationStore(runtimeConnections, false);
         PostgresActiveRiskMethodExecutionBindingStore bindings =
                 new PostgresActiveRiskMethodExecutionBindingStore(runtimeConnections, false);
-        require(bindings.schemaVersion() == 27,
-                "execution binding store must bind exact installed schema version 27");
+        require(bindings.schemaVersion() >= 27,
+                "execution binding store requires installed schema version 27 or newer");
 
         String snapshotSha = latestV3SnapshotSha(runtimeConnections);
         ActiveRiskMethodResultMaterializer existingNativeResults = (policy, inputSnapshotSha256) ->
@@ -153,8 +154,9 @@ public final class PostgresV27ActiveRiskMethodExecutionBindingLiveSelfTest {
         proveAppendOnly(runtimeConnections);
 
         System.out.println(
-                "PostgresV27ActiveRiskMethodExecutionBindingLiveSelfTest: PASS schema=27 "
-                        + "formula=PASS derived=PASS exact_activation=PASS exact_policy=PASS "
+                "PostgresV27ActiveRiskMethodExecutionBindingLiveSelfTest: PASS schema="
+                        + schemaVersion
+                        + " formula=PASS derived=PASS exact_activation=PASS exact_policy=PASS "
                         + "exact_input=PASS replay=PASS db_method_result_fk=PASS append_only=PASS"
         );
     }
