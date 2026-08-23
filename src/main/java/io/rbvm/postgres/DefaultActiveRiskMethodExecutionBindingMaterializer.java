@@ -14,17 +14,42 @@ import java.util.Objects;
  */
 public final class DefaultActiveRiskMethodExecutionBindingMaterializer {
     private final RiskMethodSelectionPolicyStore policies;
+    private final RiskMethodSelectionPolicyActivationStore activations;
     private final ActiveRiskMethodResultMaterializer results;
     private final ActiveRiskMethodExecutionBindingStore bindings;
 
+    /**
+     * Explicit production constructor. Policy and activation persistence remain independent
+     * dependencies; execution never discovers activation through a current/default policy pointer.
+     */
+    public DefaultActiveRiskMethodExecutionBindingMaterializer(
+            RiskMethodSelectionPolicyStore policies,
+            RiskMethodSelectionPolicyActivationStore activations,
+            ActiveRiskMethodResultMaterializer results,
+            ActiveRiskMethodExecutionBindingStore bindings
+    ) {
+        this.policies = Objects.requireNonNull(policies, "policies");
+        this.activations = Objects.requireNonNull(activations, "activations");
+        this.results = Objects.requireNonNull(results, "results");
+        this.bindings = Objects.requireNonNull(bindings, "bindings");
+    }
+
+    /**
+     * Compatibility constructor for composite stores that explicitly expose their activation
+     * capability. PostgreSQL production wiring should use the four-argument constructor.
+     */
     public DefaultActiveRiskMethodExecutionBindingMaterializer(
             RiskMethodSelectionPolicyStore policies,
             ActiveRiskMethodResultMaterializer results,
             ActiveRiskMethodExecutionBindingStore bindings
     ) {
-        this.policies = Objects.requireNonNull(policies, "policies");
-        this.results = Objects.requireNonNull(results, "results");
-        this.bindings = Objects.requireNonNull(bindings, "bindings");
+        this(
+                policies,
+                Objects.requireNonNull(policies, "policies").activationStore()
+                        .orElseThrow(ActivationPersistenceUnavailableException::new),
+                results,
+                bindings
+        );
     }
 
     public ActiveRiskMethodExecutionBindingMaterializationResult materialize(
@@ -38,9 +63,7 @@ public final class DefaultActiveRiskMethodExecutionBindingMaterializer {
         requireSha(activationEventSha256, "activationEventSha256");
         requireSha(inputSnapshotSha256, "inputSnapshotSha256");
 
-        RiskMethodSelectionPolicyActivationStore activationStore = policies.activationStore()
-                .orElseThrow(ActivationPersistenceUnavailableException::new);
-        RbvmRiskMethodSelectionPolicyActivationEvent activation = activationStore
+        RbvmRiskMethodSelectionPolicyActivationEvent activation = activations
                 .findByActivationRevision(activationRevision)
                 .filter(candidate -> candidate.eventSha256().equals(activationEventSha256))
                 .orElseThrow(ActivationNotFoundException::new);
