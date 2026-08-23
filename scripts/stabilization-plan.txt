@@ -1,1 +1,0 @@
-P0: single dashboard runtime; bounded dashboard reads; explicit CSV-run/canonical scope; async enrichment follow-up.
