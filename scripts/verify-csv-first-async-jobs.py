@@ -20,7 +20,7 @@ for token in [
     'csv-first-enrichments',
     'new ThreadPoolExecutor(',
     'new ArrayBlockingQueue<>(MAX_QUEUED_JOBS)',
-    'MAX_CONCURRENT_JOBS = 2',
+    'MAX_CONCURRENT_JOBS = 1',
     'MAX_QUEUED_JOBS = 8',
     'RejectedExecutionException',
     'CSV_FIRST_ENRICHMENT_JOB_CAPACITY',
@@ -57,12 +57,12 @@ for token in [
 for token in [
     'CSV_FIRST_ENRICHMENT_JOB_STATUS_UI_V1',
     "window.setTimeout(() => refresh(panel, id), 1500)",
-    "reviewControl(complete",
-    "data-review-findings-button",
-    "response.status === 404",
-    "legacyRuns.add(id)",
+    'reviewControl(complete',
+    'data-review-findings-button',
+    'response.status === 404',
+    'legacyRuns.add(id)',
     "data.status === 'QUEUED' || data.status === 'RUNNING'",
-    "panel.dataset.jobState = status",
+    'panel.dataset.jobState = status',
 ]:
     if token not in status_ui:
         raise AssertionError(f'job-status UI missing {token!r}')
