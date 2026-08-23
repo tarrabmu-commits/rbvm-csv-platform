@@ -9,7 +9,9 @@ import io.rbvm.postgres.CanonicalImportFindingExporter;
 import io.rbvm.postgres.CanonicalImportFindingRuntimeFactory;
 import io.rbvm.postgres.CanonicalProjectionFactory;
 import io.rbvm.postgres.CanonicalProjectionFactory.RuntimeComponents;
+import io.rbvm.postgres.CisaKevImporter;
 import io.rbvm.postgres.DerivedRiskResultRuntimeFactory;
+import io.rbvm.postgres.EpssImporter;
 import io.rbvm.postgres.FormulaResultRuntimeFactory;
 import io.rbvm.postgres.RiskMethodSelectionPolicyRuntimeFactory;
 import io.rbvm.security.ApiKeyAuthenticator;
@@ -91,6 +93,8 @@ public final class RbvmPlatformMain {
                 dataDirectory,
                 maximumUploadBytes,
                 canonicalImportFindings,
+                runtime.epssImporter(),
+                runtime.cisaKevImporter(),
                 authenticator
         );
 
@@ -126,6 +130,8 @@ public final class RbvmPlatformMain {
                 + application.baseUri().resolve("/api/v1/csv-first-enrichments"));
         System.out.println("CSV-first source API: "
                 + application.baseUri().resolve("/api/v1/csv-first-sources/{runId}"));
+        System.out.println("CSV-first canonical public evidence API: "
+                + application.baseUri().resolve("/api/v1/csv-first-canonical-evidence/{runId}"));
         System.out.println("Canonical import Finding manifest API: "
                 + application.baseUri().resolve("/api/v1/canonical-imports/{importId}/findings.csv"));
         System.out.println("Managed Assets operator UI: " + application.baseUri().resolve("/assets"));
@@ -140,6 +146,8 @@ public final class RbvmPlatformMain {
             Path dataDirectory,
             long maximumUploadBytes,
             Optional<CanonicalImportFindingExporter> canonicalImportFindings,
+            EpssImporter epssImporter,
+            CisaKevImporter cisaKevImporter,
             ApiKeyAuthenticator authenticator
     ) throws ReflectiveOperationException {
         // Transitional registration seam: CsvPlatformServer predates extension
@@ -156,6 +164,11 @@ public final class RbvmPlatformMain {
         server.createContext(
                 "/api/v1/csv-first-sources",
                 new CsvFirstSourceHttpHandler(dataDirectory, authenticator)
+        );
+        server.createContext(
+                "/api/v1/csv-first-canonical-evidence",
+                new CsvFirstCanonicalEvidenceHttpHandler(
+                        dataDirectory, epssImporter, cisaKevImporter, authenticator)
         );
         server.createContext(
                 "/api/v1/canonical-imports",
