@@ -4,7 +4,7 @@ Contract ID: `CSV_FIRST_PUBLIC_INTELLIGENCE_ENRICHMENT_V1`
 
 ## Purpose
 
-This is the immediate stateless workflow for evaluating one customer-supplied CSV without depending on previously persisted tenant, Case, Finding, or PostgreSQL state.
+This is the immediate stateless workflow for evaluating one customer-supplied CSV without depending on previously persisted tenant, Case, Finding, or PostgreSQL state. For the current product direction, this is the default immediate evaluation path: the supplied CSV itself defines the run scope.
 
 The uploaded/input CSV is the complete workload scope for the run:
 
@@ -43,21 +43,22 @@ The run emits:
 
 The current provider layer collects:
 
-- NVD CVE metadata, description, CWE, CPE criteria, references, and every available CVSS v4 assessment;
+- NVD CVE metadata, description, CWE, CPE criteria, references, and available CVSS v4 assessments;
+- direct CVSS v4 assessments published in CVE Program CNA and ADP containers;
 - FIRST EPSS probability, percentile, and score date;
 - the complete CISA KEV catalog, including explicit listed/not-listed semantics for the validated catalog snapshot;
 - CVE Program CNA metadata and ADP summaries;
 - CISA Vulnrichment SSVC values when present: Exploitation, Automatable, and Technical Impact.
 
-The enriched CSV materializes convenient columns for these values while preserving the complete multi-assessment CVSS v4 payload as JSON.
+The enriched CSV materializes convenient columns for these values while preserving the complete multi-source CVSS v4 assessment payload as JSON.
 
 ## CVSS v4 selection safety
 
-This workflow does not invent a source winner:
+This workflow does not invent a source winner. Assessments are collected from NVD plus direct CNA/ADP evidence and grouped by semantic score/vector content:
 
 - zero CVSS v4 assessments → `CVSS4_Status=MISSING`;
-- exactly one distinct assessment → `CVSS4_Status=PRESENT` and singular convenience columns are populated;
-- two or more distinct assessments → `CVSS4_Status=AMBIGUOUS`; singular score/vector/metric columns remain blank and all assessments remain in `CVSS4_Assessments_JSON`.
+- one semantic assessment, even if the same content is repeated by multiple sources → `CVSS4_Status=PRESENT`; all agreeing sources are retained;
+- two or more semantically different assessments → `CVSS4_Status=AMBIGUOUS`; singular score/vector/metric columns remain blank and all assessments remain in `CVSS4_Assessments_JSON`.
 
 There is no v3.1-to-v4 conversion, highest-score-wins behavior, or first-row selection.
 
@@ -68,6 +69,7 @@ The workflow:
 - preserves original row order and duplicate findings;
 - deduplicates only the provider lookup CVE inventory;
 - rejects enrichment-column collisions rather than silently overwriting prior values;
+- verifies the immutable public-intelligence snapshot SHA-256 before merging it;
 - binds every row to `Intel_Observed_At` and `Public_Intel_Snapshot_SHA256`;
 - preserves CVE Services response SHA-256 per CVE where available;
 - never queries current RBVM Cases or tenant database state to determine the run scope.
@@ -87,7 +89,7 @@ Those values may later be supplied from customer evidence or customer-system API
 
 ## Verification
 
-`./scripts/verify.sh` now includes:
+`./scripts/verify.sh` includes:
 
-- `verify-public-vulnerability-intel.py` for offline provider-normalization semantics;
-- `verify-csv-first-enrichment.py` for an offline end-to-end merge covering CVSS v4 `PRESENT`, `AMBIGUOUS`, and `MISSING`, EPSS, KEV, CISA SSVC, row preservation, and the no-database-state invariant.
+- `verify-public-vulnerability-intel.py` for offline provider-normalization semantics, including direct CNA/ADP CVSS v4 and CISA SSVC;
+- `verify-csv-first-enrichment.py` for an offline end-to-end merge covering CVSS v4 `PRESENT`, `AMBIGUOUS`, and `MISSING`, EPSS, KEV, CISA SSVC, row preservation, snapshot identity, and the no-database-state invariant.
