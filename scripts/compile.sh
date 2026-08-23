@@ -24,21 +24,16 @@ if [[ -d "$ROOT_DIR/src/main/resources" ]]; then
   cp -R "$ROOT_DIR/src/main/resources/." "$MAIN_CLASSES/"
 fi
 # Frontend System V2 remains one served dependency-free bundle. Keep the
-# CSV-first customer workflow isolated in source, then concatenate it
+# CSV-first workflow modules isolated in source, then concatenate them
 # deterministically into the runtime rbvm-ui.js artifact.
 if [[ -f "$ROOT_DIR/src/main/resources/web/customer-flow.js" ]]; then
   printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
   cat "$ROOT_DIR/src/main/resources/web/customer-flow.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
 fi
-# Finding review is a separate source module but part of the same runtime
-# dependency-free bundle. It reviews evidence only and does not calculate risk.
 if [[ -f "$ROOT_DIR/src/main/resources/web/csv-run-review.js" ]]; then
   printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
   cat "$ROOT_DIR/src/main/resources/web/csv-run-review.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
 fi
-# CSV run decision visuals are a read-only projection over the immutable
-# priority CSV/report and method-admission artifacts already used by review.
-# They do not execute or reproduce the priority methodology in the browser.
 if [[ -f "$ROOT_DIR/src/main/resources/web/csv-run-visuals.js" ]]; then
   printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
   cat "$ROOT_DIR/src/main/resources/web/csv-run-visuals.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
@@ -55,45 +50,24 @@ if [[ -f "$ROOT_DIR/src/main/resources/web/csv-run-visuals-mount.css" ]]; then
   printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.css"
   cat "$ROOT_DIR/src/main/resources/web/csv-run-visuals-mount.css" >> "$MAIN_CLASSES/web/rbvm-ui.css"
 fi
-# Canonical handoff is a separate explicit operator workflow. It reuses the
-# established canonical CSV import/confirm API and never auto-confirms.
 if [[ -f "$ROOT_DIR/src/main/resources/web/csv-canonical-handoff.js" ]]; then
   printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
   cat "$ROOT_DIR/src/main/resources/web/csv-canonical-handoff.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
 fi
-# Dashboard V3 adapts the legacy VA operational dashboard to current RBVM
-# semantics. It consumes existing APIs only and does not invent risk, SLA,
-# exploitation, or historical trend values.
-if [[ -f "$ROOT_DIR/src/main/resources/web/rbvm-dashboard.js" ]]; then
+
+# Stabilization V1: exactly one dashboard enhancement module is allowed at
+# runtime. Legacy V3/V4/V5 MutationObserver overlays remain in source history
+# but are deliberately not bundled; stacking them caused repeated full-catalog
+# reads, race-prone replacement, and an incoherent product surface.
+if [[ -f "$ROOT_DIR/src/main/resources/web/rbvm-dashboard-core.js" ]]; then
   printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
-  cat "$ROOT_DIR/src/main/resources/web/rbvm-dashboard.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
+  cat "$ROOT_DIR/src/main/resources/web/rbvm-dashboard-core.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
 fi
-if [[ -f "$ROOT_DIR/src/main/resources/web/rbvm-dashboard.css" ]]; then
+if [[ -f "$ROOT_DIR/src/main/resources/web/rbvm-dashboard-core.css" ]]; then
   printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.css"
-  cat "$ROOT_DIR/src/main/resources/web/rbvm-dashboard.css" >> "$MAIN_CLASSES/web/rbvm-ui.css"
+  cat "$ROOT_DIR/src/main/resources/web/rbvm-dashboard-core.css" >> "$MAIN_CLASSES/web/rbvm-ui.css"
 fi
-# Dashboard V4 is a standards-oriented visual layer. It runs after V3 and
-# replaces only the Overview dashboard presentation, preserving all source
-# evidence boundaries and refusing to synthesize unsupported risk semantics.
-if [[ -f "$ROOT_DIR/src/main/resources/web/rbvm-dashboard-v4.js" ]]; then
-  printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
-  cat "$ROOT_DIR/src/main/resources/web/rbvm-dashboard-v4.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
-fi
-if [[ -f "$ROOT_DIR/src/main/resources/web/rbvm-dashboard-v4.css" ]]; then
-  printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.css"
-  cat "$ROOT_DIR/src/main/resources/web/rbvm-dashboard-v4.css" >> "$MAIN_CLASSES/web/rbvm-ui.css"
-fi
-# Dashboard V5 adds lifecycle/time evidence and semantic guardrails after V4.
-# It visualizes explicit workflow state and first-observed cohorts without
-# fabricating remediation history or converting external KEV dates into SLA.
-if [[ -f "$ROOT_DIR/src/main/resources/web/rbvm-dashboard-v5.js" ]]; then
-  printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
-  cat "$ROOT_DIR/src/main/resources/web/rbvm-dashboard-v5.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
-fi
-if [[ -f "$ROOT_DIR/src/main/resources/web/rbvm-dashboard-v5.css" ]]; then
-  printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.css"
-  cat "$ROOT_DIR/src/main/resources/web/rbvm-dashboard-v5.css" >> "$MAIN_CLASSES/web/rbvm-ui.css"
-fi
+
 mkdir -p "$MAIN_CLASSES/db/migration"
 cp "$ROOT_DIR"/db/migration/*.sql "$MAIN_CLASSES/db/migration/"
 
