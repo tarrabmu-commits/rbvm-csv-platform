@@ -1,0 +1,1 @@
+Validation marker for the CSV-first MVP customer-context flow.
