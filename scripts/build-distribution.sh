@@ -21,7 +21,7 @@ FILE_LIST="$ROOT_DIR/build/manual/jar-files.txt"
 MANIFEST="$ROOT_DIR/build/manual/MANIFEST.MF"
 printf '%s\r\n' \
   'Manifest-Version: 1.0' \
-  'Main-Class: io.rbvm.csv.CsvPlatformServer' \
+  'Main-Class: io.rbvm.csv.RbvmPlatformMain' \
   'Implementation-Title: RBVM CSV Platform' \
   "Implementation-Version: $VERSION" \
   'Created-By: RBVM reproducible build' \
