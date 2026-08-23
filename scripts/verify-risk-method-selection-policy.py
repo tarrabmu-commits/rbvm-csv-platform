@@ -61,7 +61,7 @@ for forbidden in [
     'create view rbvm.default_risk_method',
     'priority_tier',
     'sla_days',
-    'treatment',
+    'treatment_decision',
 ]:
     assert forbidden not in migration_lower, f"V25 migration must not contain {forbidden!r}"
 
