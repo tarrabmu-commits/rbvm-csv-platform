@@ -27,10 +27,7 @@ jobs:
           text = path.read_text()
           if 'private Response resolvedSelectionResponse(' in text:
               raise SystemExit(0)
-          marker = '''    private static Response response(
-                  int status,
-                  RbvmRiskMethodSelectionPolicy policy,
-          '''
+          marker = '    private static Response response(\n'
           block = '''    private Response resolvedSelectionResponse(
                   RbvmRiskMethodSelectionPolicyActivationEvent event
           ) throws IOException {
