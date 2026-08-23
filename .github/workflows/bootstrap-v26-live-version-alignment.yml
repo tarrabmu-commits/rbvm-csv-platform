@@ -1,0 +1,35 @@
+name: bootstrap-v26-live-version-alignment
+
+on:
+  push:
+    branches:
+      - policy/risk-method-selection-activation-v1
+
+permissions:
+  contents: write
+
+jobs:
+  align:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: policy/risk-method-selection-activation-v1
+      - name: Apply forward-compatible live-test alignment
+        run: python3 scripts/bootstrap-v26-live-version-alignment.py
+      - name: Commit alignment
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/postgres-integration.yml \
+                  src/test/java/io/rbvm/postgres/PostgresV23FormulaResultLiveSelfTest.java \
+                  src/test/java/io/rbvm/postgres/PostgresV24DerivedRiskLiveSelfTest.java \
+                  src/test/java/io/rbvm/postgres/PostgresV25RiskMethodSelectionPolicyLiveSelfTest.java \
+                  src/test/java/io/rbvm/postgres/PostgresMigratorSelfTest.java \
+                  scripts/verify-risk-method-selection-policy.py \
+                  scripts/verify-decision-input-v3.py
+          git diff --cached --check
+          git commit -m 'Align live integration with V26 activation persistence'
+          git push origin HEAD:policy/risk-method-selection-activation-v1
