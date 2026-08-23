@@ -1,0 +1,162 @@
+openapi: 3.0.3
+info:
+  title: RBVM Resolved Active Risk Method API V1
+  version: 1.0.0
+  description: >-
+    Read-only projection that resolves one explicit Risk Method Selection Policy activation event
+    through its exact persisted policy revision and SHA to one exact risk-method identity. Current
+    is operational discovery only; the returned activation revision and event SHA are the replay
+    anchor. No default, catalog-order selection, score averaging, Priority, Treatment, or SLA is
+    created by this contract.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/risk-method-selection-policy-activation/current/resolved:
+    get:
+      operationId: getResolvedCurrentActiveRiskMethod
+      summary: Resolve the greatest explicit activation revision to its exact risk method
+      description: >-
+        Requires VIEWER. Returns 404 when no activation event has ever existed. ACTIVE resolves the
+        exact policy revision+SHA and method identity. CLEARED returns an explicit no-selection
+        response with null policy and selectedMethod. Consumers that persist or replay a decision
+        must capture the returned activationRevision and eventSha256 rather than the word current.
+      responses:
+        '200': { $ref: '#/components/responses/ResolvedSelectionRead' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/InsufficientRole' }
+        '404': { $ref: '#/components/responses/ActivationNotFound' }
+        '500': { $ref: '#/components/responses/IntegrityFailure' }
+        '503': { $ref: '#/components/responses/CapabilityUnavailable' }
+  /api/v1/risk-method-selection-policy-activations/{activationRevision}/{eventSha256}/resolved:
+    get:
+      operationId: getResolvedExactActiveRiskMethod
+      summary: Resolve one exact historical activation revision and event SHA to its risk method
+      parameters:
+        - $ref: '#/components/parameters/ActivationRevision'
+        - $ref: '#/components/parameters/EventSha256'
+      responses:
+        '200': { $ref: '#/components/responses/ResolvedSelectionRead' }
+        '400': { $ref: '#/components/responses/InvalidIdentity' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/InsufficientRole' }
+        '404': { $ref: '#/components/responses/ActivationNotFound' }
+        '500': { $ref: '#/components/responses/IntegrityFailure' }
+        '503': { $ref: '#/components/responses/CapabilityUnavailable' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    ActivationRevision:
+      name: activationRevision
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+    EventSha256:
+      name: eventSha256
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/Sha256' }
+  schemas:
+    Sha256:
+      type: string
+      pattern: '^[a-f0-9]{64}$'
+    SelectedMethod:
+      type: object
+      additionalProperties: false
+      required: [selectionRole, methodFamily, methodId, methodVersion, methodSha256]
+      properties:
+        selectionRole:
+          type: string
+          enum: [PRIMARY]
+        methodFamily:
+          type: string
+          enum: [RBVM_FORMULA, STANDARD_DERIVED]
+        methodId: { type: string, minLength: 1 }
+        methodVersion: { type: integer, minimum: 1 }
+        methodSha256: { $ref: '#/components/schemas/Sha256' }
+    ResolvedSelectionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - contractId
+        - resolutionSemantics
+        - selectionState
+        - activation
+        - policy
+        - selectedMethod
+      properties:
+        contractId:
+          type: string
+          enum: [RBVM_RESOLVED_ACTIVE_RISK_METHOD_API_V1]
+        resolutionSemantics:
+          type: string
+          enum: [EXPLICIT_ACTIVATION_TO_EXACT_POLICY_TO_EXACT_METHOD_NO_DEFAULT]
+        selectionState:
+          type: string
+          enum: [ACTIVE, CLEARED]
+        activation:
+          $ref: './risk-method-selection-policy-activation-v1.openapi.yaml#/components/schemas/Activation'
+        policy:
+          nullable: true
+          allOf:
+            - $ref: './risk-method-selection-policy-v1.openapi.yaml#/components/schemas/Policy'
+        selectedMethod:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/SelectedMethod'
+    Problem:
+      type: object
+      additionalProperties: true
+      required: [type, title, status, detail]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+  responses:
+    ResolvedSelectionRead:
+      description: Explicit activation resolved to exact policy and method identity, or explicit CLEARED
+      headers:
+        ETag:
+          description: Strong identity derived from the exact activation event SHA
+          schema: { type: string }
+        Location:
+          description: Exact historical resolved-selection URL using activation revision and event SHA
+          schema: { type: string }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ResolvedSelectionResponse' }
+    InvalidIdentity:
+      description: Invalid activation revision or event SHA identity
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    AuthenticationRequired:
+      description: Authentication required
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    InsufficientRole:
+      description: Authenticated principal lacks VIEWER permission
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    ActivationNotFound:
+      description: No exact activation event exists; never-activated is not synthesized as CLEARED
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    IntegrityFailure:
+      description: ACTIVE activation references a persisted policy identity that cannot be resolved; fail closed
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    CapabilityUnavailable:
+      description: PostgreSQL V26 activation persistence is unavailable after authorization
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }

@@ -20,6 +20,8 @@ final class RiskMethodSelectionPolicyHttpRouter {
             "/api/v1/risk-method-selection-policy-installations";
     private static final String ACTIVATION_CURRENT =
             "/api/v1/risk-method-selection-policy-activation/current";
+    private static final String ACTIVATION_CURRENT_RESOLVED =
+            "/api/v1/risk-method-selection-policy-activation/current/resolved";
     private static final String ACTIVATION_NAMESPACE =
             "/api/v1/risk-method-selection-policy-activations";
     private static final String ACTIVATION_EVENT_NAMESPACE =
@@ -33,6 +35,9 @@ final class RiskMethodSelectionPolicyHttpRouter {
     );
     private static final Pattern ACTIVATION_ITEM = Pattern.compile(
             "^/api/v1/risk-method-selection-policy-activations/([1-9][0-9]*)/([a-f0-9]{64})$"
+    );
+    private static final Pattern ACTIVATION_RESOLVED_ITEM = Pattern.compile(
+            "^/api/v1/risk-method-selection-policy-activations/([1-9][0-9]*)/([a-f0-9]{64})/resolved$"
     );
     private static final Pattern ACTIVE_EVENT = Pattern.compile(
             "^/api/v1/risk-method-selection-policy-activation-events/([1-9][0-9]*)/ACTIVE/"
@@ -54,6 +59,7 @@ final class RiskMethodSelectionPolicyHttpRouter {
                 || INSTALLATION_NAMESPACE.equals(path)
                 || path.startsWith(INSTALLATION_NAMESPACE + '/')
                 || ACTIVATION_CURRENT.equals(path)
+                || ACTIVATION_CURRENT_RESOLVED.equals(path)
                 || ACTIVATION_NAMESPACE.equals(path)
                 || path.startsWith(ACTIVATION_NAMESPACE + '/')
                 || ACTIVATION_EVENT_NAMESPACE.equals(path)
@@ -64,7 +70,9 @@ final class RiskMethodSelectionPolicyHttpRouter {
         return POLICY_ITEM.matcher(path).matches()
                 || INSTALLATION_ITEM.matcher(path).matches()
                 || ACTIVATION_CURRENT.equals(path)
+                || ACTIVATION_CURRENT_RESOLVED.equals(path)
                 || ACTIVATION_ITEM.matcher(path).matches()
+                || ACTIVATION_RESOLVED_ITEM.matcher(path).matches()
                 || ACTIVE_EVENT.matcher(path).matches()
                 || CLEARED_EVENT.matcher(path).matches();
     }
@@ -101,7 +109,9 @@ final class RiskMethodSelectionPolicyHttpRouter {
 
         if (POLICY_ITEM.matcher(path).matches()
                 || ACTIVATION_CURRENT.equals(path)
-                || ACTIVATION_ITEM.matcher(path).matches()) {
+                || ACTIVATION_CURRENT_RESOLVED.equals(path)
+                || ACTIVATION_ITEM.matcher(path).matches()
+                || ACTIVATION_RESOLVED_ITEM.matcher(path).matches()) {
             if (!"GET".equals(method)) {
                 exchange.getResponseHeaders().set("Allow", "GET");
                 throw new RiskMethodSelectionPolicyApi.ApiProblem(
@@ -153,10 +163,28 @@ final class RiskMethodSelectionPolicyHttpRouter {
             return;
         }
 
+        if (ACTIVATION_CURRENT_RESOLVED.equals(path)) {
+            if (!"GET".equals(method)) requiredRole(exchange, method);
+            rejectBody(exchange, "Resolved current activation read does not accept a request body");
+            send(exchange, api.resolvedCurrentSelection());
+            return;
+        }
+
         if (ACTIVATION_CURRENT.equals(path)) {
             if (!"GET".equals(method)) requiredRole(exchange, method);
             rejectBody(exchange, "Current explicit activation read does not accept a request body");
             send(exchange, api.currentActivation());
+            return;
+        }
+
+        Matcher resolvedActivation = ACTIVATION_RESOLVED_ITEM.matcher(path);
+        if (resolvedActivation.matches()) {
+            if (!"GET".equals(method)) requiredRole(exchange, method);
+            rejectBody(exchange, "Resolved exact activation read does not accept a request body");
+            send(exchange, api.resolvedActivation(
+                    positiveInteger(resolvedActivation.group(1), "activationRevision"),
+                    resolvedActivation.group(2)
+            ));
             return;
         }
 

@@ -44,6 +44,8 @@ paths:
   /scanner-assets/{scannerAssetId}/managed-asset-link/revisions: {$ref: './openapi.yaml#/paths/~1scanner-assets~1{scannerAssetId}~1managed-asset-link~1revisions'}
   /risk-method-selection-policies/{revision}/{policySha256}: {$ref: './openapi.yaml#/paths/~1risk-method-selection-policies~1{revision}~1{policySha256}'}
   /risk-method-selection-policy-installations/{revision}/{methodFamily}/{methodId}/{methodVersion}/{methodSha256}: {$ref: './openapi.yaml#/paths/~1risk-method-selection-policy-installations~1{revision}~1{methodFamily}~1{methodId}~1{methodVersion}~1{methodSha256}'}
+  /risk-method-selection-policy-activation/current/resolved: {$ref: './resolved-active-risk-method-v1.openapi.yaml#/paths/~1api~1v1~1risk-method-selection-policy-activation~1current~1resolved'}
+  /risk-method-selection-policy-activations/{activationRevision}/{eventSha256}/resolved: {$ref: './resolved-active-risk-method-v1.openapi.yaml#/paths/~1api~1v1~1risk-method-selection-policy-activations~1{activationRevision}~1{eventSha256}~1resolved'}
   /risk-method-selection-policy-activation/current: {$ref: './openapi.yaml#/paths/~1risk-method-selection-policy-activation~1current'}
   /risk-method-selection-policy-activations/{activationRevision}/{eventSha256}: {$ref: './openapi.yaml#/paths/~1risk-method-selection-policy-activations~1{activationRevision}~1{eventSha256}'}
   /risk-method-selection-policy-activation-events/{activationRevision}/ACTIVE/{policyRevision}/{policySha256}/{recordedAt}: {$ref: './openapi.yaml#/paths/~1risk-method-selection-policy-activation-events~1{activationRevision}~1ACTIVE~1{policyRevision}~1{policySha256}~1{recordedAt}'}

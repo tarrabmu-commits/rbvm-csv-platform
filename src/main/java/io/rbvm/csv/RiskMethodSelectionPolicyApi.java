@@ -30,6 +30,10 @@ public final class RiskMethodSelectionPolicyApi {
             "RBVM_RISK_METHOD_SELECTION_POLICY_ACTIVATION_INSTALLATION_API_V1";
     public static final String ACTIVATION_SELECTION_SEMANTICS =
             "CURRENT_IS_GREATEST_EXPLICIT_ACTIVATION_REVISION_NEVER_POLICY_REVISION";
+    public static final String RESOLVED_ACTIVE_METHOD_CONTRACT_ID =
+            "RBVM_RESOLVED_ACTIVE_RISK_METHOD_API_V1";
+    public static final String RESOLVED_ACTIVE_METHOD_SEMANTICS =
+            "EXPLICIT_ACTIVATION_TO_EXACT_POLICY_TO_EXACT_METHOD_NO_DEFAULT";
 
     private final RiskMethodSelectionPolicyStore policies;
 
@@ -108,6 +112,20 @@ public final class RiskMethodSelectionPolicyApi {
         return activationResponse(200, event, null);
     }
 
+    /**
+     * Resolves the greatest explicit activation event through its exact persisted policy identity.
+     * The returned activation revision and event SHA are the replay anchor; "current" itself is not.
+     */
+    public Response resolvedCurrentSelection() throws IOException {
+        RbvmRiskMethodSelectionPolicyActivationEvent event = activationStore().current()
+                .orElseThrow(() -> new ApiProblem(
+                        404,
+                        "RISK_METHOD_SELECTION_POLICY_ACTIVATION_NOT_FOUND",
+                        "No explicit risk method selection policy activation event has been persisted"
+                ));
+        return resolvedSelectionResponse(event);
+    }
+
     /** Exact activation lookup requires both activation revision and canonical event SHA. */
     public Response getActivation(int activationRevision, String eventSha256) throws IOException {
         int exactRevision = requireActivationRevision(activationRevision);
@@ -121,6 +139,21 @@ public final class RiskMethodSelectionPolicyApi {
                         "No persisted activation event matches the exact activation revision and event SHA"
                 ));
         return activationResponse(200, event, null);
+    }
+
+    /** Resolves one exact historical activation identity through its exact persisted policy. */
+    public Response resolvedActivation(int activationRevision, String eventSha256) throws IOException {
+        int exactRevision = requireActivationRevision(activationRevision);
+        String exactSha = requireSha(eventSha256, "eventSha256");
+        RbvmRiskMethodSelectionPolicyActivationEvent event = activationStore()
+                .findByActivationRevision(exactRevision)
+                .filter(candidate -> candidate.eventSha256().equals(exactSha))
+                .orElseThrow(() -> new ApiProblem(
+                        404,
+                        "RISK_METHOD_SELECTION_POLICY_ACTIVATION_NOT_FOUND",
+                        "No persisted activation event matches the exact activation revision and event SHA"
+                ));
+        return resolvedSelectionResponse(event);
     }
 
     /**
@@ -252,6 +285,48 @@ public final class RiskMethodSelectionPolicyApi {
         return RbvmRiskMethodSelectionPolicy.derived(revision, definition);
     }
 
+    private Response resolvedSelectionResponse(
+            RbvmRiskMethodSelectionPolicyActivationEvent event
+    ) throws IOException {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("contractId", RESOLVED_ACTIVE_METHOD_CONTRACT_ID);
+        body.put("resolutionSemantics", RESOLVED_ACTIVE_METHOD_SEMANTICS);
+        body.put("selectionState", event.activatesPolicy() ? "ACTIVE" : "CLEARED");
+        body.put("activation", activationView(event));
+
+        if (event.activatesPolicy()) {
+            RbvmRiskMethodSelectionPolicy policy = policies.findByRevision(event.policyRevision())
+                    .filter(candidate -> candidate.policySha256().equals(event.policySha256()))
+                    .orElseThrow(() -> new ApiProblem(
+                            500,
+                            "RISK_METHOD_SELECTION_POLICY_ACTIVATION_INTEGRITY_FAILURE",
+                            "ACTIVE activation references an exact policy identity that cannot be resolved"
+                    ));
+            body.put("policy", policyView(policy));
+            body.put("selectedMethod", selectedMethodView(policy));
+        } else {
+            body.put("policy", null);
+            body.put("selectedMethod", null);
+        }
+
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("ETag", activationStrongEtag(event.eventSha256()));
+        headers.put("Location", resolvedActivationLocation(event));
+        return new Response(200, headers, body);
+    }
+
+    private static Map<String, Object> selectedMethodView(
+            RbvmRiskMethodSelectionPolicy policy
+    ) {
+        Map<String, Object> output = new LinkedHashMap<>();
+        output.put("selectionRole", policy.selectionRole().name());
+        output.put("methodFamily", policy.methodFamily().name());
+        output.put("methodId", policy.methodId());
+        output.put("methodVersion", policy.methodVersion());
+        output.put("methodSha256", policy.methodSha256());
+        return output;
+    }
+
     private static Response response(
             int status,
             RbvmRiskMethodSelectionPolicy policy,
@@ -346,6 +421,10 @@ public final class RiskMethodSelectionPolicyApi {
     static String activationLocation(RbvmRiskMethodSelectionPolicyActivationEvent event) {
         return "/api/v1/risk-method-selection-policy-activations/"
                 + event.activationRevision() + "/" + event.eventSha256();
+    }
+
+    static String resolvedActivationLocation(RbvmRiskMethodSelectionPolicyActivationEvent event) {
+        return activationLocation(event) + "/resolved";
     }
 
     static String strongEtag(String policySha256) {
