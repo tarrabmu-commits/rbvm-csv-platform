@@ -123,6 +123,9 @@ result = {
     },
 }
 
+output.write_text(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False) + '\n', encoding='utf-8')
+print(json.dumps(result, sort_keys=True))
+
 if len(rows) != 6:
     raise SystemExit(f'benchmark corpus row count changed unexpectedly: {len(rows)}')
 if matched != len(rows):
@@ -135,9 +138,6 @@ if kev_listed < 2:
     raise SystemExit(f'expected at least 2 KEV-listed rows, got {kev_listed}')
 if analysis.get('rbvmV2', {}).get('riskComputedRows') != 0:
     raise SystemExit('benchmark must not silently compute organizational risk')
-
-output.write_text(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False) + '\n', encoding='utf-8')
-print(json.dumps(result, sort_keys=True))
 PY
 
 sha256sum "$CORPUS" "$CONTEXT" "$ENRICHED" "$SNAPSHOT" "$ANALYSIS" "$BENCHMARK_SUMMARY" > "$OUT_DIR/SHA256SUMS"
