@@ -47,7 +47,7 @@ public final class CsvFirstEnrichmentJobHttpHandler implements HttpHandler {
             "^/api/v1/csv-first-enrichment-jobs/([0-9a-fA-F-]{36})$");
     private static final Duration PROCESS_TIMEOUT = Duration.ofMinutes(10);
     private static final int MAX_PROCESS_OUTPUT_BYTES = 64 * 1024;
-    private static final int MAX_CONCURRENT_JOBS = 2;
+    private static final int MAX_CONCURRENT_JOBS = 1;
     private static final int MAX_QUEUED_JOBS = 8;
 
     private final Path dataDirectory;
