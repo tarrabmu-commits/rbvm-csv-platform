@@ -22,6 +22,8 @@ for token in (
     "Organizational Risk = NON_COMPUTABLE",
     "UNRANKABLE_MISSING_EVIDENCE",
     "Internet Facing = exact Reachability",
+    "RBVM_MVP_PRIORITY_EXPLAINABILITY_V1",
+    "RBVM_MVP_Priority_Explanation",
 ):
     if token not in DOC:
         raise AssertionError(f"MVP priority policy document missing {token}")
@@ -89,6 +91,16 @@ with tempfile.TemporaryDirectory(prefix="rbvm-mvp-priority-") as temp:
         raise AssertionError("missing customer exposure must remain unrankable")
     if "INTERNET_FACING_MISSING_OR_INVALID" not in by_agent["asset-d"]["RBVM_MVP_Priority_Blockers"]:
         raise AssertionError("missing Internet Facing blocker must be explicit")
+    if "Front 1:" not in by_agent["asset-a"]["RBVM_MVP_Priority_Explanation"]:
+        raise AssertionError("ranked rows must explain their Pareto front")
+    if "KEV=LISTED" not in by_agent["asset-a"]["RBVM_MVP_Priority_Explanation"]:
+        raise AssertionError("ranked explanation must render admitted KEV evidence")
+    if "not Organizational Risk or an SLA" not in by_agent["asset-a"]["RBVM_MVP_Priority_Explanation"]:
+        raise AssertionError("ranked explanation must preserve risk/SLA boundary")
+    if "customer Internet Facing" not in by_agent["asset-d"]["RBVM_MVP_Priority_Explanation"]:
+        raise AssertionError("unrankable explanation must name the missing evidence")
+    if "Missing evidence is not imputed" not in by_agent["asset-d"]["RBVM_MVP_Priority_Explanation"]:
+        raise AssertionError("unrankable explanation must preserve missing-evidence semantics")
     if any(row["RBVM_MVP_Priority_Method_SHA256"] != EXPECTED_SHA for row in output):
         raise AssertionError("every ranked output row must bind the exact method SHA")
     if any(row["RBVM_V2_Status"] != "NON_COMPUTABLE" for row in output):
@@ -108,6 +120,13 @@ with tempfile.TemporaryDirectory(prefix="rbvm-mvp-priority-") as temp:
     canonical = value["canonicalRepresentation"]
     if canonical["weights"] != [] or canonical["thresholds"] != []:
         raise AssertionError("MVP priority policy must remain weight-free and threshold-free")
+    explainability = value.get("explainability", {})
+    if explainability.get("contractId") != "RBVM_MVP_PRIORITY_EXPLAINABILITY_V1":
+        raise AssertionError("priority explainability contract drift")
+    if explainability.get("rowColumn") != "RBVM_MVP_Priority_Explanation":
+        raise AssertionError("priority explanation output column drift")
+    if explainability.get("changesPriority") is not False:
+        raise AssertionError("explainability must not change treatment priority")
     if not value.get("reportSha256") or len(value["reportSha256"]) != 64:
         raise AssertionError("priority report must be SHA-bound")
 
