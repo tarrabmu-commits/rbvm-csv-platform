@@ -1,0 +1,14 @@
+{
+  "contractId": "RBVM_CUSTOMER_ASSET_BUNDLE_V2",
+  "schemaVersion": 2,
+  "benchmarkOnly": true,
+  "contextSemantics": "SYNTHETIC_ORGANIZATION_CONTEXT_FOR_PIPELINE_COVERAGE_ONLY",
+  "assets": [
+    {"customerAssetKey":"bench-001","displayName":"benchmark-edge-01","assetCriticality":"HIGH","internetFacing":"YES"},
+    {"customerAssetKey":"bench-002","displayName":"benchmark-app-01","assetCriticality":"MODERATE","internetFacing":"YES"},
+    {"customerAssetKey":"bench-003","displayName":"benchmark-backup-01","assetCriticality":"MISSION_CRITICAL","internetFacing":"NO"},
+    {"customerAssetKey":"bench-004","displayName":"benchmark-cms-01","assetCriticality":"HIGH","internetFacing":"YES"},
+    {"customerAssetKey":"bench-005","displayName":"benchmark-win-01","assetCriticality":"HIGH","internetFacing":"NO"},
+    {"customerAssetKey":"bench-006","displayName":"benchmark-web-02","assetCriticality":"MISSION_CRITICAL","internetFacing":"YES"}
+  ]
+}
