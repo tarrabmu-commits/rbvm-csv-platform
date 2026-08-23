@@ -79,17 +79,18 @@ public final class PostgresCanonicalImportFindingManifestLiveSelfTest {
                         INSERT INTO rbvm.asset
                             (id, tenant_id, source_profile_id, observed_name, normalized_observed_name,
                              os_name_raw, identity_basis, identity_confidence,
-                             first_observed_at, last_observed_at, created_at, updated_at)
+                             first_observed_at, last_observed_at, created_at, updated_at, public_id)
                         VALUES (?, ?, ?, 'manifest-host', 'manifest-host', 'Linux',
-                                'SOURCE_NAME_ONLY', 'LOW', ?, ?, ?, ?)
-                        """, assetId, tenantId, sourceProfileId, time, time.plusSeconds(120), time, time.plusSeconds(120));
+                                'SOURCE_NAME_ONLY', 'LOW', ?, ?, ?, ?, ?)
+                        """, assetId, tenantId, sourceProfileId,
+                        time, time.plusSeconds(120), time, time.plusSeconds(120), "1".repeat(64));
                 execute(connection,
                         "INSERT INTO rbvm.vulnerability (id, cve_id, created_at) VALUES (?, 'CVE-2099-999991', ?)",
                         vulnerabilityId, time);
                 insertComponent(connection, componentId, tenantId, assetId,
-                        "manifest-package", time, time.plusSeconds(60));
+                        "manifest-package", "2".repeat(64), time, time.plusSeconds(60));
                 insertComponent(connection, unrelatedComponentId, tenantId, assetId,
-                        "other-package", time.plusSeconds(120), time.plusSeconds(120));
+                        "other-package", "3".repeat(64), time.plusSeconds(120), time.plusSeconds(120));
 
                 insertObservation(connection, observationOne, tenantId, sourceProfileId, assetId,
                         vulnerabilityId, componentId, "1".repeat(64), time);
@@ -107,11 +108,11 @@ public final class PostgresCanonicalImportFindingManifestLiveSelfTest {
                         tenantId, otherImportId, unrelatedObservation, time.plusSeconds(120));
 
                 insertCase(connection, caseId, tenantId, sourceProfileId, assetId, vulnerabilityId,
-                        time, time.plusSeconds(120));
+                        "4".repeat(64), time, time.plusSeconds(120));
                 insertExposure(connection, findingId, tenantId, sourceProfileId, caseId, assetId,
-                        vulnerabilityId, componentId, 2, time, time.plusSeconds(60));
+                        vulnerabilityId, componentId, "5".repeat(64), 2, time, time.plusSeconds(60));
                 insertExposure(connection, unrelatedFindingId, tenantId, sourceProfileId, caseId,
-                        assetId, vulnerabilityId, unrelatedComponentId, 1,
+                        assetId, vulnerabilityId, unrelatedComponentId, "6".repeat(64), 1,
                         time.plusSeconds(120), time.plusSeconds(120));
                 execute(connection, """
                         INSERT INTO rbvm.exposure_observation (tenant_id, exposure_id, observation_id)
@@ -155,15 +156,16 @@ public final class PostgresCanonicalImportFindingManifestLiveSelfTest {
             UUID tenantId,
             UUID assetId,
             String product,
+            String publicId,
             Instant first,
             Instant last
     ) throws Exception {
         execute(connection, """
                 INSERT INTO rbvm.asset_component
                     (id, tenant_id, asset_id, observed_product_name, normalized_product_name,
-                     version_status, first_observed_at, last_observed_at, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, 'UNKNOWN_FROM_SOURCE', ?, ?, ?, ?)
-                """, id, tenantId, assetId, product, product, first, last, first, last);
+                     version_status, first_observed_at, last_observed_at, created_at, updated_at, public_id)
+                VALUES (?, ?, ?, ?, ?, 'UNKNOWN_FROM_SOURCE', ?, ?, ?, ?, ?)
+                """, id, tenantId, assetId, product, product, first, last, first, last, publicId);
     }
 
     private static void insertObservation(
@@ -194,6 +196,7 @@ public final class PostgresCanonicalImportFindingManifestLiveSelfTest {
             UUID sourceProfileId,
             UUID assetId,
             UUID vulnerabilityId,
+            String publicId,
             Instant first,
             Instant last
     ) throws Exception {
@@ -201,9 +204,10 @@ public final class PostgresCanonicalImportFindingManifestLiveSelfTest {
                 INSERT INTO rbvm.vulnerability_case
                     (id, tenant_id, source_profile_id, asset_id, vulnerability_id, status,
                      closure_policy, current_severity, first_observed_at, last_observed_at,
-                     created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, 'OPEN', 'POSITIVE_ONLY_NO_AUTO_CLOSE', 'HIGH', ?, ?, ?, ?)
-                """, id, tenantId, sourceProfileId, assetId, vulnerabilityId, first, last, first, last);
+                     created_at, updated_at, public_id)
+                VALUES (?, ?, ?, ?, ?, 'OPEN', 'POSITIVE_ONLY_NO_AUTO_CLOSE', 'HIGH', ?, ?, ?, ?, ?)
+                """, id, tenantId, sourceProfileId, assetId, vulnerabilityId,
+                first, last, first, last, publicId);
     }
 
     private static void insertExposure(
@@ -215,6 +219,7 @@ public final class PostgresCanonicalImportFindingManifestLiveSelfTest {
             UUID assetId,
             UUID vulnerabilityId,
             UUID componentId,
+            String publicId,
             long observationCount,
             Instant first,
             Instant last
@@ -225,11 +230,11 @@ public final class PostgresCanonicalImportFindingManifestLiveSelfTest {
                      status, closure_policy, current_severity, current_severity_observed_at,
                      first_observed_at, last_observed_at, observation_count,
                      severity_changed, timestamp_severity_conflict, created_at, updated_at,
-                     lifecycle_observed_at, resolved_at)
+                     lifecycle_observed_at, resolved_at, public_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?, 'ACTIVE', 'POSITIVE_ONLY_NO_AUTO_CLOSE', 'HIGH',
-                        ?, ?, ?, ?, false, false, ?, ?, ?, NULL)
+                        ?, ?, ?, ?, false, false, ?, ?, ?, NULL, ?)
                 """, id, tenantId, sourceProfileId, caseId, assetId, vulnerabilityId, componentId,
-                last, first, last, observationCount, first, last, last);
+                last, first, last, observationCount, first, last, last, publicId);
     }
 
     private static void execute(Connection connection, String sql, Object... values) throws Exception {
