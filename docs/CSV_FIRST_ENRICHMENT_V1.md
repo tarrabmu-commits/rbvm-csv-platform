@@ -24,6 +24,8 @@ one enriched CSV + immutable snapshot/report
 
 Only `CVE_ID` is required by the public-intelligence stage. Wazuh V1/V2 rows are supported naturally because they already contain `CVE_ID`, but public enrichment does not require a prior database import or WAZUH_CSV_V2-only fields.
 
+This path is deliberately separate from the legacy scheduled Wazuh V2 intelligence refresh. The legacy scheduler remains backward-compatible; it does not define or constrain the CVE scope of a CSV-first run.
+
 ## Command
 
 ```bash
