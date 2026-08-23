@@ -78,8 +78,8 @@ for forbidden in [
     "sessionStorage",
     "contextResolver(",
     "joinRows(",
-    "Critical risk",
-    "High risk",
+    "text: 'Critical'",
+    "text: 'High'",
 ]:
     if forbidden in UI:
         raise AssertionError(f"CSV run review contains forbidden client-side decision/join/persistence logic: {forbidden}")
