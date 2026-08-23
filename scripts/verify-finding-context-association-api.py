@@ -205,9 +205,9 @@ for path, item in composed_openapi["paths"].items():
         source_document = resolved_openapi
         expected_source_path = "/api/v1" + path
     else:
-        source_name = "openapi.yaml"
-        source_document = base_openapi
-        expected_source_path = path
+        if path not in base_paths:
+            raise AssertionError(f"Composed unowned path {path} is absent from base openapi.yaml")
+        continue
     expected_prefix = f"./{source_name}#/paths/"
     if not reference.startswith(expected_prefix):
         raise AssertionError(f"Composed path {path} references the wrong source contract")

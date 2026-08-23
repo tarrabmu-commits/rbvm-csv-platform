@@ -1,0 +1,321 @@
+openapi: 3.0.3
+info:
+  title: RBVM Active Risk Method Execution API V1
+  version: 1.0.0
+  description: >-
+    Exact-identity execution and immutable provenance replay for the explicitly selected primary
+    risk method. Execution requires one exact historical activation revision + activation event
+    SHA-256 and one exact persisted Decision Input V3 snapshot SHA-256. There is no current,
+    latest, default, preferred, catalog-order, or collection-based execution selector. This API
+    does not derive Priority, Treatment, SLA, remediation deadlines, or remediation workflow.
+paths:
+  /api/v1/active-risk-method-executions/{activationRevision}/{activationEventSha256}/{inputSnapshotSha256}:
+    post:
+      summary: Execute one exact historical active risk-method selection against one exact Decision Input V3
+      operationId: executeActiveRiskMethodExactIdentity
+      description: >-
+        Requires Operator permission. All execution identity is explicit in the path. Query
+        parameters and request bodies are rejected. The referenced activation must be ACTIVE,
+        must resolve its exact immutable policy, and the selected method must be executable in the
+        current catalog. Exact retries replay the immutable execution binding instead of selecting
+        a different method or rebuilding the Decision Input.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: activationRevision
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - name: activationEventSha256
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Sha256'
+        - name: inputSnapshotSha256
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Sha256'
+      responses:
+        '201':
+          description: Exact execution completed and its immutable provenance binding was appended
+          headers:
+            ETag:
+              description: Strong immutable identity derived from the canonical execution-binding SHA-256
+              schema:
+                type: string
+            Location:
+              description: Exact immutable execution-binding read location
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionResponse'
+        '200':
+          description: Exact activation + Decision Input execution identity replayed an existing binding
+          headers:
+            ETag:
+              description: Strong immutable identity derived from the canonical execution-binding SHA-256
+              schema:
+                type: string
+            Location:
+              description: Exact immutable execution-binding read location
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/IntegrityFailure'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /api/v1/active-risk-method-execution-bindings/{bindingSha256}:
+    get:
+      summary: Read one exact immutable active-risk-method execution binding
+      operationId: getActiveRiskMethodExecutionBindingBySha256
+      description: >-
+        Requires Viewer permission. The canonical binding SHA-256 is the only selector. Query
+        parameters and request bodies are rejected. This is a historical exact read and never
+        resolves a current activation, current policy, latest result, or default method.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: bindingSha256
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Sha256'
+      responses:
+        '200':
+          description: Exact immutable execution binding
+          headers:
+            ETag:
+              description: Strong immutable identity derived from the canonical execution-binding SHA-256
+              schema:
+                type: string
+            Location:
+              description: Exact immutable execution-binding read location
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BindingReadResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/BindingNotFound'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Sha256:
+      type: string
+      pattern: '^[a-f0-9]{64}$'
+    Binding:
+      type: object
+      required:
+        - contractId
+        - semantics
+        - canonicalPayloadFormat
+        - canonicalPayloadBase64
+        - bindingSha256
+        - activationRevision
+        - activationEventSha256
+        - policyRevision
+        - policySha256
+        - selectionRole
+        - methodFamily
+        - methodId
+        - methodVersion
+        - methodSha256
+        - inputSnapshotSha256
+        - resultFamily
+        - resultSha256
+      properties:
+        contractId:
+          type: string
+          enum: [RBVM_ACTIVE_RISK_METHOD_EXECUTION_BINDING_V1]
+        semantics:
+          type: string
+          enum: [EXACT_ACTIVATION_EVENT_EXACT_POLICY_EXACT_PRIMARY_METHOD_EXACT_DECISION_INPUT_EXACT_RESULT]
+        canonicalPayloadFormat:
+          type: string
+          enum: [RBVM_ACTIVE_RISK_METHOD_EXECUTION_BINDING_CANONICAL_BINARY_V1]
+        canonicalPayloadBase64:
+          type: string
+          format: byte
+        bindingSha256:
+          $ref: '#/components/schemas/Sha256'
+        activationRevision:
+          type: integer
+          minimum: 1
+        activationEventSha256:
+          $ref: '#/components/schemas/Sha256'
+        policyRevision:
+          type: integer
+          minimum: 1
+        policySha256:
+          $ref: '#/components/schemas/Sha256'
+        selectionRole:
+          type: string
+          enum: [PRIMARY]
+        methodFamily:
+          type: string
+          enum: [RBVM_FORMULA, STANDARD_DERIVED]
+        methodId:
+          type: string
+          minLength: 1
+        methodVersion:
+          type: integer
+          minimum: 1
+        methodSha256:
+          $ref: '#/components/schemas/Sha256'
+        inputSnapshotSha256:
+          $ref: '#/components/schemas/Sha256'
+        resultFamily:
+          type: string
+          enum: [RBVM_FORMULA_RESULT, DERIVED_RISK_RESULT]
+        resultSha256:
+          $ref: '#/components/schemas/Sha256'
+      additionalProperties: false
+    ExecutionResponse:
+      type: object
+      required:
+        - contractId
+        - executionSemantics
+        - executionStatus
+        - binding
+        - resultLocation
+      properties:
+        contractId:
+          type: string
+          enum: [RBVM_ACTIVE_RISK_METHOD_EXECUTION_API_V1]
+        executionSemantics:
+          type: string
+          enum: [EXPLICIT_ACTIVATION_REVISION_EVENT_SHA_AND_DECISION_INPUT_SHA_ONLY_NO_CURRENT_DEFAULT]
+        executionStatus:
+          type: string
+          enum: [INSERTED, REPLAYED]
+        binding:
+          $ref: '#/components/schemas/Binding'
+        resultLocation:
+          type: string
+          pattern: '^/api/v1/(formula-results|derived-risk-results)/[a-f0-9]{64}$'
+      additionalProperties: false
+    BindingReadResponse:
+      type: object
+      required:
+        - contractId
+        - executionSemantics
+        - binding
+        - resultLocation
+      properties:
+        contractId:
+          type: string
+          enum: [RBVM_ACTIVE_RISK_METHOD_EXECUTION_API_V1]
+        executionSemantics:
+          type: string
+          enum: [EXPLICIT_ACTIVATION_REVISION_EVENT_SHA_AND_DECISION_INPUT_SHA_ONLY_NO_CURRENT_DEFAULT]
+        binding:
+          $ref: '#/components/schemas/Binding'
+        resultLocation:
+          type: string
+          pattern: '^/api/v1/(formula-results|derived-risk-results)/[a-f0-9]{64}$'
+      additionalProperties: false
+    Problem:
+      type: object
+      required: [type, title, status, detail, correlationId]
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        correlationId:
+          type: string
+      additionalProperties: false
+  responses:
+    BadRequest:
+      description: Invalid exact identity, query parameter, or request body
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: Authentication is required when API-key mode is enabled
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: Authenticated identity lacks the required Viewer or Operator role
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: Exact activation event or Decision Input snapshot identity does not exist
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    BindingNotFound:
+      description: Exact canonical execution-binding identity does not exist
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: >-
+        Exact activation is CLEARED, selected historical method is unavailable, or conflicting
+        immutable native-result/execution-binding content already exists
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unprocessable:
+      description: Persisted Decision Input exists but is not Decision Input Snapshot V3
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    IntegrityFailure:
+      description: Persisted exact activation/policy/method/input/result identities fail integrity verification
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unavailable:
+      description: Active Risk Method Execution runtime requires PostgreSQL schema V27 or newer
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'

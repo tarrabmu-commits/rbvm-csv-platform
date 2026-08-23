@@ -50,6 +50,8 @@ paths:
   /risk-method-selection-policy-activations/{activationRevision}/{eventSha256}: {$ref: './openapi.yaml#/paths/~1risk-method-selection-policy-activations~1{activationRevision}~1{eventSha256}'}
   /risk-method-selection-policy-activation-events/{activationRevision}/ACTIVE/{policyRevision}/{policySha256}/{recordedAt}: {$ref: './openapi.yaml#/paths/~1risk-method-selection-policy-activation-events~1{activationRevision}~1ACTIVE~1{policyRevision}~1{policySha256}~1{recordedAt}'}
   /risk-method-selection-policy-activation-events/{activationRevision}/CLEARED/{recordedAt}: {$ref: './openapi.yaml#/paths/~1risk-method-selection-policy-activation-events~1{activationRevision}~1CLEARED~1{recordedAt}'}
+  /active-risk-method-executions/{activationRevision}/{activationEventSha256}/{inputSnapshotSha256}: {$ref: './active-risk-method-execution-v1.openapi.yaml#/paths/~1api~1v1~1active-risk-method-executions~1{activationRevision}~1{activationEventSha256}~1{inputSnapshotSha256}'}
+  /active-risk-method-execution-bindings/{bindingSha256}: {$ref: './active-risk-method-execution-v1.openapi.yaml#/paths/~1api~1v1~1active-risk-method-execution-bindings~1{bindingSha256}'}
   /findings/{findingId}/reachability-links: {$ref: './finding-context-association-v1.openapi.yaml#/paths/~1findings~1{findingId}~1reachability-links'}
   /findings/{findingId}/reachability-links/current: {$ref: './finding-context-association-v1.openapi.yaml#/paths/~1findings~1{findingId}~1reachability-links~1current'}
   /findings/{findingId}/reachability-links/revisions: {$ref: './finding-context-association-v1.openapi.yaml#/paths/~1findings~1{findingId}~1reachability-links~1revisions'}
