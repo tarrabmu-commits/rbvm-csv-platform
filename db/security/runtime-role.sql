@@ -55,7 +55,8 @@ GRANT SELECT, INSERT ON
     rbvm.finding_business_service_link_event,
     rbvm.formula_result,
     rbvm.derived_risk_result,
-    rbvm.risk_method_selection_policy
+    rbvm.risk_method_selection_policy,
+    rbvm.risk_method_selection_policy_activation_event
 TO rbvm_runtime;
 
 GRANT SELECT ON
@@ -95,7 +96,9 @@ GRANT SELECT ON
     rbvm.current_finding_reachability_scope_link,
     rbvm.active_finding_reachability_scope_link,
     rbvm.current_finding_business_service_link,
-    rbvm.active_finding_business_service_link
+    rbvm.active_finding_business_service_link,
+    rbvm.current_risk_method_selection_policy_activation,
+    rbvm.active_risk_method_selection_policy
 TO rbvm_runtime;
 
 GRANT USAGE, SELECT ON SEQUENCE rbvm.case_audit_event_database_sequence TO rbvm_runtime;
@@ -127,3 +130,4 @@ REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.finding_business_service_link_event FROM
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.formula_result FROM rbvm_runtime;
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.derived_risk_result FROM rbvm_runtime;
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.risk_method_selection_policy FROM rbvm_runtime;
+REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.risk_method_selection_policy_activation_event FROM rbvm_runtime;
