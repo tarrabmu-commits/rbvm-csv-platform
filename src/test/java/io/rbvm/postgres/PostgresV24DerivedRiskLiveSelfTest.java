@@ -24,8 +24,8 @@ public final class PostgresV24DerivedRiskLiveSelfTest {
                 settings.user(),
                 settings.password()
         );
-        require(new PostgresMigrator(ownerConnections).installedVersion() == 24,
-                "V24 derived-risk live test requires schema version 24");
+        require(new PostgresMigrator(ownerConnections).installedVersion() == 25,
+                "V24 derived-risk live test requires latest schema version 25");
 
         JdbcConnectionFactory runtimeConnections = new DriverManagerConnectionFactory(
                 settings.jdbcUrl(),
@@ -42,7 +42,7 @@ public final class PostgresV24DerivedRiskLiveSelfTest {
 
         PostgresDecisionInputEvidenceResolver resolver = new PostgresDecisionInputEvidenceResolver(
                 runtimeConnections,
-                24
+                25
         );
         PostgresDerivedRiskResultStore results = new PostgresDerivedRiskResultStore(
                 runtimeConnections,
@@ -108,7 +108,7 @@ public final class PostgresV24DerivedRiskLiveSelfTest {
         proveAppendOnly(runtimeConnections);
 
         System.out.println(
-                "PostgresV24DerivedRiskLiveSelfTest: PASS schema=24 methodologies=2 "
+                "PostgresV24DerivedRiskLiveSelfTest: PASS schema=25 methodologies=2 "
                         + "materialization=PASS insert=PASS replay=PASS exact_identity=PASS "
                         + "append_only=PASS"
         );

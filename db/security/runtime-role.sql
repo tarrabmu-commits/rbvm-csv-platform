@@ -54,7 +54,8 @@ GRANT SELECT, INSERT ON
     rbvm.finding_reachability_scope_link_event,
     rbvm.finding_business_service_link_event,
     rbvm.formula_result,
-    rbvm.derived_risk_result
+    rbvm.derived_risk_result,
+    rbvm.risk_method_selection_policy
 TO rbvm_runtime;
 
 GRANT SELECT ON
@@ -125,3 +126,4 @@ REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.finding_reachability_scope_link_event FR
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.finding_business_service_link_event FROM rbvm_runtime;
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.formula_result FROM rbvm_runtime;
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.derived_risk_result FROM rbvm_runtime;
+REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.risk_method_selection_policy FROM rbvm_runtime;
