@@ -24,8 +24,11 @@ contract = "DERIVED_RISK_METHODOLOGY_COMPARISON_UI_V1"
 if host.count(contract) != 1:
     raise AssertionError("Derived-risk UI contract marker must occur exactly once")
 start = host.index(contract)
-end = host.index('<script src="/ui/rbvm-ui.js" defer></script>', start)
-ui = host[start:end]
+script_start = host.rfind("<script>", 0, start)
+script_end = host.index("</script>", start)
+if script_start < 0 or script_end <= start:
+    raise AssertionError("Derived-risk UI contract must be contained in one inline script")
+ui = host[script_start:script_end]
 
 required = (
     "EXPLICIT_ID_AND_SHA_ONLY_NO_DEFAULT",
