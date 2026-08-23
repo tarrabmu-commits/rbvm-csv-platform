@@ -1,0 +1,16 @@
+.runviz-loading {
+  min-height: 120px;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  border: 1px dashed var(--border, #d9dee7);
+  border-radius: 12px;
+  color: var(--muted, #667085);
+  background: var(--surface-subtle, #f7f8fa);
+}
+
+@media print {
+  .runviz-loading {
+    display: none;
+  }
+}

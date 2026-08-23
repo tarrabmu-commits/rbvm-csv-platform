@@ -1,0 +1,530 @@
+.runviz-root {
+  display: grid;
+  gap: 18px;
+  padding: 18px;
+  border: 1px solid var(--border, #d9dee7);
+  border-radius: 16px;
+  background: var(--surface-subtle, #f7f8fa);
+}
+
+.runviz-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.runviz-header h3 {
+  margin: 4px 0 6px;
+  font-size: clamp(1.15rem, 2vw, 1.45rem);
+}
+
+.runviz-header p,
+.runviz-card-header p,
+.runviz-footnote,
+.runviz-muted {
+  color: var(--muted, #667085);
+}
+
+.runviz-header p {
+  max-width: 780px;
+  margin: 0;
+}
+
+.runviz-eyebrow {
+  color: var(--accent, #3f6df6);
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.runviz-contract {
+  display: grid;
+  gap: 3px;
+  min-width: 245px;
+  padding: 10px 12px;
+  border: 1px solid var(--border, #d9dee7);
+  border-radius: 10px;
+  background: var(--surface, #fff);
+  font-size: .75rem;
+}
+
+.runviz-contract span {
+  color: var(--muted, #667085);
+}
+
+.runviz-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.runviz-summary > div {
+  display: grid;
+  gap: 3px;
+  padding: 12px 14px;
+  border: 1px solid var(--border, #d9dee7);
+  border-radius: 11px;
+  background: var(--surface, #fff);
+}
+
+.runviz-summary span {
+  color: var(--muted, #667085);
+  font-size: .75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.runviz-summary strong {
+  font-size: 1.15rem;
+}
+
+.runviz-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.runviz-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border, #d9dee7);
+  border-radius: 14px;
+  background: var(--surface, #fff);
+}
+
+.runviz-wide {
+  grid-column: 1 / -1;
+}
+
+.runviz-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 15px 16px 8px;
+}
+
+.runviz-card-header h3 {
+  margin: 0;
+  font-size: .98rem;
+}
+
+.runviz-card-header p {
+  margin: 4px 0 0;
+  font-size: .79rem;
+  line-height: 1.4;
+}
+
+.runviz-badge {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  border: 1px solid var(--border, #d9dee7);
+  border-radius: 999px;
+  color: var(--muted, #667085);
+  background: var(--surface-subtle, #f7f8fa);
+  font-size: .67rem;
+  font-weight: 750;
+}
+
+.runviz-card-body {
+  padding: 8px 16px 16px;
+}
+
+.runviz-donut-wrap {
+  display: grid;
+  grid-template-columns: minmax(180px, .8fr) minmax(180px, 1.2fr);
+  gap: 16px;
+  align-items: center;
+}
+
+.runviz-donut {
+  width: min(100%, 210px);
+  margin: 0 auto;
+}
+
+.runviz-donut-track {
+  stroke: var(--surface-subtle, #edf0f5);
+}
+
+.runviz-donut-value {
+  fill: var(--text, #101828);
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.runviz-donut-label {
+  fill: var(--muted, #667085);
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.runviz-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 13px;
+  color: var(--muted, #667085);
+  font-size: .78rem;
+}
+
+.runviz-donut-wrap > .runviz-legend {
+  display: grid;
+}
+
+.runviz-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.runviz-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #7d8da8;
+}
+
+.runviz-front-1 { stroke: #6757c8; fill: #6757c8; background: #6757c8; }
+.runviz-front-2 { stroke: #4b82d8; fill: #4b82d8; background: #4b82d8; }
+.runviz-front-3 { stroke: #3c9a83; fill: #3c9a83; background: #3c9a83; }
+.runviz-front-4 { stroke: #c2923d; fill: #c2923d; background: #c2923d; }
+.runviz-front-5 { stroke: #a26a72; fill: #a26a72; background: #a26a72; }
+.runviz-unrankable { stroke: #9da6b5; fill: #9da6b5; background: #9da6b5; }
+.runviz-blocker { background: #b56576; }
+
+.runviz-bars {
+  display: grid;
+  gap: 9px;
+}
+
+.runviz-bar-row {
+  display: grid;
+  grid-template-columns: minmax(135px, 1.1fr) minmax(110px, 2fr) auto;
+  gap: 9px;
+  align-items: center;
+  font-size: .82rem;
+}
+
+.runviz-bar-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runviz-bar-track {
+  display: block;
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-subtle, #eef1f5);
+}
+
+.runviz-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent, #3f6df6);
+}
+
+.runviz-scatter-wrap {
+  display: grid;
+  gap: 8px;
+}
+
+.runviz-scatter {
+  width: 100%;
+  min-height: 300px;
+  overflow: visible;
+}
+
+.runviz-grid-line {
+  stroke: var(--border, #d9dee7);
+  stroke-width: 1;
+  opacity: .7;
+}
+
+.runviz-axis-text,
+.runviz-axis-label {
+  fill: var(--muted, #667085);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+.runviz-axis-text { font-size: 11px; }
+.runviz-axis-label { font-size: 12px; font-weight: 650; }
+
+.runviz-point {
+  fill: #637694;
+  stroke: var(--surface, #fff);
+  stroke-width: 1.5;
+}
+
+.runviz-point-kev {
+  fill: #c34d5e;
+  background: #c34d5e;
+}
+
+.runviz-point-legend {
+  background: #637694;
+}
+
+.runviz-front1-ring {
+  fill: none;
+  stroke: #6757c8;
+  stroke-width: 2.5;
+}
+
+.runviz-ring-legend {
+  width: 11px;
+  height: 11px;
+  border: 2px solid #6757c8;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.runviz-pareto-point {
+  stroke: var(--surface, #fff);
+  stroke-width: 1.5;
+}
+
+.runviz-footnote {
+  margin: 9px 0 0;
+  font-size: .76rem;
+  line-height: 1.45;
+}
+
+.runviz-ssvc {
+  display: grid;
+  gap: 15px;
+}
+
+.runviz-ssvc-group {
+  display: grid;
+  gap: 7px;
+}
+
+.runviz-ssvc-group > strong {
+  font-size: .8rem;
+}
+
+.runviz-ssvc-exploitation { background: #c65365; }
+.runviz-ssvc-automatable { background: #5b7fd0; }
+.runviz-ssvc-impact { background: #9a6bc0; }
+
+.runviz-matrix {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.15fr) repeat(3, minmax(80px, 1fr));
+  gap: 6px;
+}
+
+.runviz-matrix-heading,
+.runviz-matrix-row-label {
+  display: grid;
+  place-items: center;
+  min-height: 40px;
+  padding: 5px;
+  color: var(--muted, #667085);
+  font-size: .72rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.runviz-matrix-cell {
+  display: grid;
+  place-items: center;
+  min-height: 46px;
+  border: 1px solid var(--border, #d9dee7);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent, #3f6df6) calc(var(--runviz-heat) * 70%), var(--surface, #fff));
+}
+
+.runviz-env {
+  display: grid;
+  gap: 14px;
+}
+
+.runviz-env-group {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 8px 10px;
+  align-items: center;
+}
+
+.runviz-env-stack {
+  display: flex;
+  height: 16px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-subtle, #eef1f5);
+}
+
+.runviz-env-segment {
+  min-width: 3px;
+}
+
+.runviz-env-h { background: #a94b65; }
+.runviz-env-m { background: #c68a35; }
+.runviz-env-l { background: #4a9270; }
+.runviz-env-x { background: #9ca5b4; }
+
+.runviz-env-legend {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  color: var(--muted, #667085);
+  font-size: .72rem;
+}
+
+.runviz-context-1 { stroke: #74849f; background: #74849f; }
+.runviz-context-2 { stroke: #5b7fd0; background: #5b7fd0; }
+.runviz-context-3 { stroke: #9a6bc0; background: #9a6bc0; }
+.runviz-context-4 { stroke: #6757c8; background: #6757c8; }
+.runviz-context-5,
+.runviz-context-other { stroke: #a2aab7; background: #a2aab7; }
+
+.runviz-admission {
+  display: grid;
+  gap: 12px;
+}
+
+.runviz-admission-state {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border, #d9dee7);
+  border-radius: 9px;
+  background: var(--surface-subtle, #f7f8fa);
+  font-size: .8rem;
+}
+
+.runviz-admission-warning {
+  border-left: 4px solid #c98a34;
+}
+
+.runviz-candidates {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+.runviz-candidate {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--border, #d9dee7);
+  border-radius: 9px;
+}
+
+.runviz-candidate strong { font-size: .78rem; overflow-wrap: anywhere; }
+.runviz-candidate span { color: var(--muted, #667085); font-size: .72rem; }
+.runviz-candidate small { color: var(--muted, #667085); }
+
+.runviz-boundary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: baseline;
+  padding: 11px 13px;
+  border-left: 4px solid #6757c8;
+  background: var(--surface, #fff);
+  border-radius: 7px;
+  font-size: .8rem;
+}
+
+.runviz-boundary span {
+  color: var(--muted, #667085);
+}
+
+@media (max-width: 900px) {
+  .runviz-grid,
+  .runviz-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .runviz-wide {
+    grid-column: 1 / -1;
+  }
+
+  .runviz-header {
+    display: grid;
+  }
+
+  .runviz-contract {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 600px) {
+  .runviz-root {
+    padding: 12px;
+  }
+
+  .runviz-grid,
+  .runviz-summary,
+  .runviz-donut-wrap {
+    grid-template-columns: 1fr;
+  }
+
+  .runviz-wide {
+    grid-column: auto;
+  }
+
+  .runviz-bar-row {
+    grid-template-columns: minmax(100px, 1fr) minmax(70px, 1.1fr) auto;
+  }
+
+  .runviz-matrix {
+    grid-template-columns: minmax(100px, 1fr) repeat(3, minmax(54px, 1fr));
+  }
+
+  .runviz-scatter {
+    min-height: 240px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .runviz-root * {
+    scroll-behavior: auto !important;
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .runviz-donut-segment,
+  .runviz-bar-fill,
+  .runviz-point,
+  .runviz-pareto-point,
+  .runviz-env-segment,
+  .runviz-dot {
+    forced-color-adjust: auto;
+    fill: Highlight;
+    stroke: Highlight;
+    background: Highlight;
+  }
+
+  .runviz-matrix-cell {
+    background: Canvas;
+  }
+}
+
+@media print {
+  .runviz-card,
+  .runviz-summary > div,
+  .runviz-boundary {
+    break-inside: avoid;
+  }
+
+  .runviz-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .runviz-scatter {
+    min-height: 260px;
+  }
+}
