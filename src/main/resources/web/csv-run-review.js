@@ -26,12 +26,7 @@
     return node;
   };
 
-  const button = (label, kind = 'secondary') => el('button', {
-    type: 'button',
-    class: `button button-${kind}`,
-    text: label,
-  });
-
+  const button = (label, kind = 'secondary') => el('button', {type: 'button', class: `button button-${kind}`, text: label});
   const callout = (text, kind = 'info') => el('div', {class: `callout callout-${kind}`, text});
 
   function normalize(value) {
@@ -47,24 +42,16 @@
       const ch = text[index];
       if (quoted) {
         if (ch === '"') {
-          if (text[index + 1] === '"') {
-            cell += '"';
-            index++;
-          } else {
-            quoted = false;
-          }
-        } else {
-          cell += ch;
-        }
+          if (text[index + 1] === '"') { cell += '"'; index++; }
+          else quoted = false;
+        } else cell += ch;
         continue;
       }
       if (ch === '"') quoted = true;
       else if (ch === ',') { row.push(cell); cell = ''; }
       else if (ch === '\n') {
         row.push(cell.endsWith('\r') ? cell.slice(0, -1) : cell);
-        rows.push(row);
-        row = [];
-        cell = '';
+        rows.push(row); row = []; cell = '';
       } else cell += ch;
     }
     if (quoted) throw new Error('Enriched CSV contains an unterminated quoted field.');
@@ -92,10 +79,7 @@
     const blob = new Blob([text], {type: 'text/csv;charset=utf-8'});
     const href = URL.createObjectURL(blob);
     const link = el('a', {href, download: filename});
-    document.body.append(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(href);
+    document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(href);
   }
 
   function customerContext(panel) {
@@ -104,18 +88,11 @@
       const inputs = details.querySelectorAll('input[type="text"]');
       const selects = details.querySelectorAll('select');
       if (inputs.length < 2 || selects.length < 2) continue;
-      assets.push({
-        customerAssetKey: inputs[0].value.trim(),
-        displayName: inputs[1].value.trim(),
-        assetCriticality: selects[0].value,
-        internetFacing: selects[1].value,
-      });
+      assets.push({customerAssetKey: inputs[0].value.trim(), displayName: inputs[1].value.trim(), assetCriticality: selects[0].value, internetFacing: selects[1].value});
     }
     if (!assets.length) throw new Error('No customer assets are loaded.');
-    const incomplete = assets.filter(asset => !asset.customerAssetKey && !asset.displayName || asset.assetCriticality === 'UNKNOWN' || asset.internetFacing === 'UNKNOWN');
-    if (incomplete.length) {
-      throw new Error(`${incomplete.length} asset${incomplete.length === 1 ? '' : 's'} still need identity, Asset Criticality and Internet Facing before review.`);
-    }
+    const incomplete = assets.filter(asset => (!asset.customerAssetKey && !asset.displayName) || asset.assetCriticality === 'UNKNOWN' || asset.internetFacing === 'UNKNOWN');
+    if (incomplete.length) throw new Error(`${incomplete.length} asset${incomplete.length === 1 ? '' : 's'} still need identity, Asset Criticality and Internet Facing before review.`);
     return assets;
   }
 
@@ -144,13 +121,7 @@
     const resolve = contextResolver(assets);
     return rows.map((row, index) => {
       const resolved = resolve(row);
-      return {
-        ...row,
-        Customer_Context_Status: resolved.status,
-        Asset_Criticality: resolved.asset?.assetCriticality || '',
-        Internet_Facing: resolved.asset?.internetFacing || '',
-        CSV_Run_Row: String(index + 2),
-      };
+      return {...row, Customer_Context_Status: resolved.status, Asset_Criticality: resolved.asset?.assetCriticality || '', Internet_Facing: resolved.asset?.internetFacing || '', CSV_Run_Row: String(index + 2)};
     });
   }
 
@@ -159,12 +130,17 @@
     return `${(Number(value) * 100).toFixed(1)}%`;
   }
 
+  function cvssDisplay(row) {
+    if (row.CVSS4_Calculated_Status === 'CALCULATED') {
+      return `${row.CVSS4_Calculated_Nomenclature || 'CVSS'} ${row.CVSS4_Calculated_Score || '—'} ${row.CVSS4_Calculated_Severity || ''}`.trim();
+    }
+    if (row.CVSS4_Calculated_Status === 'AMBIGUOUS_THREAT_CONFLICT') return 'Threat conflict';
+    if (row.CVSS4_Status === 'PRESENT') return `Base ${row.CVSS4_Base_Score || '—'} ${row.CVSS4_Base_Severity || ''}`.trim();
+    return row.CVSS4_Status || '—';
+  }
+
   function metric(label, value, detail = '') {
-    return el('div', {class: 'metric'},
-      el('div', {class: 'metric-label', text: label}),
-      el('div', {class: 'metric-value', text: value}),
-      detail ? el('div', {class: 'metric-detail', text: detail}) : null
-    );
+    return el('div', {class: 'metric'}, el('div', {class: 'metric-label', text: label}), el('div', {class: 'metric-value', text: value}), detail ? el('div', {class: 'metric-detail', text: detail}) : null);
   }
 
   function renderTable(host, allRows) {
@@ -175,7 +151,6 @@
     const next = button('Next', 'ghost');
     const tableHost = el('div');
     let page = 0;
-
     const render = () => {
       const query = normalize(search.value);
       const filtered = query ? allRows.filter(row => [row.CVE_ID, row.Agent, row.Agent_ID, row.Affected_Product].some(value => normalize(value).includes(query))) : allRows;
@@ -184,31 +159,20 @@
       const start = page * PAGE_SIZE;
       const rows = filtered.slice(start, start + PAGE_SIZE);
       const table = el('table', {class: 'data-table'},
-        el('thead', {}, el('tr', {},
-          ...['Asset', 'CVE', 'Product', 'Scanner', 'CVSS4', 'EPSS', 'KEV', 'Exploitation', 'Automatable', 'Technical Impact', 'Criticality', 'Internet', 'Context'].map(label => el('th', {text: label}))
-        )),
+        el('thead', {}, el('tr', {}, ...['Asset', 'CVE', 'Product', 'Scanner', 'CVSS4', 'EPSS', 'KEV', 'Exploitation', 'Automatable', 'Technical Impact', 'Criticality', 'Internet', 'Context'].map(label => el('th', {text: label})))),
         el('tbody', {}, ...rows.map(row => el('tr', {},
-          el('td', {text: row.Agent || row.Agent_ID || '—'}),
-          el('td', {class: 'mono', text: row.CVE_ID || '—'}),
-          el('td', {text: row.Affected_Product || '—'}),
-          el('td', {text: row.Severity || '—'}),
-          el('td', {text: row.CVSS4_Status === 'PRESENT' ? `${row.CVSS4_Base_Score || '—'} ${row.CVSS4_Base_Severity || ''}`.trim() : row.CVSS4_Status || '—'}),
+          el('td', {text: row.Agent || row.Agent_ID || '—'}), el('td', {class: 'mono', text: row.CVE_ID || '—'}),
+          el('td', {text: row.Affected_Product || '—'}), el('td', {text: row.Severity || '—'}), el('td', {text: cvssDisplay(row)}),
           el('td', {text: pct(row.EPSS_Probability)}),
           el('td', {text: String(row.KEV_Listed || '').toLowerCase() === 'true' ? 'LISTED' : String(row.KEV_Listed || '').toLowerCase() === 'false' ? 'NOT LISTED' : '—'}),
-          el('td', {text: row.CISA_Exploitation || '—'}),
-          el('td', {text: row.CISA_Automatable || '—'}),
-          el('td', {text: row.CISA_Technical_Impact || '—'}),
-          el('td', {text: row.Asset_Criticality || '—'}),
-          el('td', {text: row.Internet_Facing || '—'}),
-          el('td', {text: row.Customer_Context_Status || '—'})
+          el('td', {text: row.CISA_Exploitation || '—'}), el('td', {text: row.CISA_Automatable || '—'}), el('td', {text: row.CISA_Technical_Impact || '—'}),
+          el('td', {text: row.Asset_Criticality || '—'}), el('td', {text: row.Internet_Facing || '—'}), el('td', {text: row.Customer_Context_Status || '—'})
         )))
       );
       tableHost.replaceChildren(table);
       pageLabel.textContent = `${filtered.length} finding rows · page ${page + 1} of ${pages}`;
-      previous.disabled = page <= 0;
-      next.disabled = page + 1 >= pages;
+      previous.disabled = page <= 0; next.disabled = page + 1 >= pages;
     };
-
     search.addEventListener('input', () => { page = 0; render(); });
     previous.addEventListener('click', () => { if (page > 0) { page--; render(); } });
     next.addEventListener('click', () => { page++; render(); });
@@ -221,6 +185,9 @@
     const uniqueAssets = new Set(joined.map(row => row.Agent || row.Agent_ID).filter(Boolean)).size;
     const cvssPresent = joined.filter(row => row.CVSS4_Status === 'PRESENT').length;
     const cvssAmbiguous = joined.filter(row => row.CVSS4_Status === 'AMBIGUOUS').length;
+    const cvssCalculated = joined.filter(row => row.CVSS4_Calculated_Status === 'CALCULATED').length;
+    const cvssThreatConflicts = joined.filter(row => row.CVSS4_Calculated_Status === 'AMBIGUOUS_THREAT_CONFLICT').length;
+    const baseMismatches = joined.filter(row => row.CVSS4_Base_Score_Validation === 'MISMATCH').length;
     const epssPresent = joined.filter(row => row.EPSS_Probability !== '').length;
     const kevListed = joined.filter(row => String(row.KEV_Listed || '').toLowerCase() === 'true').length;
     const contextMissing = joined.filter(row => !String(row.Customer_Context_Status || '').startsWith('MATCHED')).length;
@@ -229,35 +196,18 @@
     download.addEventListener('click', () => downloadCsv(`rbvm-finding-review-${runId}.csv`, joined));
     const close = button('Back to Assets', 'ghost');
     close.addEventListener('click', () => {
-      const section = document.querySelector('[data-csv-run-review]');
-      if (section) section.remove();
+      document.querySelector('[data-csv-run-review]')?.remove();
       const setup = document.querySelector('[data-customer-asset-setup]');
       if (setup) setup.hidden = false;
       loaded = null;
     });
     const panel = el('section', {'data-csv-run-review': 'true', class: 'panel'},
-      el('div', {class: 'panel-header'},
-        el('div', {},
-          el('h2', {class: 'panel-title', text: 'Finding Evidence Review — CSV Run'}),
-          el('p', {class: 'panel-subtitle', text: 'Public vulnerability intelligence joined with customer-declared MVP asset context. Evidence review only; no risk score, priority or SLA is calculated.'})
-        ),
-        el('div', {class: 'inline-actions'}, download, close)
-      ),
-      el('div', {class: 'panel-body'},
-        el('div', {class: 'stack'},
-          callout('CVSS v4 is technical severity, EPSS is exploitation probability, KEV/SSVC are threat evidence, and Asset Criticality + Internet Facing are customer-declared context. They remain separate evidence fields here.'),
-          el('div', {class: 'metrics'},
-            metric('Finding rows', joined.length),
-            metric('Unique CVEs', uniqueCves),
-            metric('Assets', uniqueAssets),
-            metric('CVSS4 present', cvssPresent, `${cvssAmbiguous} ambiguous`),
-            metric('EPSS present', epssPresent),
-            metric('KEV listed', kevListed),
-            metric('Context unmatched', contextMissing)
-          ),
-          host
-        )
-      )
+      el('div', {class: 'panel-header'}, el('div', {}, el('h2', {class: 'panel-title', text: 'Finding Evidence Review — CSV Run'}), el('p', {class: 'panel-subtitle', text: 'Public vulnerability intelligence joined with customer-declared MVP asset context. Evidence review only; no risk score, priority or SLA is calculated.'})), el('div', {class: 'inline-actions'}, download, close)),
+      el('div', {class: 'panel-body'}, el('div', {class: 'stack'},
+        callout('CVSS v4 is technical severity. The displayed CVSS-B/CVSS-BT value is recalculated by the FIRST-reference-compatible engine; EPSS remains exploitation probability, KEV/SSVC remain threat evidence, and Asset Criticality + Internet Facing remain separate customer context.'),
+        el('div', {class: 'metrics'}, metric('Finding rows', joined.length), metric('Unique CVEs', uniqueCves), metric('Assets', uniqueAssets),
+          metric('CVSS4 present', cvssPresent, `${cvssAmbiguous} ambiguous`), metric('CVSS4 calculated', cvssCalculated, `${cvssThreatConflicts} threat conflicts · ${baseMismatches} base mismatches`),
+          metric('EPSS present', epssPresent), metric('KEV listed', kevListed), metric('Context unmatched', contextMissing)), host))
     );
     renderTable(host, joined);
     return panel;
@@ -272,28 +222,20 @@
     }
     buttonNode.disabled = true;
     try {
-      status.textContent = 'Loading enriched findings for evidence review…';
-      status.className = 'status-message';
+      status.textContent = 'Loading enriched findings for evidence review…'; status.className = 'status-message';
       const assets = customerContext(panel);
       const response = await fetch(`/api/v1/csv-first-enrichments/${encodeURIComponent(runId)}/csv`, {cache: 'no-store'});
       if (!response.ok) throw new Error(`Enriched CSV could not be loaded (HTTP ${response.status}).`);
-      const rows = parseCsv(await response.text());
-      const joined = joinRows(rows, assets);
+      const joined = joinRows(parseCsv(await response.text()), assets);
       loaded = {runId, joined};
-      const existing = document.querySelector('[data-csv-run-review]');
-      if (existing) existing.remove();
+      document.querySelector('[data-csv-run-review]')?.remove();
       const review = reviewPanel(joined, runId);
-      panel.insertAdjacentElement('afterend', review);
-      panel.hidden = true;
-      status.textContent = `Review ready for ${joined.length} finding rows.`;
-      status.className = 'status-message success';
+      panel.insertAdjacentElement('afterend', review); panel.hidden = true;
+      status.textContent = `Review ready for ${joined.length} finding rows.`; status.className = 'status-message success';
       review.scrollIntoView({block: 'start'});
     } catch (error) {
-      status.textContent = error.message;
-      status.className = 'status-message error';
-    } finally {
-      buttonNode.disabled = false;
-    }
+      status.textContent = error.message; status.className = 'status-message error';
+    } finally { buttonNode.disabled = false; }
   }
 
   function patch() {
@@ -311,10 +253,7 @@
   function schedule() {
     if (queued) return;
     queued = true;
-    queueMicrotask(() => {
-      queued = false;
-      patch();
-    });
+    queueMicrotask(() => { queued = false; patch(); });
   }
 
   new MutationObserver(schedule).observe(document.documentElement, {childList: true, subtree: true});
