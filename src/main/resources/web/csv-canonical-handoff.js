@@ -4,6 +4,7 @@
   const CONTRACT = 'CSV_FIRST_CANONICAL_HANDOFF_UI_V2';
   const SOURCE_CONTRACT = 'CSV_FIRST_SOURCE_ARTIFACT_HTTP_V1';
   const MANIFEST_CONTRACT = 'CANONICAL_IMPORT_FINDING_MANIFEST_HTTP_V1';
+  const EVIDENCE_CONTRACT = 'CSV_FIRST_CANONICAL_PUBLIC_EVIDENCE_HTTP_V1';
   const CSV_CONTRACTS = ['WAZUH_CSV_V1', 'WAZUH_CSV_V2'];
   let queued = false;
   let activeImport = null;
@@ -104,11 +105,63 @@
     });
   }
 
+  function canonicalEvidenceAction(run) {
+    const persist = button('Persist canonical EPSS + KEV', 'primary');
+    const status = el('div', {class: 'status-message', role: 'status', 'aria-live': 'polite'});
+    const result = el('div');
+    persist.addEventListener('click', async () => {
+      persist.disabled = true;
+      try {
+        setStatus(status, 'Fetching validated FIRST daily EPSS and CISA KEV source snapshots for this CSV scope…');
+        const response = await api(`/api/v1/csv-first-canonical-evidence/${encodeURIComponent(run)}`, {method: 'POST'});
+        const data = await response.json();
+        if (data.contractId !== EVIDENCE_CONTRACT) throw new Error('Unexpected canonical public-evidence contract.');
+        result.replaceChildren(el('div', {class: 'metrics'},
+          metric('EPSS accepted', data.epss?.acceptedRows ?? '—'),
+          metric('EPSS inserted/replayed', `${data.epss?.insertedEvidence ?? 0}/${data.epss?.replayedEvidence ?? 0}`),
+          metric('KEV accepted', data.cisaKev?.acceptedRows ?? '—'),
+          metric('KEV inserted/replayed', `${data.cisaKev?.insertedEvidence ?? 0}/${data.cisaKev?.replayedEvidence ?? 0}`)
+        ));
+        setStatus(status, 'Canonical EPSS and KEV evidence persisted. CVSS v4 remains a contextual analysis artifact; no v4→v3.1 conversion or Risk score was created.', 'success');
+      } catch (error) {
+        setStatus(status, error.message, 'error');
+      } finally {
+        persist.disabled = false;
+      }
+    });
+    return el('div', {class: 'stack', 'data-canonical-public-evidence': EVIDENCE_CONTRACT},
+      callout('Canonical EPSS uses the pinned FIRST daily bulk feed with model version and exact source SHA. Canonical KEV uses the official CISA catalog snapshot. The CSV-first EPSS API response is not relabeled as bulk-feed evidence.'),
+      el('div', {class: 'inline-actions'}, persist), status, result
+    );
+  }
+
+  function readinessView() {
+    return el('div', {class: 'stack', 'data-decision-readiness': 'FAIL_CLOSED'},
+      el('h3', {text: 'Decision Input readiness'}),
+      callout('Canonical scanner evidence and exact Finding_IDs are ready. Organizational Risk remains NON_COMPUTABLE until required customer evidence is explicitly assessed and associated.'),
+      el('div', {class: 'metrics'},
+        metric('Scanner evidence', 'READY'),
+        metric('Public EPSS / KEV', 'PERSIST EXPLICITLY'),
+        metric('Applicability', 'EXPLICIT ASSESSMENT REQUIRED'),
+        metric('Exact reachability', 'CUSTOMER-CONFIRMED LINK REQUIRED'),
+        metric('Business impact/service', 'CUSTOMER EVIDENCE/LINK REQUIRED'),
+        metric('RBVM V2 primary method', 'NOT ADMITTED')
+      ),
+      callout('Internet Facing is not treated as exact reachability or MAV. Asset Criticality is not converted to CR/IR/AR. No applicability state is inferred.', 'warning')
+    );
+  }
+
   function completedView(data) {
+    const run = runId();
     return el('div', {class: 'stack'},
       materializationView(data),
       callout('The Finding manifest is import-scoped through import_observation → observation → exposure. It does not match by hostname, CVE, product, or filename.'),
-      el('div', {class: 'inline-actions'}, manifestLink(data.importId))
+      el('div', {class: 'inline-actions'},
+        manifestLink(data.importId),
+        el('a', {class: 'button button-secondary', href: '/', text: 'Review canonical Findings'})
+      ),
+      canonicalEvidenceAction(run),
+      readinessView()
     );
   }
 
