@@ -5,6 +5,7 @@
   const BUNDLE_CONTRACT = 'RBVM_CUSTOMER_ASSET_BUNDLE_V3';
   const PRIORITY_CONTRACT = 'CSV_FIRST_MVP_PRIORITY_HTTP_V1';
   const PRIORITY_METHOD = 'RBVM_MVP_PRIORITY_POLICY_V1';
+  const PRIORITY_EXPLAINABILITY = 'RBVM_MVP_PRIORITY_EXPLAINABILITY_V1';
   const PRIORITY_METHOD_SHA = '88d5cdb8702c6c0ed2c033c3df6b8abbe1aa392f44f4507685b54082a16dc388';
   const PAGE_SIZE = 100;
   const SECURITY_REQUIREMENTS = new Set(['X', 'L', 'M', 'H']);
@@ -145,6 +146,16 @@
     return row.RBVM_MVP_Priority_Status || '—';
   }
 
+  function priorityWhy(row) {
+    const explanation = String(row.RBVM_MVP_Priority_Explanation || '').trim();
+    const fallback = String(row.RBVM_MVP_Priority_Blockers || '').trim();
+    const text = explanation || fallback || 'No server-side priority explanation is available.';
+    return el('details', {class: 'priority-explanation'},
+      el('summary', {text: 'Why?'}),
+      el('p', {text})
+    );
+  }
+
   function metric(label, value, detail = '') {
     return el('div', {class: 'metric'}, el('div', {class: 'metric-label', text: label}), el('div', {class: 'metric-value', text: value}), detail ? el('div', {class: 'metric-detail', text: detail}) : null);
   }
@@ -175,13 +186,14 @@
       const rows = filtered.slice(start, start + PAGE_SIZE);
       const table = el('table', {class: 'data-table'},
         el('thead', {}, el('tr', {}, ...[
-          'Asset', 'CVE', 'MVP Priority', 'Product', 'Scanner', 'Context CVSS', 'Public CVSS', 'CR / IR / AR',
+          'Asset', 'CVE', 'MVP Priority', 'Why', 'Product', 'Scanner', 'Context CVSS', 'Public CVSS', 'CR / IR / AR',
           'EPSS', 'KEV', 'Exploitation', 'Automatable', 'Technical Impact', 'Criticality', 'Internet', 'Context'
         ].map(label => el('th', {text: label})))),
         el('tbody', {}, ...rows.map(row => el('tr', {},
           el('td', {text: row.Agent || row.Agent_ID || '—'}),
           el('td', {class: 'mono', text: row.CVE_ID || '—'}),
           el('td', {text: priorityDisplay(row), title: row.RBVM_MVP_Priority_Blockers || ''}),
+          el('td', {}, priorityWhy(row)),
           el('td', {text: row.Affected_Product || '—'}),
           el('td', {text: row.Severity || '—'}),
           el('td', {text: contextualCvssDisplay(row)}),
@@ -251,6 +263,7 @@
       ),
       el('div', {class: 'panel-body'}, el('div', {class: 'stack'},
         callout('MVP Priority is RBVM local policy: a relative Pareto frontier within this exact CSV analysis. Front 1 means nondominated treatment priority, not Critical/High risk, not an SLA, and not Organizational Risk.', 'warning'),
+        callout('Use “Why?” on any finding to see the server-generated explanation: admitted inputs, Pareto front and domination counts, or the exact missing evidence that made the row unrankable.'),
         callout('Contextual CVSS remains technical vulnerability severity. CR/IR/AR are direct customer CVSS v4 Security Requirements; Asset Criticality is not mapped to them, Internet Facing is not mapped to MAV, and EPSS is not multiplied by CVSS.'),
         callout(`Risk-method admission: ${admissionState}. Risk rows computed: ${riskRows}. Existing methods are not auto-selected by catalog order or score magnitude.`, admissionState === 'NO_V2_PRIMARY_METHOD_ADMITTED' ? 'warning' : 'info'),
         el('div', {class: 'metrics'},
@@ -336,7 +349,10 @@
       if (priorityReport.methodId !== PRIORITY_METHOD
           || priorityReport.methodSha256 !== PRIORITY_METHOD_SHA
           || priorityReport.organizationalRiskComputed !== false
-          || priorityReport.riskStatus !== 'NON_COMPUTABLE') {
+          || priorityReport.riskStatus !== 'NON_COMPUTABLE'
+          || priorityReport.explainability?.contractId !== PRIORITY_EXPLAINABILITY
+          || priorityReport.explainability?.rowColumn !== 'RBVM_MVP_Priority_Explanation'
+          || priorityReport.explainability?.changesPriority !== false) {
         throw new Error('Unexpected MVP-priority report contract.');
       }
       loaded = {run, rows, admission, priority, priorityReport};
