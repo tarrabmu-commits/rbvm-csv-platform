@@ -100,15 +100,32 @@ public final class PostgresMigrator {
         }
     }
 
+    private static void verifyDatabase(DatabaseMetaData metadata) throws SQLException, IOException {
+        if (!"PostgreSQL".equalsIgnoreCase(metadata.getDatabaseProductName())) {
+            throw new IOException("RBVM PostgreSQL projection requires a PostgreSQL database");
+        }
+        if (metadata.getDatabaseMajorVersion() < 14) {
+            throw new IOException("RBVM PostgreSQL projection requires PostgreSQL 14 or newer");
+        }
+    }
+
+    private static void advisoryLock(Connection connection, boolean lock) throws SQLException {
+        String function = lock ? "pg_advisory_lock" : "pg_advisory_unlock";
+        try (PreparedStatement statement = connection.prepareStatement("SELECT " + function + "(?)")) {
+            statement.setLong(1, MIGRATION_LOCK);
+            statement.execute();
+        }
+    }
+
     private static void bootstrapHistory(Connection connection) throws SQLException {
         try (Statement statement = connection.createStatement()) {
             statement.execute("CREATE SCHEMA IF NOT EXISTS rbvm");
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS rbvm.schema_migration (
-                        version integer PRIMARY KEY,
+                        version integer PRIMARY KEY CHECK (version > 0),
                         file_name text NOT NULL UNIQUE,
                         sha256 char(64) NOT NULL CHECK (sha256 ~ '^[a-f0-9]{64}$'),
-                        applied_at timestamptz NOT NULL
+                        installed_at timestamptz NOT NULL
                     )
                     """);
         }
@@ -129,17 +146,16 @@ public final class PostgresMigrator {
             Migration migration,
             String script,
             String checksum
-    ) throws SQLException, IOException {
-        boolean previousAutoCommit = connection.getAutoCommit();
+    ) throws SQLException {
         connection.setAutoCommit(false);
         try {
-            for (String sql : SqlScriptParser.statements(script)) {
-                try (Statement statement = connection.createStatement()) {
+            try (Statement statement = connection.createStatement()) {
+                for (String sql : SqlScriptParser.statements(script)) {
                     statement.execute(sql);
                 }
             }
             try (PreparedStatement statement = connection.prepareStatement("""
-                    INSERT INTO rbvm.schema_migration(version, file_name, sha256, applied_at)
+                    INSERT INTO rbvm.schema_migration(version, file_name, sha256, installed_at)
                     VALUES (?, ?, ?, ?)
                     """)) {
                 statement.setInt(1, migration.version());
@@ -149,38 +165,21 @@ public final class PostgresMigrator {
                 statement.executeUpdate();
             }
             connection.commit();
-        } catch (SQLException exception) {
+        } catch (SQLException | RuntimeException exception) {
             connection.rollback();
-            throw new IOException("PostgreSQL migration failed at " + migration.fileName(), exception);
+            throw exception;
         } finally {
-            connection.setAutoCommit(previousAutoCommit);
-        }
-    }
-
-    private static void verifyDatabase(DatabaseMetaData metadata) throws SQLException, IOException {
-        if (!"PostgreSQL".equals(metadata.getDatabaseProductName())) {
-            throw new IOException("RBVM PostgreSQL projection requires PostgreSQL");
-        }
-        if (metadata.getDatabaseMajorVersion() < 14) {
-            throw new IOException("RBVM PostgreSQL projection requires PostgreSQL 14 or newer");
-        }
-    }
-
-    private static void advisoryLock(Connection connection, boolean lock) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement(
-                lock ? "SELECT pg_advisory_lock(?)" : "SELECT pg_advisory_unlock(?)")) {
-            statement.setLong(1, MIGRATION_LOCK);
-            statement.execute();
+            connection.setAutoCommit(true);
         }
     }
 
     private static String resource(String fileName) throws IOException {
         String path = "/db/migration/" + fileName;
-        try (InputStream stream = PostgresMigrator.class.getResourceAsStream(path)) {
-            if (stream == null) {
-                throw new IOException("Missing migration resource " + path);
+        try (InputStream input = PostgresMigrator.class.getResourceAsStream(path)) {
+            if (input == null) {
+                throw new IOException("Missing migration resource: " + path);
             }
-            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+            return new String(input.readAllBytes(), StandardCharsets.UTF_8);
         }
     }
 
@@ -188,8 +187,8 @@ public final class PostgresMigrator {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException("SHA-256 is unavailable", impossible);
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is required by the Java platform", exception);
         }
     }
 
