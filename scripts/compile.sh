@@ -30,6 +30,12 @@ if [[ -f "$ROOT_DIR/src/main/resources/web/customer-flow.js" ]]; then
   printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
   cat "$ROOT_DIR/src/main/resources/web/customer-flow.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
 fi
+# Finding review is a separate source module but part of the same runtime
+# dependency-free bundle. It reviews evidence only and does not calculate risk.
+if [[ -f "$ROOT_DIR/src/main/resources/web/csv-run-review.js" ]]; then
+  printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
+  cat "$ROOT_DIR/src/main/resources/web/csv-run-review.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
+fi
 mkdir -p "$MAIN_CLASSES/db/migration"
 cp "$ROOT_DIR"/db/migration/*.sql "$MAIN_CLASSES/db/migration/"
 
