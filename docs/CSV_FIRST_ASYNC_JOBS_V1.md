@@ -15,9 +15,11 @@
 
 The in-process executor is deliberately bounded:
 
-- 2 concurrently running enrichment jobs.
-- 8 queued jobs.
+- 1 enrichment job executes at a time.
+- 8 additional jobs may wait in the bounded queue.
 - Further submissions fail closed with HTTP 503 `CSV_FIRST_ENRICHMENT_JOB_CAPACITY` instead of growing an unbounded queue.
+
+V1 serializes executing jobs because the established public-intelligence cache uses shared provider cache paths. This prevents concurrent writers from racing on the same cache entry. Parallelism may be increased only after the shared cache has an explicit concurrency-safe write contract.
 
 Each job retains the existing ten-minute process execution limit. This protects the service; it is not an SLA.
 
