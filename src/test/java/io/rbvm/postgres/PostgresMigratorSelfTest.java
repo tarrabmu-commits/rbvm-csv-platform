@@ -17,7 +17,7 @@ import java.util.Locale;
 import java.util.Map;
 
 public final class PostgresMigratorSelfTest {
-    private static final int LATEST_SCHEMA_VERSION = 25;
+    private static final int LATEST_SCHEMA_VERSION = 26;
 
     private PostgresMigratorSelfTest() {
     }
@@ -86,6 +86,12 @@ public final class PostgresMigratorSelfTest {
         assert database.executedSql.stream().anyMatch(sql -> sql.contains("CREATE TABLE rbvm.derived_risk_result"));
         assert database.executedSql.stream().anyMatch(sql ->
                 sql.contains("CREATE TABLE rbvm.risk_method_selection_policy"));
+        assert database.executedSql.stream().anyMatch(sql ->
+                sql.contains("CREATE TABLE rbvm.risk_method_selection_policy_activation_event"));
+        assert database.executedSql.stream().anyMatch(sql ->
+                sql.contains("CREATE VIEW rbvm.current_risk_method_selection_policy_activation"));
+        assert database.executedSql.stream().anyMatch(sql ->
+                sql.contains("CREATE VIEW rbvm.active_risk_method_selection_policy"));
 
         long observationCreates = count(database, "CREATE TABLE rbvm.observation (");
         long operationalFindingCreates = count(database, "CREATE VIEW rbvm.operational_finding");
@@ -121,6 +127,10 @@ public final class PostgresMigratorSelfTest {
         long riskMethodSelectionCreates = count(
                 database,
                 "CREATE TABLE rbvm.risk_method_selection_policy"
+        );
+        long riskMethodSelectionActivationCreates = count(
+                database,
+                "CREATE TABLE rbvm.risk_method_selection_policy_activation_event"
         );
 
         assert migrator.migrate() == LATEST_SCHEMA_VERSION;
@@ -158,6 +168,8 @@ public final class PostgresMigratorSelfTest {
         assert count(database, "CREATE TABLE rbvm.derived_risk_result") == derivedRiskResultCreates;
         assert count(database, "CREATE TABLE rbvm.risk_method_selection_policy")
                 == riskMethodSelectionCreates;
+        assert count(database, "CREATE TABLE rbvm.risk_method_selection_policy_activation_event")
+                == riskMethodSelectionActivationCreates;
         assert database.advisoryLocks == 2;
         assert database.advisoryUnlocks == 2;
     }

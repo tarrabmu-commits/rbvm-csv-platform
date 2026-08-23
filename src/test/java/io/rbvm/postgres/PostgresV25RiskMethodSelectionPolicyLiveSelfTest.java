@@ -23,8 +23,8 @@ public final class PostgresV25RiskMethodSelectionPolicyLiveSelfTest {
                 settings.user(),
                 settings.password()
         );
-        require(new PostgresMigrator(ownerConnections).installedVersion() == 25,
-                "V25 risk method selection live test requires schema version 25");
+        require(new PostgresMigrator(ownerConnections).installedVersion() >= 25,
+                "V25 risk method selection live test requires schema version 25 or newer");
 
         JdbcConnectionFactory runtimeConnections = new DriverManagerConnectionFactory(
                 settings.jdbcUrl(),
@@ -33,8 +33,8 @@ public final class PostgresV25RiskMethodSelectionPolicyLiveSelfTest {
         );
         PostgresRiskMethodSelectionPolicyStore store =
                 new PostgresRiskMethodSelectionPolicyStore(runtimeConnections, false);
-        require(store.schemaVersion() == 25,
-                "risk method selection store must bind schema version 25");
+        require(store.schemaVersion() >= 25,
+                "risk method selection store must bind schema version 25 or newer");
 
         RbvmRiskMethodSelectionPolicy formula = RbvmRiskMethodSelectionPolicy.formulaV1(1);
         RiskMethodSelectionPolicyInstallResult inserted = store.install(formula);
@@ -85,7 +85,7 @@ public final class PostgresV25RiskMethodSelectionPolicyLiveSelfTest {
         proveAppendOnly(runtimeConnections);
 
         System.out.println(
-                "PostgresV25RiskMethodSelectionPolicyLiveSelfTest: PASS schema=25 "
+                "PostgresV25RiskMethodSelectionPolicyLiveSelfTest: PASS schema>=25 "
                         + "insert=PASS replay=PASS revision_conflict=PASS exact_identity=PASS "
                         + "formula=PASS derived=2 append_only=PASS no_default=PASS"
         );

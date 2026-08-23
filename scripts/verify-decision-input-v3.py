@@ -98,7 +98,8 @@ for needle in (
     'PostgresV23FormulaResultLiveSelfTest',
     'PostgresV24DerivedRiskLiveSelfTest',
     'PostgresV25RiskMethodSelectionPolicyLiveSelfTest',
-    'Run live V18-V25 persistence, Decision Input V3, Formula, derived-risk, and risk-method policy integration',
+    'PostgresV26RiskMethodSelectionActivationLiveSelfTest',
+    'Run live V18-V26 persistence, Decision Input V3, Formula, derived-risk, policy, and activation integration',
 ):
     if needle not in workflow:
         raise AssertionError(f"PostgreSQL workflow is stale for Decision Input V3: missing {needle!r}")

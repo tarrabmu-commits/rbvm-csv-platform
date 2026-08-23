@@ -102,7 +102,7 @@ for marker in [
 ]:
     assert marker in live, f"V25 live proof missing {marker!r}"
 
-assert 'V18-V25' in workflow
+assert 'V18-V26' in workflow
 assert 'PostgresV25RiskMethodSelectionPolicyLiveSelfTest' in workflow
 
 for marker in [
