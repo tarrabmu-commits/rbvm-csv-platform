@@ -15,6 +15,7 @@ ENRICH_REPORT="$OUT_DIR/enrichment-report.json"
 COLLECTOR_REPORT="$OUT_DIR/collector-report.json"
 ANALYSIS="$OUT_DIR/analysis.csv"
 ANALYSIS_SUMMARY="$OUT_DIR/analysis-summary.json"
+ADMISSION_REPORT="$OUT_DIR/method-admission.json"
 BENCHMARK_SUMMARY="$OUT_DIR/benchmark-summary.json"
 
 python3 "$ROOT_DIR/scripts/enrich-uploaded-csv.py" \
@@ -27,7 +28,10 @@ python3 "$ROOT_DIR/scripts/analyze-csv-run-evidence.py" \
   "$ENRICHED" "$ANALYSIS" "$ANALYSIS_SUMMARY" \
   --customer-bundle "$CONTEXT"
 
-python3 - "$CORPUS" "$CONTEXT" "$ENRICH_REPORT" "$ANALYSIS" "$ANALYSIS_SUMMARY" "$BENCHMARK_SUMMARY" <<'PY'
+python3 "$ROOT_DIR/scripts/evaluate-rbvm-v2-method-candidates.py" \
+  "$ANALYSIS" "$ADMISSION_REPORT"
+
+python3 - "$CORPUS" "$CONTEXT" "$ENRICH_REPORT" "$ANALYSIS" "$ANALYSIS_SUMMARY" "$ADMISSION_REPORT" "$BENCHMARK_SUMMARY" <<'PY'
 import csv
 import hashlib
 import json
@@ -35,7 +39,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-corpus, context, enrich_report, analysis_csv, analysis_summary, output = map(Path, sys.argv[1:])
+corpus, context, enrich_report, analysis_csv, analysis_summary, admission_report, output = map(Path, sys.argv[1:])
 
 
 def sha256_file(path):
@@ -52,6 +56,7 @@ def truthy(value):
 with analysis_csv.open('r', encoding='utf-8-sig', newline='') as f:
     rows = list(csv.DictReader(f))
 analysis = json.loads(analysis_summary.read_text(encoding='utf-8'))
+admission = json.loads(admission_report.read_text(encoding='utf-8'))
 enrichment = json.loads(enrich_report.read_text(encoding='utf-8'))
 
 base_validation = Counter(str(r.get('CVSS4_Base_Score_Validation') or 'NOT_APPLICABLE') for r in rows)
@@ -107,13 +112,19 @@ public_calculated = sum(r.get('CVSS4_Calculated_Status') == 'CALCULATED' for r i
 contextual_calculated = sum(r.get('CVSS4_Context_Score_Status') == 'CALCULATED_FIRST_REFERENCE_COMPATIBLE' for r in rows)
 environmental_defined = sum(r.get('CVSS4_Environmental_Requirement_Status') in {'PARTIAL', 'COMPLETE'} for r in rows)
 
+candidate_states = {
+    (candidate.get('methodId') or 'UNDEFINED_V2'): candidate.get('admissionState')
+    for candidate in admission.get('candidates', [])
+}
+
 result = {
-    'contractId': 'CSV_V2_LIVE_BENCHMARK_V2',
-    'semantics': 'LIVE_PUBLIC_INTELLIGENCE_PLUS_SYNTHETIC_DIRECT_CVSS_ENVIRONMENTAL_REQUIREMENTS',
+    'contractId': 'CSV_V2_LIVE_BENCHMARK_V3',
+    'semantics': 'LIVE_PUBLIC_INTELLIGENCE_PLUS_SYNTHETIC_DIRECT_CVSS_ENVIRONMENTAL_REQUIREMENTS_PLUS_RISK_METHOD_ADMISSION',
     'inputCorpusSha256': sha256_file(corpus),
     'customerContextSha256': sha256_file(context),
     'observedAt': enrichment.get('observedAt'),
     'publicIntelSnapshotSha256': enrichment.get('publicIntelSnapshotSha256'),
+    'methodAdmissionReportSha256': admission.get('reportSha256'),
     'scope': {
         'findingRows': len(rows),
         'uniqueCves': len({r.get('CVE_ID') for r in rows if r.get('CVE_ID')}),
@@ -133,12 +144,18 @@ result = {
         'customerContextMatchedRows': matched,
         'customerContextStatus': dict(sorted(context_status.items())),
     },
+    'methodAdmission': {
+        'state': admission.get('selection', {}).get('state'),
+        'riskComputedRows': admission.get('selection', {}).get('riskComputedRows'),
+        'candidateStates': dict(sorted(candidate_states.items())),
+        'csvFirstCapability': admission.get('csvFirstCapability'),
+    },
     'rows': row_view,
     'rbvmV2': {
         'status': analysis.get('rbvmV2', {}).get('status'),
         'riskComputedRows': analysis.get('rbvmV2', {}).get('riskComputedRows'),
         'reason': analysis.get('rbvmV2', {}).get('reason'),
-        'benchmarkDecision': 'CONTEXTUAL_CVSS_IS_COMPUTABLE_WHEN_DIRECT_CR_IR_AR_EXIST_ORGANIZATIONAL_RISK_COMPOSITION_STILL_UNAPPROVED',
+        'benchmarkDecision': 'CONTEXTUAL_CVSS_IS_COMPUTABLE_BUT_NO_V2_ORGANIZATIONAL_RISK_METHOD_IS_ADMITTED',
     },
 }
 
@@ -167,7 +184,19 @@ if any(r.get('CVSS4_MAV_Resolved') != 'X' for r in rows):
     raise SystemExit('benchmark must not infer MAV from Internet Facing')
 if analysis.get('rbvmV2', {}).get('riskComputedRows') != 0:
     raise SystemExit('benchmark must not silently compute organizational risk')
+if admission.get('selection', {}).get('state') != 'NO_V2_PRIMARY_METHOD_ADMITTED':
+    raise SystemExit('benchmark must not auto-admit a V2 Organizational Risk method')
+if admission.get('selection', {}).get('riskComputedRows') != 0:
+    raise SystemExit('method admission must not emit risk numbers')
+if candidate_states.get('CVSS_V4_CONTEXTUAL_SEVERITY') != 'NOT_A_RISK_METHOD':
+    raise SystemExit('contextual CVSS must remain evidence, not a risk method')
+if candidate_states.get('RBVM_FORMULA_V1') != 'LEGACY_REFERENCE_ONLY':
+    raise SystemExit('Formula V1 must remain legacy reference for CSV-first V2')
+if candidate_states.get('OWASP_DERIVED_RBVM_V1') != 'BLOCKED_INPUT_CONTRACT':
+    raise SystemExit('OWASP-derived V1 must remain blocked without exact Decision Input V3')
+if candidate_states.get('MICROSOFT_PD_DERIVED_RBVM_V1') != 'BLOCKED_INPUT_CONTRACT':
+    raise SystemExit('Microsoft-derived V1 must remain blocked without exact Decision Input V3')
 PY
 
-sha256sum "$CORPUS" "$CONTEXT" "$ENRICHED" "$SNAPSHOT" "$ANALYSIS" "$BENCHMARK_SUMMARY" > "$OUT_DIR/SHA256SUMS"
+sha256sum "$CORPUS" "$CONTEXT" "$ENRICHED" "$SNAPSHOT" "$ANALYSIS" "$ADMISSION_REPORT" "$BENCHMARK_SUMMARY" > "$OUT_DIR/SHA256SUMS"
 printf '%s\n' "CSV V2 live benchmark: PASS output=$OUT_DIR"
