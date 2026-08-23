@@ -46,118 +46,50 @@ new MutationObserver(q).observe(document.documentElement,{childList:true,subtree
 const CONTRACT='DEDICATED_INTELLIGENCE_PRESENTATION_V1';
 const previousFetch=window.fetch.bind(window),byCve=new Map();let queued=false,expectedCves=null,summaryRequested=false;
 document.documentElement.dataset.intelligenceUiContract=CONTRACT;
-
-function remember(item){
-  if(!item||typeof item!=='object')return;
-  const cve=String(item.cveId||'').trim().toUpperCase();
-  if(!/^CVE-\d{4}-\d{4,}$/.test(cve))return;
-  const intel=item.vulnerabilityIntelligence;
-  if(intel&&typeof intel==='object')byCve.set(cve,intel);
-}
-function observePayload(payload,path=''){
-  if(!payload||typeof payload!=='object')return;
-  if(path==='/api/v1/catalog/summary'&&Number.isSafeInteger(payload.vulnerabilities)&&payload.vulnerabilities>=0){
-    expectedCves=payload.vulnerabilities;
-  }
-  if(Array.isArray(payload.cases)){
-    payload.cases.forEach(remember);
-    ensureSummary();
-  }
-  if(payload.cveId)remember(payload);
-  schedule();
-}
-function ensureSummary(){
-  if(summaryRequested||Number.isSafeInteger(expectedCves))return;
-  summaryRequested=true;
-  previousFetch('/api/v1/catalog/summary',{cache:'no-store'}).then(response=>{
-    if(!response.ok)return null;
-    return response.json();
-  }).then(payload=>{if(payload)observePayload(payload,'/api/v1/catalog/summary')}).catch(()=>{});
-}
-window.fetch=async(input,options)=>{
-  const response=await previousFetch(input,options);
-  try{
-    const url=new URL(typeof input==='string'?input:input.url,location.href);
-    if(response.ok&&(url.pathname==='/api/v1/cases'||url.pathname==='/api/v1/catalog/summary'||/^\/api\/v1\/cases\/[a-f0-9]{64}$/.test(url.pathname))){
-      response.clone().json().then(payload=>observePayload(payload,url.pathname)).catch(()=>{});
-    }
-  }catch(_){}
-  return response;
-};
-
+function remember(item){if(!item||typeof item!=='object')return;const cve=String(item.cveId||'').trim().toUpperCase();if(!/^CVE-\d{4}-\d{4,}$/.test(cve))return;const intel=item.vulnerabilityIntelligence;if(intel&&typeof intel==='object')byCve.set(cve,intel)}
+function observePayload(payload,path=''){if(!payload||typeof payload!=='object')return;if(path==='/api/v1/catalog/summary'&&Number.isSafeInteger(payload.vulnerabilities)&&payload.vulnerabilities>=0)expectedCves=payload.vulnerabilities;if(Array.isArray(payload.cases)){payload.cases.forEach(remember);ensureSummary()}if(payload.cveId)remember(payload);schedule()}
+function ensureSummary(){if(summaryRequested||Number.isSafeInteger(expectedCves))return;summaryRequested=true;previousFetch('/api/v1/catalog/summary',{cache:'no-store'}).then(response=>response.ok?response.json():null).then(payload=>{if(payload)observePayload(payload,'/api/v1/catalog/summary')}).catch(()=>{})}
+window.fetch=async(input,options)=>{const response=await previousFetch(input,options);try{const url=new URL(typeof input==='string'?input:input.url,location.href);if(response.ok&&(url.pathname==='/api/v1/cases'||url.pathname==='/api/v1/catalog/summary'||/^\/api\/v1\/cases\/[a-f0-9]{64}$/.test(url.pathname)))response.clone().json().then(payload=>observePayload(payload,url.pathname)).catch(()=>{})}catch(_){}return response};
 function schedule(){if(queued)return;queued=true;queueMicrotask(()=>{queued=false;patch()})}
 function cveFor(node){const match=(node?.textContent||'').toUpperCase().match(/CVE-\d{4}-\d{4,}/);return match?.[0]||null}
-function state(intel){
-  if(!intel)return null;
-  if(intel.kevEvidenceState==='AMBIGUOUS')return'AMBIGUOUS';
-  if(intel.kevEvidenceState==='MISSING'||intel.kevStatus==='UNKNOWN'||intel.knownExploited==null)return'UNKNOWN';
-  if(intel.knownExploited===true||intel.kevStatus==='LISTED')return'LISTED';
-  if(intel.knownExploited===false||intel.kevStatus==='NOT_LISTED')return'NOT_LISTED';
-  return'UNKNOWN';
-}
+function state(intel){if(!intel)return null;if(intel.kevEvidenceState==='AMBIGUOUS')return'AMBIGUOUS';if(intel.kevEvidenceState==='MISSING'||intel.kevStatus==='UNKNOWN'||intel.knownExploited==null)return'UNKNOWN';if(intel.knownExploited===true||intel.kevStatus==='LISTED')return'LISTED';if(intel.knownExploited===false||intel.kevStatus==='NOT_LISTED')return'NOT_LISTED';return'UNKNOWN'}
 function label(s){return s==='AMBIGUOUS'?'Ambiguous':s==='UNKNOWN'?'Unknown':s==='LISTED'?'Listed':'Not listed'}
-function note(intel,s){
-  if(s==='AMBIGUOUS')return`CISA KEV evidence is ambiguous across ${intel.kevSourceCount??'multiple'} current sources; no source precedence was applied.`;
-  if(s==='UNKNOWN')return'CISA KEV membership is unknown because no unambiguous current dedicated evidence is available.';
-  if(s==='LISTED')return intel.kevObservedAt?`Listed in current CISA KEV evidence observed ${intel.kevObservedAt}.`:'Listed in current CISA KEV evidence.';
-  return intel.kevObservedAt?`Not listed in the validated CISA KEV snapshot observed ${intel.kevObservedAt}.`:'Not listed in the validated current CISA KEV snapshot.';
-}
+function note(intel,s){if(s==='AMBIGUOUS')return`CISA KEV evidence is ambiguous across ${intel.kevSourceCount??'multiple'} current sources; no source precedence was applied.`;if(s==='UNKNOWN')return'CISA KEV membership is unknown because no unambiguous current dedicated evidence is available.';if(s==='LISTED')return intel.kevObservedAt?`Listed in current CISA KEV evidence observed ${intel.kevObservedAt}.`:'Listed in current CISA KEV evidence.';return intel.kevObservedAt?`Not listed in the validated CISA KEV snapshot observed ${intel.kevObservedAt}.`:'Not listed in the validated current CISA KEV snapshot.'}
 function setValue(element,intel){const s=state(intel);if(!s||!element)return;element.textContent=label(s);element.dataset.evidenceState=s;element.title=note(intel,s)}
-function patchTables(){
-  for(const table of document.querySelectorAll('table')){
-    const headers=[...table.querySelectorAll('thead th')].map(x=>(x.textContent||'').trim().toUpperCase());
-    const kevIndex=headers.indexOf('KEV');if(kevIndex<0)continue;
-    for(const row of table.querySelectorAll('tbody tr')){
-      const cve=cveFor(row),intel=cve?byCve.get(cve):null,cells=row.querySelectorAll('td');
-      if(intel&&cells.length>kevIndex)setValue(cells[kevIndex],intel);
-    }
-  }
-}
-function patchDrawer(){
-  const drawer=document.querySelector('.drawer');if(!drawer)return;
-  const cve=cveFor(drawer),intel=cve?byCve.get(cve):null;if(!intel)return;
-  for(const element of drawer.querySelectorAll('.badge')){
-    const text=(element.textContent||'').trim();
-    if(['KEV listed','Not listed in KEV','Listed','Not listed','Unknown','Ambiguous'].includes(text)){setValue(element,intel);break}
-  }
-}
-function coverage(predicate){
-  const values=[...byCve.values()];
-  if(!values.length)return null;
-  return Math.round(values.filter(predicate).length*100/values.length);
-}
-function setMetric(name,value,newLabel=null,meta=null){
-  for(const metric of document.querySelectorAll('.metric')){
-    const labelNode=metric.querySelector('.metric-label');
-    if((labelNode?.textContent||'').trim()!==name)continue;
-    const valueNode=metric.querySelector('.metric-value');if(valueNode)valueNode.textContent=String(value);
-    if(newLabel)labelNode.textContent=newLabel;
-    if(meta){const metaNode=metric.querySelector('.metric-meta');if(metaNode)metaNode.textContent=meta;}
-  }
-}
-function patchCoverage(){
-  if(!byCve.size||!Number.isSafeInteger(expectedCves))return;
-  if(byCve.size!==expectedCves){
-    for(const name of ['CVSS available','EPSS available','CVSS coverage','EPSS coverage','KEV assessed'])setMetric(name,'—',null,'Full canonical CVE set not loaded');
-    setMetric('Known exploited CVEs','—',null,'Full canonical CVE set not loaded');
-    setMetric('Findings evaluated',`${byCve.size}/${expectedCves}`,'CVEs loaded','Coverage withheld until the full canonical CVE set is loaded');
-    return;
-  }
-  const cvss=coverage(x=>x.cvssEvidenceState==='PRESENT'&&x.cvssBaseScore!=null);
-  const epss=coverage(x=>x.epssEvidenceState==='PRESENT'&&x.epssProbability!=null);
-  const kev=coverage(x=>x.kevEvidenceState==='PRESENT'&&typeof x.knownExploited==='boolean');
-  const listed=[...byCve.values()].filter(x=>x.kevEvidenceState==='PRESENT'&&x.knownExploited===true).length;
-  setMetric('Known exploited CVEs',listed);
-  setMetric('CVSS available',`${cvss}%`);
-  setMetric('EPSS available',`${epss}%`);
-  setMetric('CVSS coverage',`${cvss}%`);
-  setMetric('EPSS coverage',`${epss}%`);
-  setMetric('KEV assessed',`${kev}%`);
-  setMetric('Findings evaluated',byCve.size,'CVEs evaluated');
-}
+function patchTables(){for(const table of document.querySelectorAll('table')){const headers=[...table.querySelectorAll('thead th')].map(x=>(x.textContent||'').trim().toUpperCase());const kevIndex=headers.indexOf('KEV');if(kevIndex<0)continue;for(const row of table.querySelectorAll('tbody tr')){const cve=cveFor(row),intel=cve?byCve.get(cve):null,cells=row.querySelectorAll('td');if(intel&&cells.length>kevIndex)setValue(cells[kevIndex],intel)}}}
+function patchDrawer(){const drawer=document.querySelector('.drawer');if(!drawer)return;const cve=cveFor(drawer),intel=cve?byCve.get(cve):null;if(!intel)return;for(const element of drawer.querySelectorAll('.badge')){const text=(element.textContent||'').trim();if(['KEV listed','Not listed in KEV','Listed','Not listed','Unknown','Ambiguous'].includes(text)){setValue(element,intel);break}}}
+function coverage(predicate){const values=[...byCve.values()];if(!values.length)return null;return Math.round(values.filter(predicate).length*100/values.length)}
+function setMetric(name,value,newLabel=null,meta=null){for(const metric of document.querySelectorAll('.metric')){const labelNode=metric.querySelector('.metric-label');if((labelNode?.textContent||'').trim()!==name)continue;const valueNode=metric.querySelector('.metric-value');if(valueNode)valueNode.textContent=String(value);if(newLabel)labelNode.textContent=newLabel;if(meta){const metaNode=metric.querySelector('.metric-meta');if(metaNode)metaNode.textContent=meta}}}
+function patchCoverage(){if(!byCve.size||!Number.isSafeInteger(expectedCves))return;if(byCve.size!==expectedCves){for(const name of ['CVSS available','EPSS available','CVSS coverage','EPSS coverage','KEV assessed'])setMetric(name,'—',null,'Full canonical CVE set not loaded');setMetric('Known exploited CVEs','—',null,'Full canonical CVE set not loaded');setMetric('Findings evaluated',`${byCve.size}/${expectedCves}`,'CVEs loaded','Coverage withheld until the full canonical CVE set is loaded');return}const cvss=coverage(x=>x.cvssEvidenceState==='PRESENT'&&x.cvssBaseScore!=null),epss=coverage(x=>x.epssEvidenceState==='PRESENT'&&x.epssProbability!=null),kev=coverage(x=>x.kevEvidenceState==='PRESENT'&&typeof x.knownExploited==='boolean'),listed=[...byCve.values()].filter(x=>x.kevEvidenceState==='PRESENT'&&x.knownExploited===true).length;setMetric('Known exploited CVEs',listed);setMetric('CVSS available',`${cvss}%`);setMetric('EPSS available',`${epss}%`);setMetric('CVSS coverage',`${cvss}%`);setMetric('EPSS coverage',`${epss}%`);setMetric('KEV assessed',`${kev}%`);setMetric('Findings evaluated',byCve.size,'CVEs evaluated')}
 function patch(){patchTables();patchDrawer();patchCoverage()}
-new MutationObserver(schedule).observe(document.documentElement,{childList:true,subtree:true});
-window.addEventListener('DOMContentLoaded',schedule);
+new MutationObserver(schedule).observe(document.documentElement,{childList:true,subtree:true});window.addEventListener('DOMContentLoaded',schedule);
+})();
+  </script>
+  <script>
+(()=>{'use strict';
+const CONTRACT='DERIVED_RISK_METHODOLOGY_COMPARISON_UI_V1';
+const NO_DEFAULT='EXPLICIT_ID_AND_SHA_ONLY_NO_DEFAULT';
+const rawFetch=window.fetch.bind(window);let detail=null,queued=false;
+document.documentElement.dataset.derivedRiskUiContract=CONTRACT;
+window.fetch=async(input,options)=>{const response=await rawFetch(input,options);try{const url=new URL(typeof input==='string'?input:input.url,location.href);if(response.ok&&/^\/api\/v1\/cases\/[a-f0-9]{64}$/.test(url.pathname))response.clone().json().then(value=>{detail=value;schedule()}).catch(()=>{})}catch(_){}return response};
+const h=(tag,attrs={},...children)=>{const node=document.createElement(tag);for(const[key,value]of Object.entries(attrs)){if(value==null||value===false)continue;if(key==='class')node.className=value;else if(key==='text')node.textContent=String(value);else if(key.startsWith('on'))node.addEventListener(key.slice(2).toLowerCase(),value);else node.setAttribute(key,String(value))}for(const child of children.flat())if(child!=null)node.append(child instanceof Node?child:document.createTextNode(String(child)));return node};
+const btn=(label,fn,kind='secondary')=>h('button',{class:`button button-${kind}`,type:'button',text:label,onclick:fn});
+const call=(text,kind='info')=>h('div',{class:`callout callout-${kind}`,text});
+const pair=(label,value,mono=false)=>h('div',{class:'detail'},h('dt',{text:label}),h('dd',{class:mono?'mono':'',text:value??'—'}));
+const title=value=>String(value||'').toLowerCase().replace(/(^|[_\s-])\w/g,part=>part.toUpperCase()).replaceAll('_',' ');
+const compactSha=value=>value?`${value.slice(0,12)}…${value.slice(-8)}`:'—';
+const date=value=>{if(!value)return'—';const parsed=new Date(value);return Number.isNaN(parsed.getTime())?String(value):new Intl.DateTimeFormat('en-GB',{dateStyle:'medium',timeStyle:'short'}).format(parsed)};
+function schedule(){if(queued)return;queued=true;queueMicrotask(()=>{queued=false;enhance()})}
+function enhance(){const drawer=document.querySelector('.drawer');if(!drawer||!detail||drawer.querySelector('.drawer-title')?.textContent.trim()!==detail.cveId)return;const body=drawer.querySelector('.drawer-body'),tabs=body?.querySelector('.tabs[role="tablist"]');if(!tabs||tabs.querySelector('[data-derived-risk]'))return;const tab=btn('Risk methodologies',()=>renderLanding(body,tab));tab.className='tab';tab.setAttribute('role','tab');tab.setAttribute('aria-selected','false');tab.dataset.derivedRisk='true';tabs.append(tab)}
+function activate(body,tab){const tabs=body.querySelector('.tabs[role="tablist"]');tabs.querySelectorAll('[role="tab"]').forEach(node=>node.setAttribute('aria-selected','false'));tab.setAttribute('aria-selected','true');while(tabs.nextSibling)tabs.nextSibling.remove()}
+function renderLanding(body,tab){activate(body,tab);body.append(call('Derived methodologies are compared only on the same exact Decision Input V3 snapshot. Native scales remain separate; RBVM does not average, normalize, rank, or silently choose a primary methodology.'));const findings=[...new Map((detail.exposures||[]).filter(value=>value.findingId).map(value=>[value.findingId,value])).values()];if(!findings.length){body.append(call('Canonical Finding IDs are unavailable. No Finding identity is inferred from the Case, CVE, asset, or component text.','warning'));return}for(const finding of findings)body.append(h('section',{class:'panel'},h('div',{class:'panel-header'},h('div',{},h('h2',{class:'panel-title',text:finding.product||'Component-specific Finding'}),h('p',{class:'panel-subtitle',text:'Choose an exact immutable Decision Input snapshot before any methodology result is read or materialized.'})),btn('Compare methodologies',()=>openComparison(finding),'primary')),h('div',{class:'panel-body'},h('dl',{class:'details-grid'},pair('Finding ID',finding.findingId,true),pair('Component ID',finding.componentId||'—',true),pair('Product',finding.product||'—'),pair('Applicability',finding.applicabilityAssessed?title(finding.applicabilityStatus):'Not assessed')))))}
+function modal(){const backdrop=h('div',{class:'modal-backdrop'}),body=h('div',{class:'modal-body'}),close=()=>backdrop.remove();backdrop.append(h('section',{class:'modal',role:'dialog','aria-modal':'true','aria-label':'Derived risk methodology comparison'},h('div',{class:'modal-header'},h('div',{},h('h2',{class:'panel-title',text:'Risk methodology comparison'}),h('p',{class:'panel-subtitle',text:'Exact snapshot · exact methodology identity · replay-verified result'})),h('button',{class:'icon-button',type:'button','aria-label':'Close dialog',text:'×',onclick:close})),body));backdrop.addEventListener('click',event=>{if(event.target===backdrop)close()});document.body.append(backdrop);return body}
+async function api(path,options={}){const response=await rawFetch(path,{...options,cache:'no-store'});let json=null;try{json=await response.clone().json()}catch(_){}if(!response.ok){const error=new Error(json?.detail||json?.title||`HTTP ${response.status}`);error.status=response.status;throw error}return{response,json}}
+async function openComparison(finding){const body=modal();body.append(h('dl',{class:'details-grid'},pair('Finding ID',finding.findingId,true),pair('CVE',detail.cveId),pair('Asset',detail.assetName),pair('Component',finding.product||finding.componentId||'—')),call('Snapshot history ordering is pagination-only. No snapshot is treated as latest/current, and no methodology is preferred by catalog order.'),h('div',{class:'skeleton','data-risk-load':'true'}));try{const id=encodeURIComponent(finding.findingId);const[catalog,history]=await Promise.all([api('/api/v1/derived-risk-methodologies'),api(`/api/v1/findings/${id}/decision-input-snapshots?limit=100`)]);body.querySelector('[data-risk-load]')?.remove();if(catalog.json?.selectionSemantics!==NO_DEFAULT){body.append(call('The methodology catalog does not advertise the required explicit no-default selection semantics. Comparison is disabled.','warning'));return}const methodologies=[...(catalog.json?.methodologies||[])].sort((a,b)=>String(a.methodologyId).localeCompare(String(b.methodologyId)));const snapshots=(history.json?.snapshots||[]).filter(value=>value.contractId==='RBVM_DECISION_INPUT_SNAPSHOT_V3');if(!methodologies.length){body.append(call('No derived-risk methodologies are available in this runtime.','warning'));return}if(!snapshots.length){body.append(call('No persisted Decision Input V3 snapshot is available for this exact Finding. Older V1/V2 snapshots are not eligible for derived-risk materialization.','warning'));return}const select=h('select',{'aria-label':'Exact Decision Input V3 snapshot'});select.append(h('option',{value:'',text:'Select exact Decision Input V3 snapshot…'}));for(const snapshot of snapshots)select.append(h('option',{value:snapshot.snapshotSha256,text:`${date(snapshot.evaluatedAt)} · ${compactSha(snapshot.snapshotSha256)} · policy r${snapshot.methodologyRevision}`}));select.value='';const selection=h('section',{class:'panel'},h('div',{class:'panel-header'},h('div',{},h('h2',{class:'panel-title',text:'Decision Input selection'}),h('p',{class:'panel-subtitle',text:'Explicit selection is required. The first history row is never auto-selected.'}))),h('div',{class:'panel-body'},h('label',{},h('span',{text:'Exact immutable snapshot'}),select),h('div',{class:'stack','data-snapshot-summary':'true'})));const results=h('div',{class:'stack','data-risk-results':'true'});body.append(selection,results);select.addEventListener('change',()=>{const snapshot=snapshots.find(value=>value.snapshotSha256===select.value);if(!snapshot){selection.querySelector('[data-snapshot-summary]').replaceChildren();results.replaceChildren(call('Select one exact Decision Input V3 snapshot to compare methodology-native results.'));return}renderSnapshotSummary(selection.querySelector('[data-snapshot-summary]'),snapshot);loadResults(results,snapshot,methodologies)});results.append(call('Select one exact Decision Input V3 snapshot to compare methodology-native results.'))}catch(error){body.querySelector('[data-risk-load]')?.remove();body.append(call(error.status===503?'Decision Input or derived-risk persistence is unavailable in this runtime.':`Risk methodology comparison could not be loaded: ${error.message}`,'warning'))}}
+function renderSnapshotSummary(root,snapshot){const states=snapshot.dimensionStates||{};const badges=h('div',{class:'inline-actions'});for(const[dimension,state]of Object.entries(states)){const css=state==='PRESENT'?'state-present':state==='AMBIGUOUS'?'state-ambiguous':state==='STALE'?'state-stale':'state-missing';badges.append(h('span',{class:`badge ${css}`,text:`${title(dimension)} · ${title(state)}`}))}root.replaceChildren(h('dl',{class:'details-grid'},pair('Snapshot SHA-256',snapshot.snapshotSha256,true),pair('Evaluated at',date(snapshot.evaluatedAt)),pair('Decision methodology revision',snapshot.methodologyRevision),pair('Policy SHA-256',snapshot.methodologyPolicySha256,true)),badges)}
+async function loadResults(root,snapshot,methodologies){root.replaceChildren(h('div',{class:'skeleton'}),h('div',{class:'skeleton'}));const rows=await Promise.all(methodologies.map(async methodology=>{try{const query=new URLSearchParams({inputSnapshotSha256:snapshot.snapshotSha256,methodologyId:methodology.methodologyId,methodologySha256:methodology.methodologySha256});const result=await api(`/api/v1/derived-risk-results?${query}`);return{methodology,result:result.json}}catch(error){if(error.status===404)return{methodology,result:null};return{methodology,error}}}));const grid=h('div',{class:'grid-2'});for(const row of rows)grid.append(methodologyCard(snapshot,row.methodology,row.result,row.error,root,methodologies));root.replaceChildren(call('Scores below are methodology-native outputs. Different numeric ranges and rating semantics are intentionally not normalized or averaged.'),grid)}
+function methodologyCard(snapshot,methodology,payload,error,root,methodologies){const header=h('div',{class:'panel-header'},h('div',{},h('h2',{class:'panel-title',text:methodology.provider}),h('p',{class:'panel-subtitle',text:`${methodology.sourceModel} · derived RBVM adaptation`})));const body=h('div',{class:'panel-body'});body.append(h('dl',{class:'details-grid'},pair('Methodology ID',methodology.methodologyId,true),pair('Version',methodology.version),pair('Methodology SHA-256',methodology.methodologySha256,true),pair('Output',methodology.outputName)));if(error){body.append(call(error.status===503?'Derived-risk result persistence is unavailable.':`Exact result lookup failed: ${error.message}`,'warning'));return h('section',{class:'panel'},header,body)}if(!payload){const message=h('div',{class:'status-message',role:'status','aria-live':'polite'});const action=btn('Materialize exact result',async()=>{action.disabled=true;message.textContent='Materializing exact snapshot and methodology identity…';try{await api(`/api/v1/derived-risk-result-materializations/${snapshot.snapshotSha256}/${encodeURIComponent(methodology.methodologyId)}/${methodology.methodologySha256}`,{method:'POST'});message.textContent='Exact result persisted and replay-verified.';await loadResults(root,snapshot,methodologies)}catch(err){message.className='status-message error';message.textContent=err.status===403?'Operator role is required to materialize a derived-risk result.':err.message;action.disabled=false}},'primary');body.append(call('No persisted result exists for this exact snapshot/methodology identity. Absence is not converted into a score.','warning'),message,h('div',{class:'form-actions'},action));return h('section',{class:'panel'},header,body)}const result=payload.result||{},canonical=payload.canonicalResult||{};const computed=result.resultState==='COMPUTED';body.append(h('dl',{class:'details-grid'},pair('Result state',title(result.resultState)),pair('Native score',computed?result.numericScore:'—'),pair('Native scale',computed?result.numericScale:'—'),pair('Native rating',computed?(result.rating||'Not defined by this contract'):'—'),pair('Reason',computed?'—':title(result.reasonCode)),pair('Replay verification',canonical.replayVerified===true?'Verified':'Not verified'),pair('Result SHA-256',canonical.sha256,true),pair('Persisted at',date(result.persistedAt))));const measures=canonical.measures||[];if(measures.length){const values=h('dl',{class:'details-grid'});for(const measure of measures)values.append(pair(`${title(measure.measureId)} · ${title(measure.role)}`,`${measure.value} ${measure.scale}`));body.append(h('h3',{text:'Methodology-native measures'}),values)}return h('section',{class:'panel'},header,body)}
+new MutationObserver(schedule).observe(document.documentElement,{childList:true,subtree:true});window.addEventListener('DOMContentLoaded',schedule);
 })();
   </script>
   <script src="/ui/rbvm-ui.js" defer></script>
