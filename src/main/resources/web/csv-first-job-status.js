@@ -3,6 +3,7 @@
 
   const CONTRACT = 'CSV_FIRST_ENRICHMENT_JOB_STATUS_UI_V1';
   const ROOT = '/api/v1/csv-first-enrichment-jobs';
+  const legacyRuns = new Set();
   let queued = false;
   let timer = null;
   let activeRunId = '';
@@ -68,6 +69,7 @@
     const body = panel.querySelector('.panel-body');
     if (!body) return;
     const status = String(data.status || 'UNKNOWN').toUpperCase();
+    panel.dataset.jobState = status;
     const complete = status === 'COMPLETE';
     const failed = status === 'FAILED';
     body.replaceChildren(
@@ -92,6 +94,7 @@
     try {
       const response = await fetch(`${ROOT}/${encodeURIComponent(id)}`, {cache: 'no-store'});
       if (response.status === 404) {
+        legacyRuns.add(id);
         panel.remove();
         reviewControl(true);
         stopTimer();
@@ -109,6 +112,7 @@
       } else stopTimer();
     } catch (error) {
       const body = panel.querySelector('.panel-body');
+      panel.dataset.jobState = 'STATUS_ERROR';
       if (body) body.replaceChildren(h('div', {class: 'callout callout-warning', text: `Enrichment status could not be loaded: ${error.message}`}));
       reviewControl(false, 'Enrichment status is unavailable.');
       stopTimer();
@@ -127,13 +131,18 @@
       stopTimer();
       return;
     }
+    if (legacyRuns.has(id)) {
+      reviewControl(true);
+      return;
+    }
     const root = document.getElementById('page-content');
     const header = root?.querySelector('.page-header');
     if (!root || !header) return;
     let panel = root.querySelector('[data-csv-first-job-status]');
     if (activeRunId === id && panel) {
       const state = panel.dataset.jobState || '';
-      if (state !== 'COMPLETE') reviewControl(false, 'Public intelligence enrichment is still running.');
+      if (state === 'COMPLETE') reviewControl(true);
+      else reviewControl(false, state === 'FAILED' ? 'Enrichment failed; resolve the job before contextual analysis.' : 'Public intelligence enrichment is still running.');
       return;
     }
 
