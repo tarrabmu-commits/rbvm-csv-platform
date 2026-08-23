@@ -54,6 +54,8 @@ if manifest.get("frozenOn") != "2026-08-24":
     fail("freeze date drift")
 if manifest.get("classification") != "RBVM_POLICY":
     fail("freeze classification drift")
+if manifest.get("methodSha256") != METHOD_SHA:
+    fail("frozen method SHA metadata drift")
 
 # Load the policy module without invoking its CLI entry point and bind the
 # freeze directly to the canonical representation used to calculate the SHA.
