@@ -1,1 +1,0 @@
-Runtime dashboard ownership moved to rbvm-ui.js by RBVM_STABILIZATION_V1. Legacy dashboard source modules remain as historical/reference implementation only and are not bundled at runtime.
