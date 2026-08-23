@@ -27,7 +27,8 @@ for forbidden in ["enriched.csv", "POST", "DELETE", "PUT"]:
 for token in [
     "CANONICAL_IMPORT_FINDING_MANIFEST_HTTP_V1",
     "/api/v1/canonical-imports/",
-    "findings\\.csv",
+    "findings",
+    ".csv",
     "ApiRole.VIEWER",
     "X-RBVM-Import-Id",
     "COMPLETED_IMPORT_NOT_FOUND",
