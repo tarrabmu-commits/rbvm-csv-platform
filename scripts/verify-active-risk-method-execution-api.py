@@ -117,9 +117,9 @@ for marker in (
     require(marker in SERVER, f'CsvPlatformServer missing active execution wiring {marker!r}')
 
 for marker in (
-    'materializesFormulaAndReplaysExactBinding',
-    'materializesDerivedAndReturnsNativeResultLocation',
-    'rejectsInvalidMissingAndClearedIdentities',
+    'executesExactFormulaAndReplaysBindingWithoutReexecution',
+    'exposesExactDerivedResultLocation',
+    'rejectsInvalidMissingWrongAndClearedIdentities',
     'executionStatus',
     'INSERTED',
     'REPLAYED',
