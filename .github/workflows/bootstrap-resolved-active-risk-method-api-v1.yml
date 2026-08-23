@@ -18,70 +18,21 @@ jobs:
           ref: policy/resolved-active-risk-method-api-v1
       - name: Patch resolved active risk method API
         run: python3 scripts/bootstrap-resolved-active-risk-method-api-v1.py
-      - name: Complete resolved-selection helper
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('src/main/java/io/rbvm/csv/RiskMethodSelectionPolicyApi.java')
-          text = path.read_text()
-          if 'private Response resolvedSelectionResponse(' in text:
-              raise SystemExit(0)
-          marker = '    private static Response response(\n'
-          block = '''    private Response resolvedSelectionResponse(
-                  RbvmRiskMethodSelectionPolicyActivationEvent event
-          ) throws IOException {
-              Map<String, Object> body = new LinkedHashMap<>();
-              body.put("contractId", RESOLVED_ACTIVE_METHOD_CONTRACT_ID);
-              body.put("resolutionSemantics", RESOLVED_ACTIVE_METHOD_SEMANTICS);
-              body.put("selectionState", event.activatesPolicy() ? "ACTIVE" : "CLEARED");
-              body.put("activation", activationView(event));
-
-              if (event.activatesPolicy()) {
-                  RbvmRiskMethodSelectionPolicy policy = policies.findByRevision(event.policyRevision())
-                          .filter(candidate -> candidate.policySha256().equals(event.policySha256()))
-                          .orElseThrow(() -> new ApiProblem(
-                                  500,
-                                  "RISK_METHOD_SELECTION_POLICY_ACTIVATION_INTEGRITY_FAILURE",
-                                  "ACTIVE activation references an exact policy identity that cannot be resolved"
-                          ));
-                  body.put("policy", policyView(policy));
-                  body.put("selectedMethod", selectedMethodView(policy));
-              } else {
-                  body.put("policy", null);
-                  body.put("selectedMethod", null);
-              }
-
-              Map<String, String> headers = new LinkedHashMap<>();
-              headers.put("ETag", activationStrongEtag(event.eventSha256()));
-              headers.put("Location", resolvedActivationLocation(event));
-              return new Response(200, headers, body);
-          }
-
-          private static Map<String, Object> selectedMethodView(RbvmRiskMethodSelectionPolicy policy) {
-              Map<String, Object> output = new LinkedHashMap<>();
-              output.put("selectionRole", policy.selectionRole().name());
-              output.put("methodFamily", policy.methodFamily().name());
-              output.put("methodId", policy.methodId());
-              output.put("methodVersion", policy.methodVersion());
-              output.put("methodSha256", policy.methodSha256());
-              return output;
-          }
-
-          '''
-          if text.count(marker) != 1:
-              raise SystemExit('resolved helper insertion marker is not unique')
-          path.write_text(text.replace(marker, block + marker, 1))
-          PY
-      - name: Commit API update
+      - name: Finalize resolved active risk method API
+        run: python3 scripts/finalize-resolved-active-risk-method-api-v1.py
+      - name: Commit API and OpenAPI update
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/main/java/io/rbvm/csv/RiskMethodSelectionPolicyApi.java src/main/java/io/rbvm/csv/RiskMethodSelectionPolicyHttpRouter.java
+          git add \
+            src/main/java/io/rbvm/csv/RiskMethodSelectionPolicyApi.java \
+            src/main/java/io/rbvm/csv/RiskMethodSelectionPolicyHttpRouter.java \
+            api/openapi.yaml \
+            api/openapi-v21.yaml
           if git diff --cached --quiet; then
             exit 0
           fi
           git diff --cached --check
-          git commit -m 'Resolve active risk method identity'
+          git commit -m 'Finalize resolved active risk method projection'
           git push origin HEAD:policy/resolved-active-risk-method-api-v1
