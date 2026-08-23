@@ -87,6 +87,46 @@ RBVM_MVP_Priority_Status = UNRANKABLE_MISSING_EVIDENCE
 
 with explicit blockers.
 
+## Explainability contract
+
+The policy identity and Pareto calculation remain unchanged. A separate deterministic rendering contract is emitted for operator explainability:
+
+```text
+RBVM_MVP_PRIORITY_EXPLAINABILITY_V1
+```
+
+The ranked CSV includes:
+
+```text
+RBVM_MVP_Priority_Explanation
+```
+
+For rankable findings the explanation renders only evidence already admitted by the policy, the resulting Pareto front, and domination counts. For unrankable findings it names the required evidence that is missing or invalid and explicitly states that missing evidence is not imputed.
+
+The explainability layer:
+
+- does not add a dimension;
+- does not add a weight or threshold;
+- does not change front assignment;
+- does not select a different method;
+- does not claim Organizational Risk or an SLA.
+
+The report binds this behavior as `RBVM_MVP_PRIORITY_EXPLAINABILITY_V1` with `changesPriority=false`.
+
+## Golden benchmark
+
+`testdata/rbvm-mvp-priority-golden.csv` is the deterministic MVP priority benchmark. It contains explicit trade-offs, dominated rows, and a missing-evidence case.
+
+`scripts/verify-rbvm-mvp-priority-golden.py` verifies:
+
+- expected status/front for every named case;
+- exact policy SHA on every row;
+- explainability semantics;
+- Organizational Risk remains `NON_COMPUTABLE`;
+- row-order independence for status, front, domination counts, blockers, and explanations.
+
+The golden benchmark is a regression oracle for this exact local policy. It is not evidence that Pareto ranking is a universal RBVM standard.
+
 ## Forbidden shortcuts
 
 The canonical method contains:
@@ -117,6 +157,7 @@ Therefore it does not use:
 - ranked/unrankable counts;
 - Pareto-front counts;
 - explicit unrankable reasons;
+- deterministic row explanations;
 - input/output SHA-256 values.
 
 The output CSV adds:
@@ -127,6 +168,7 @@ RBVM_MVP_Priority_Front
 RBVM_MVP_Priority_Dominated_By
 RBVM_MVP_Priority_Dominates
 RBVM_MVP_Priority_Blockers
+RBVM_MVP_Priority_Explanation
 RBVM_MVP_Priority_Method_SHA256
 ```
 
