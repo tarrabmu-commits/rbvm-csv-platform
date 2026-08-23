@@ -16,14 +16,15 @@ import subprocess
 import sys
 
 CVE_PATTERN = re.compile(r"^CVE-[0-9]{4}-[0-9]{4,}$")
+SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 BASE_KEYS = ("AV", "AC", "AT", "PR", "UI", "VC", "VI", "VA", "SC", "SI", "SA")
 THREAT_KEYS = ("E",)
 ENV_KEYS = ("CR", "IR", "AR", "MAV", "MAC", "MAT", "MPR", "MUI", "MVC", "MVI", "MVA", "MSC", "MSI", "MSA")
 SUPP_KEYS = ("S", "AU", "R", "V", "RE", "U")
 
 ENRICHMENT_HEADERS = [
-    "CVSS4_Status", "CVSS4_Assessment_Count", "CVSS4_Source", "CVSS4_Source_Type",
-    "CVSS4_Vector", "CVSS4_Base_Score", "CVSS4_Base_Severity",
+    "CVSS4_Status", "CVSS4_Assessment_Count", "CVSS4_Semantic_Assessment_Count",
+    "CVSS4_Source", "CVSS4_Source_Type", "CVSS4_Vector", "CVSS4_Base_Score", "CVSS4_Base_Severity",
     *[f"CVSS4_{key}" for key in BASE_KEYS],
     *[f"CVSS4_{key}" for key in THREAT_KEYS],
     *[f"CVSS4_{key}" for key in ENV_KEYS],
@@ -67,6 +68,11 @@ def sha256_file(path):
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def sha256_json(value):
+    canonical = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
 
 
 def json_cell(value):
@@ -115,7 +121,10 @@ def default_sidecar(output, suffix):
 
 def run_collector(args, snapshot_path, collector_report):
     collector = Path(__file__).resolve().with_name("collect-public-vulnerability-intel.py")
-    command = [sys.executable, str(collector), str(args.input), str(snapshot_path), "--cache-dir", str(args.cache_dir)]
+    command = [
+        sys.executable, str(collector), str(args.input), str(snapshot_path),
+        "--cache-dir", str(args.cache_dir),
+    ]
     if collector_report:
         command.extend(["--report", str(collector_report)])
     if args.offline:
@@ -134,6 +143,13 @@ def load_snapshot(path, expected_cves):
         raise RuntimeError(f"invalid public intelligence snapshot: {path}") from error
     if snapshot.get("contractId") != "PUBLIC_CVE_INTEL_SNAPSHOT_V1":
         raise RuntimeError("unexpected public intelligence snapshot contract")
+    claimed_sha = snapshot.get("snapshotSha256")
+    if not isinstance(claimed_sha, str) or not SHA256_PATTERN.fullmatch(claimed_sha):
+        raise RuntimeError("public intelligence snapshot is missing a valid snapshotSha256")
+    unhashed = dict(snapshot)
+    unhashed.pop("snapshotSha256", None)
+    if sha256_json(unhashed) != claimed_sha:
+        raise RuntimeError("public intelligence snapshot SHA-256 verification failed")
     records = snapshot.get("records")
     if not isinstance(records, list):
         raise RuntimeError("public intelligence snapshot records must be an array")
@@ -152,36 +168,59 @@ def load_snapshot(path, expected_cves):
     return snapshot, by_cve
 
 
-def unique_assessments(value):
-    if not isinstance(value, list):
-        return []
+def source_assessments(record):
+    values = []
+    nvd = record.get("nvd") if isinstance(record.get("nvd"), dict) else {}
+    cve_program = record.get("cveProgram") if isinstance(record.get("cveProgram"), dict) else {}
+    for candidate in (nvd.get("cvssV4Assessments"), cve_program.get("cvssV4Assessments")):
+        if isinstance(candidate, list):
+            values.extend(item for item in candidate if isinstance(item, dict))
+    return values
+
+
+def distinct_assessments(record):
     unique = {}
-    for assessment in value:
-        if not isinstance(assessment, dict):
-            continue
+    for assessment in source_assessments(record):
         canonical = json.dumps(assessment, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         unique[canonical] = assessment
     return [unique[key] for key in sorted(unique)]
 
 
+def semantic_assessment_groups(assessments):
+    groups = {}
+    for assessment in assessments:
+        key = (
+            text(assessment.get("vector")),
+            text(assessment.get("baseScore")),
+            text(assessment.get("baseSeverity")),
+        )
+        groups.setdefault(key, []).append(assessment)
+    return groups
+
+
 def cvss_columns(record):
-    nvd = record.get("nvd") if isinstance(record.get("nvd"), dict) else {}
-    assessments = unique_assessments(nvd.get("cvssV4Assessments"))
+    assessments = distinct_assessments(record)
+    groups = semantic_assessment_groups(assessments)
     result = {
         "CVSS4_Assessment_Count": str(len(assessments)),
+        "CVSS4_Semantic_Assessment_Count": str(len(groups)),
         "CVSS4_Assessments_JSON": json_cell(assessments),
     }
-    if not assessments:
+    if not groups:
         result["CVSS4_Status"] = "MISSING"
         return result
-    if len(assessments) > 1:
+    if len(groups) > 1:
         result["CVSS4_Status"] = "AMBIGUOUS"
         return result
-    assessment = assessments[0]
+
+    equivalent = next(iter(groups.values()))
+    assessment = equivalent[0]
+    sources = sorted({text(item.get("source")) for item in equivalent if text(item.get("source"))})
+    source_types = sorted({text(item.get("type")) for item in equivalent if text(item.get("type"))})
     result.update({
         "CVSS4_Status": "PRESENT",
-        "CVSS4_Source": text(assessment.get("source")),
-        "CVSS4_Source_Type": text(assessment.get("type")),
+        "CVSS4_Source": " | ".join(sources),
+        "CVSS4_Source_Type": " | ".join(source_types),
         "CVSS4_Vector": text(assessment.get("vector")),
         "CVSS4_Base_Score": text(assessment.get("baseScore")),
         "CVSS4_Base_Severity": text(assessment.get("baseSeverity")),
@@ -218,8 +257,8 @@ def enrichment_columns(record, snapshot):
     cna = cve_program.get("cna") if isinstance(cve_program.get("cna"), dict) else {}
     ssvc = cisa_ssvc(cve_program)
     provenance = record.get("provenance") if isinstance(record.get("provenance"), dict) else {}
-
     descriptions = nvd.get("descriptions") if isinstance(nvd.get("descriptions"), list) else []
+
     result.update({
         "EPSS_Probability": text(epss.get("probability")),
         "EPSS_Percentile": text(epss.get("percentile")),
