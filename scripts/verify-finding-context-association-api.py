@@ -199,18 +199,21 @@ for path, item in composed_openapi["paths"].items():
     if path in expected_paths:
         source_name = "finding-context-association-v1.openapi.yaml"
         source_document = openapi
+        expected_source_path = path
     elif path in resolved_paths:
         source_name = "resolved-active-risk-method-v1.openapi.yaml"
         source_document = resolved_openapi
+        expected_source_path = "/api/v1" + path
     else:
         source_name = "openapi.yaml"
         source_document = base_openapi
+        expected_source_path = path
     expected_prefix = f"./{source_name}#/paths/"
     if not reference.startswith(expected_prefix):
         raise AssertionError(f"Composed path {path} references the wrong source contract")
     pointer = reference[len(expected_prefix):]
     resolved_path = pointer.replace("~1", "/").replace("~0", "~")
-    if resolved_path != path:
+    if resolved_path != expected_source_path:
         raise AssertionError(
             f"Composed path {path} resolves to a different source path {resolved_path}"
         )
