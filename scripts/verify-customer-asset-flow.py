@@ -6,7 +6,8 @@ UI = (ROOT / "src/main/resources/web/customer-flow.js").read_text(encoding="utf-
 COMPILE = (ROOT / "scripts/compile.sh").read_text(encoding="utf-8")
 
 required = [
-    'CSV_FIRST_CUSTOMER_ASSET_SETUP_UI_V1',
+    'CSV_FIRST_CUSTOMER_ASSET_SETUP_UI_V2',
+    'RBVM_CUSTOMER_ASSET_BUNDLE_V2',
     'RBVM_CUSTOMER_ASSET_BUNDLE_V1',
     'Enrich CSV & continue to Assets',
     '/api/v1/csv-first-enrichments',
@@ -14,14 +15,13 @@ required = [
     'Download customer data',
     'Save customer data',
     'Download enriched CSV',
-    '/api/v1/managed-assets',
-    'businessCriticality',
-    'businessService',
-    'businessOwner',
-    'environment',
-    'classificationMethod',
-    'CUSTOMER_DIRECT',
-    'GUIDED',
+    'Add asset manually',
+    'Asset Criticality',
+    'Internet Facing?',
+    'assetCriticality',
+    'internetFacing',
+    "YES: 'Yes — Internet Facing'",
+    "NO: 'No — Not Internet Facing'",
     'activeSetup',
     'spaGo(',
     'CVE_ID',
@@ -34,6 +34,12 @@ if 'customer-flow.js' not in COMPILE or 'cat "$ROOT_DIR/src/main/resources/web/c
     raise AssertionError('runtime frontend bundle does not include customer-flow.js')
 
 for forbidden in [
+    '/api/v1/managed-assets',
+    'fetchAllManagedAssets',
+    "field('Business service'",
+    "field('Business owner'",
+    "field('Environment'",
+    "field('Classification method'",
     "businessCriticality: 'MISSION_CRITICAL'",
     "environment: 'PRODUCTION'",
     'EPSS_Probability *',
@@ -42,9 +48,15 @@ for forbidden in [
     'localStorage',
 ]:
     if forbidden in UI:
-        raise AssertionError(f"customer flow contains forbidden inferred/persistent state: {forbidden}")
+        raise AssertionError(f"MVP customer flow contains forbidden field/inference/persistence: {forbidden}")
 
 if "candidate.customerAssetKey\n        ? byKey.get(candidate.customerAssetKey)" not in UI:
     raise AssertionError('bundle reuse must match customer asset key before display name')
 
-print('CSV-first customer asset UI structural checks: PASS')
+if "value.assetCriticality === 'UNKNOWN' || value.internetFacing === 'UNKNOWN'" not in UI:
+    raise AssertionError('save must reject incomplete MVP customer context')
+
+if 'NETWORK_REACHABILITY_CSV_V1 evidence' not in UI:
+    raise AssertionError('customer Internet-facing boolean must remain semantically separate from endpoint reachability evidence')
+
+print('CSV-first MVP customer asset UI structural checks: PASS')
