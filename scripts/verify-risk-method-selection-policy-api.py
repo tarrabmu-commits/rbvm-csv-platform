@@ -58,8 +58,8 @@ assert server.index('RiskMethodSelectionPolicyHttpRouter.requiredRole(exchange, 
 ), 'RBAC must resolve before V25 capability availability is observed'
 
 for marker in [
-    'installationStatus').equals("INSERTED")',
-    'installationStatus').equals("REPLAYED")',
+    'installationStatus").equals("INSERTED")',
+    'installationStatus").equals("REPLAYED")',
     'RISK_METHOD_SELECTION_POLICY_REVISION_CONFLICT',
     'definition.methodologyId().toLowerCase()',
     'store.size() == 1',
@@ -83,7 +83,7 @@ for marker in [
     '/api/v1/risk-method-selection-policy-installations/{revision}/{methodFamily}/{methodId}/{methodVersion}/{methodSha256}:',
     'RBVM_FORMULA, STANDARD_DERIVED',
     'EXACT_REVISION_AND_SHA_NO_CURRENT_LATEST_OR_DEFAULT',
-    'RISK_METHOD_SELECTION_POLICY_API_V1',
+    'RBVM_RISK_METHOD_SELECTION_POLICY_API_V1',
 ]:
     assert marker in openapi, f"risk method policy OpenAPI missing {marker!r}"
 
