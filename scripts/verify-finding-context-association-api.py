@@ -17,6 +17,9 @@ openapi_text = openapi_path.read_text(encoding="utf-8")
 openapi = yaml.safe_load(openapi_text)
 base_openapi = yaml.safe_load((ROOT / "api/openapi.yaml").read_text(encoding="utf-8"))
 composed_openapi = yaml.safe_load((ROOT / "api/openapi-v21.yaml").read_text(encoding="utf-8"))
+resolved_openapi = yaml.safe_load(
+    (ROOT / "api/resolved-active-risk-method-v1.openapi.yaml").read_text(encoding="utf-8")
+)
 
 for name, text, prefix in (
     ("reachability API", reach, "frs"),
@@ -130,6 +133,10 @@ expected_paths = {
     "/findings/{findingId}/business-service-links/current",
     "/findings/{findingId}/business-service-links/revisions",
 }
+resolved_paths = {
+    "/risk-method-selection-policy-activation/current/resolved",
+    "/risk-method-selection-policy-activations/{activationRevision}/{eventSha256}/resolved",
+}
 if set(openapi.get("paths", {})) != expected_paths:
     raise AssertionError("Finding-context OpenAPI path set does not match the V1 router contract")
 
@@ -189,7 +196,15 @@ for path, item in composed_openapi["paths"].items():
     reference = item.get("$ref")
     if not reference:
         raise AssertionError(f"Composed path {path} must be a source-contract reference")
-    source_name = "finding-context-association-v1.openapi.yaml" if path in expected_paths else "openapi.yaml"
+    if path in expected_paths:
+        source_name = "finding-context-association-v1.openapi.yaml"
+        source_document = openapi
+    elif path in resolved_paths:
+        source_name = "resolved-active-risk-method-v1.openapi.yaml"
+        source_document = resolved_openapi
+    else:
+        source_name = "openapi.yaml"
+        source_document = base_openapi
     expected_prefix = f"./{source_name}#/paths/"
     if not reference.startswith(expected_prefix):
         raise AssertionError(f"Composed path {path} references the wrong source contract")
@@ -199,7 +214,6 @@ for path, item in composed_openapi["paths"].items():
         raise AssertionError(
             f"Composed path {path} resolves to a different source path {resolved_path}"
         )
-    source_document = openapi if path in expected_paths else base_openapi
     if resolved_path not in source_document.get("paths", {}):
         raise AssertionError(f"Composed path {path} resolves to a missing source path")
 
