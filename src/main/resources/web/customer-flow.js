@@ -1,9 +1,12 @@
 (() => {
   'use strict';
 
-  const CONTRACT = 'CSV_FIRST_CUSTOMER_ASSET_SETUP_UI_V1';
-  const BUNDLE_CONTRACT = 'RBVM_CUSTOMER_ASSET_BUNDLE_V1';
+  const CONTRACT = 'CSV_FIRST_CUSTOMER_ASSET_SETUP_UI_V2';
+  const BUNDLE_CONTRACT = 'RBVM_CUSTOMER_ASSET_BUNDLE_V2';
+  const LEGACY_BUNDLE_CONTRACT = 'RBVM_CUSTOMER_ASSET_BUNDLE_V1';
   const MAX_BUNDLE_ASSETS = 5000;
+  const CRITICALITY = ['UNKNOWN', 'MISSION_CRITICAL', 'HIGH', 'MODERATE', 'LOW'];
+  const INTERNET_FACING = ['UNKNOWN', 'YES', 'NO'];
   let queued = false;
   let activeSetup = null;
 
@@ -11,31 +14,29 @@
 
   const el = (tag, attrs = {}, ...children) => {
     const node = document.createElement(tag);
-    Object.entries(attrs).forEach(([key, value]) => {
-      if (value === null || value === undefined || value === false) return;
+    for (const [key, value] of Object.entries(attrs)) {
+      if (value === null || value === undefined || value === false) continue;
       if (key === 'class') node.className = value;
       else if (key === 'text') node.textContent = String(value);
       else if (key === 'style') node.style.cssText = String(value);
       else if (key.startsWith('on') && typeof value === 'function') node.addEventListener(key.slice(2).toLowerCase(), value);
       else if (key in node && !key.startsWith('aria') && !key.startsWith('data-')) node[key] = value;
       else node.setAttribute(key, String(value));
-    });
-    children.flat().forEach(child => {
-      if (child === null || child === undefined || child === false) return;
+    }
+    for (const child of children.flat()) {
+      if (child === null || child === undefined || child === false) continue;
       node.append(child instanceof Node ? child : document.createTextNode(String(child)));
-    });
+    }
     return node;
   };
 
   const button = (label, kind = 'secondary') => el('button', {
-    type: 'button', class: `button button-${kind}`, text: label,
+    type: 'button',
+    class: `button button-${kind}`,
+    text: label,
   });
   const callout = (text, kind = 'info') => el('div', {class: `callout callout-${kind}`, text});
   const field = (label, input) => el('div', {class: 'field'}, el('label', {}, el('span', {text: label}), input));
-  const setStatus = (node, message, kind = '') => {
-    node.textContent = message;
-    node.className = `status-message${kind ? ` ${kind}` : ''}`;
-  };
 
   function currentView() {
     const params = new URLSearchParams(location.search);
@@ -49,18 +50,16 @@
     queued = true;
     queueMicrotask(() => {
       queued = false;
-      const root = document.getElementById('page-content');
-      if (!root) return;
-      const view = currentView();
-      if (view === 'imports') injectCsvFirstImport(root);
-      if (view === 'assets') injectCustomerAssetSetup(root);
+      patch();
     });
   }
 
-  function spaGo(path) {
-    history.pushState({}, '', path);
-    window.dispatchEvent(new PopStateEvent('popstate'));
-    schedule();
+  function patch() {
+    const root = document.getElementById('page-content');
+    if (!root) return;
+    const view = currentView();
+    if (view === 'imports') injectCsvFirstImport(root);
+    if (view === 'assets') injectCustomerAssetSetup(root);
   }
 
   async function api(path, options = {}) {
@@ -78,7 +77,18 @@
     return response;
   }
 
-  const normalizeHeader = value => String(value || '').normalize('NFKC').toLowerCase().replace(/[^a-z0-9]/g, '');
+  function setStatus(node, message, kind = '') {
+    node.textContent = message;
+    node.className = `status-message${kind ? ` ${kind}` : ''}`;
+  }
+
+  function normalizeHeader(value) {
+    return String(value || '').normalize('NFKC').toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+
+  function normalizeName(value) {
+    return String(value || '').normalize('NFKC').trim().toLowerCase();
+  }
 
   function parseCsv(text) {
     const rows = [];
@@ -92,15 +102,12 @@
           if (text[index + 1] === '"') {
             cell += '"';
             index++;
-          } else {
-            quoted = false;
-          }
-        } else {
-          cell += ch;
-        }
-      } else if (ch === '"') {
-        quoted = true;
-      } else if (ch === ',') {
+          } else quoted = false;
+        } else cell += ch;
+        continue;
+      }
+      if (ch === '"') quoted = true;
+      else if (ch === ',') {
         row.push(cell);
         cell = '';
       } else if (ch === '\n') {
@@ -108,9 +115,7 @@
         rows.push(row);
         row = [];
         cell = '';
-      } else {
-        cell += ch;
-      }
+      } else cell += ch;
     }
     if (quoted) throw new Error('CSV contains an unterminated quoted field.');
     if (cell.length || row.length) {
@@ -133,7 +138,8 @@
     const rows = parseCsv(text);
     if (rows.length < 2) throw new Error('CSV must contain a header and at least one data row.');
     const headers = rows[0].map(value => String(value).replace(/^\uFEFF/, '').trim());
-    if (firstColumn(headers, ['CVE_ID', 'CVE ID', 'cve']) < 0) throw new Error('CSV must contain a CVE_ID column.');
+    const cveIndex = firstColumn(headers, ['CVE_ID', 'CVE ID', 'cve']);
+    if (cveIndex < 0) throw new Error('CSV must contain a CVE_ID column.');
     const keyIndex = firstColumn(headers, ['Agent_ID', 'Agent ID', 'Asset_ID', 'Asset ID', 'agent.id', 'agent_id']);
     const nameIndex = firstColumn(headers, ['Agent', 'Agent_Name', 'Agent Name', 'Asset', 'Asset_Name', 'Hostname', 'Host', 'agent.name', 'agent_name']);
     if (keyIndex < 0 && nameIndex < 0) {
@@ -141,27 +147,30 @@
     }
 
     const seen = new Map();
-    rows.slice(1).forEach(values => {
+    for (const values of rows.slice(1)) {
+      const cve = String(values[cveIndex] || '').trim().toUpperCase();
+      if (!/^CVE-\d{4}-\d{4,}$/.test(cve)) continue;
       const key = keyIndex >= 0 ? String(values[keyIndex] || '').trim() : '';
       const name = nameIndex >= 0 ? String(values[nameIndex] || '').trim() : '';
-      if (!key && !name) return;
-      const identity = key ? `key:${key}` : `name:${name.normalize('NFKC').toLowerCase()}`;
+      if (!key && !name) continue;
+      const identity = key ? `key:${key}` : `name:${normalizeName(name)}`;
       if (!seen.has(identity)) {
         seen.set(identity, {
           customerAssetKey: key,
           displayName: name || key,
-          environment: 'UNKNOWN',
-          businessService: '',
-          businessOwner: '',
-          businessCriticality: 'UNKNOWN',
-          classificationMethod: 'CUSTOMER_DIRECT',
-          guideContractId: 'ASSET_CLASSIFICATION_GUIDE_V1',
-          guideRevision: 1,
+          assetCriticality: 'UNKNOWN',
+          internetFacing: 'UNKNOWN',
         });
       }
-    });
+    }
     if (!seen.size) throw new Error('No usable asset identities were found in the CSV.');
     return [...seen.values()];
+  }
+
+  function spaGo(path) {
+    history.pushState({}, '', path);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    schedule();
   }
 
   function injectCsvFirstImport(root) {
@@ -173,16 +182,20 @@
     const status = el('div', {class: 'status-message', role: 'status', 'aria-live': 'polite'});
     const run = button('Enrich CSV & continue to Assets', 'primary');
     const panel = el('section', {'data-csv-first-import': 'true', class: 'panel'},
-      el('div', {class: 'panel-header'}, el('div', {},
-        el('h2', {class: 'panel-title', text: 'CSV-first customer run'}),
-        el('p', {class: 'panel-subtitle', text: 'The uploaded CSV defines the complete run. Public vulnerability intelligence is collected first; customer-only context is completed on Assets next.'})
-      )),
-      el('div', {class: 'panel-body'}, el('div', {class: 'stack'},
-        callout('Automatic: CVSS v4, EPSS, KEV, CISA SSVC, CWE/CPE and source provenance. Customer-specific business context is never guessed from public data.'),
-        el('div', {class: 'form-grid'}, field('Customer vulnerability CSV', file)),
-        el('div', {class: 'inline-actions'}, run),
-        status
-      ))
+      el('div', {class: 'panel-header'},
+        el('div', {},
+          el('h2', {class: 'panel-title', text: 'CSV-first customer run'}),
+          el('p', {class: 'panel-subtitle', text: 'The uploaded CSV is the complete run scope. Public vulnerability intelligence is automatic; the customer supplies only asset criticality and current Internet-facing state.'})
+        )
+      ),
+      el('div', {class: 'panel-body'},
+        el('div', {class: 'stack'},
+          callout('Automatic from public sources: CVSS v4, EPSS, KEV, CISA SSVC, CWE/CPE and provenance. Customer input: Asset Criticality + Internet Facing only.'),
+          el('div', {class: 'form-grid'}, field('Customer vulnerability CSV', file)),
+          el('div', {class: 'inline-actions'}, run),
+          status
+        )
+      )
     );
 
     run.addEventListener('click', async () => {
@@ -201,6 +214,7 @@
           createdAt: new Date().toISOString(),
           candidates,
           run: null,
+          savedAt: null,
         };
         setStatus(status, `Collecting public intelligence for ${selected.name}…`);
         const response = await api('/api/v1/csv-first-enrichments', {
@@ -208,9 +222,10 @@
           headers: {'Content-Type': 'text/csv; charset=utf-8'},
           body: selected,
         });
-        activeSetup.run = await response.json();
-        setStatus(status, `Public enrichment complete. Opening Assets for ${candidates.length} customer asset${candidates.length === 1 ? '' : 's'}…`, 'success');
-        spaGo(activeSetup.run.next || `/assets?tab=managed&setup=1&runId=${encodeURIComponent(activeSetup.run.runId || '')}`);
+        const data = await response.json();
+        activeSetup.run = data;
+        setStatus(status, `Enrichment complete. Opening Assets for ${candidates.length} asset${candidates.length === 1 ? '' : 's'}…`, 'success');
+        spaGo(data.next || `/assets?tab=managed&setup=1&runId=${encodeURIComponent(data.runId || '')}`);
       } catch (error) {
         setStatus(status, error.message, 'error');
         run.disabled = false;
@@ -220,204 +235,129 @@
     header.insertAdjacentElement('afterend', panel);
   }
 
-  const textInput = (value = '', placeholder = '') => el('input', {type: 'text', value, placeholder});
-  function selectInput(values, current) {
+  function textInput(value = '', placeholder = '') {
+    return el('input', {type: 'text', value, placeholder});
+  }
+
+  function selectInput(values, current, labels = {}) {
     const select = el('select');
-    values.forEach(value => select.append(el('option', {value, text: value.replaceAll('_', ' '), selected: value === current})));
+    for (const value of values) {
+      select.append(el('option', {
+        value,
+        text: labels[value] || value.replaceAll('_', ' '),
+        selected: value === current,
+      }));
+    }
     return select;
   }
 
-  function createAssetEditor(asset, index) {
+  function createAssetEditor(asset, index, onChange, onRemove) {
     const key = textInput(asset.customerAssetKey || '', 'Stable customer key');
-    const name = textInput(asset.displayName || '', 'Asset display name');
-    const environment = selectInput(['PRODUCTION', 'PRE_PRODUCTION', 'DEVELOPMENT', 'TEST', 'SANDBOX', 'DISASTER_RECOVERY', 'UNKNOWN'], asset.environment || 'UNKNOWN');
-    const criticality = selectInput(['MISSION_CRITICAL', 'HIGH', 'MODERATE', 'LOW', 'UNKNOWN'], asset.businessCriticality || 'UNKNOWN');
-    const service = textInput(asset.businessService || '', 'Business service');
-    const owner = textInput(asset.businessOwner || '', 'Business owner');
-    const method = selectInput(['CUSTOMER_DIRECT', 'GUIDED'], asset.classificationMethod || 'CUSTOMER_DIRECT');
-    const guideId = textInput(asset.guideContractId || 'ASSET_CLASSIFICATION_GUIDE_V1', 'Guide contract');
-    const guideRevision = el('input', {type: 'number', min: '1', step: '1', value: asset.guideRevision || 1});
-    const guideWrap = el('div', {class: 'wide'}, el('div', {class: 'form-grid'}, field('Guide contract ID', guideId), field('Guide revision', guideRevision)));
-    const syncGuide = () => { guideWrap.hidden = method.value !== 'GUIDED'; };
-    method.addEventListener('change', syncGuide);
-    syncGuide();
+    const name = textInput(asset.displayName || '', 'Asset name');
+    const criticality = selectInput(CRITICALITY, asset.assetCriticality || 'UNKNOWN', {
+      UNKNOWN: 'Select criticality…',
+      MISSION_CRITICAL: 'Mission Critical',
+      HIGH: 'High',
+      MODERATE: 'Moderate',
+      LOW: 'Low',
+    });
+    const internet = selectInput(INTERNET_FACING, asset.internetFacing || 'UNKNOWN', {
+      UNKNOWN: 'Select Internet-facing state…',
+      YES: 'Yes — Internet Facing',
+      NO: 'No — Not Internet Facing',
+    });
+    for (const input of [key, name, criticality, internet]) input.addEventListener('change', onChange);
+    for (const input of [key, name]) input.addEventListener('input', onChange);
 
-    const details = el('details', {class: 'panel', open: index < 3},
+    const remove = button('Remove', 'ghost');
+    remove.addEventListener('click', () => onRemove(index));
+    const details = el('details', {class: 'panel', open: index < 4},
       el('summary', {style: 'cursor:pointer;padding:16px 20px;font-weight:700;', text: asset.displayName || asset.customerAssetKey || `Asset ${index + 1}`}),
-      el('div', {class: 'panel-body'}, el('div', {class: 'form-grid'},
-        field('Customer asset key', key),
-        field('Display name', name),
-        field('Environment', environment),
-        field('Business criticality', criticality),
-        field('Business service', service),
-        field('Business owner', owner),
-        field('Classification method', method),
-        guideWrap
-      ))
+      el('div', {class: 'panel-body'},
+        el('div', {class: 'form-grid'},
+          field('Asset ID', key),
+          field('Asset Name', name),
+          field('Asset Criticality', criticality),
+          field('Internet Facing?', internet)
+        ),
+        el('div', {class: 'inline-actions', style: 'margin-top:12px'}, remove)
+      )
     );
 
     return {
       node: details,
-      read: () => {
-        const output = {
-          customerAssetKey: key.value.trim(),
-          displayName: name.value.trim(),
-          environment: environment.value,
-          businessCriticality: criticality.value,
-          businessService: service.value.trim(),
-          businessOwner: owner.value.trim(),
-          classificationMethod: method.value,
-        };
-        if (method.value === 'GUIDED') {
-          output.guideContractId = guideId.value.trim();
-          output.guideRevision = Number(guideRevision.value);
-        }
-        return output;
-      },
+      read: () => ({
+        customerAssetKey: key.value.trim(),
+        displayName: name.value.trim(),
+        assetCriticality: criticality.value,
+        internetFacing: internet.value,
+      }),
+    };
+  }
+
+  function normalizeBundleAsset(asset, index, legacy = false) {
+    if (!asset || typeof asset !== 'object' || Array.isArray(asset)) throw new Error(`Asset ${index + 1} is invalid.`);
+    const key = String(asset.customerAssetKey || '').trim();
+    const name = String(asset.displayName || '').trim();
+    if (!key && !name) throw new Error(`Asset ${index + 1} needs customerAssetKey or displayName.`);
+    const criticality = String(legacy ? asset.businessCriticality || 'UNKNOWN' : asset.assetCriticality || 'UNKNOWN').toUpperCase();
+    const internetFacing = String(legacy ? 'UNKNOWN' : asset.internetFacing || 'UNKNOWN').toUpperCase();
+    if (!CRITICALITY.includes(criticality)) throw new Error(`Asset ${index + 1} has invalid Asset Criticality.`);
+    if (!INTERNET_FACING.includes(internetFacing)) throw new Error(`Asset ${index + 1} has invalid Internet Facing state.`);
+    return {
+      customerAssetKey: key,
+      displayName: name || key,
+      assetCriticality: criticality,
+      internetFacing,
     };
   }
 
   function validateBundle(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Customer data file must contain one JSON object.');
-    if (value.contractId !== BUNDLE_CONTRACT || value.schemaVersion !== 1) throw new Error(`Expected ${BUNDLE_CONTRACT} schema version 1.`);
     if (!Array.isArray(value.assets) || value.assets.length > MAX_BUNDLE_ASSETS) throw new Error('Customer data bundle has an invalid asset list.');
-    return value.assets.map((asset, index) => {
-      if (!asset || typeof asset !== 'object' || Array.isArray(asset)) throw new Error(`Asset ${index + 1} is invalid.`);
-      const customerAssetKey = String(asset.customerAssetKey || '').trim();
-      const displayName = String(asset.displayName || '').trim();
-      if (!customerAssetKey && !displayName) throw new Error(`Asset ${index + 1} needs customerAssetKey or displayName.`);
-      return {
-        customerAssetKey,
-        displayName: displayName || customerAssetKey,
-        environment: String(asset.environment || 'UNKNOWN'),
-        businessService: String(asset.businessService || ''),
-        businessOwner: String(asset.businessOwner || ''),
-        businessCriticality: String(asset.businessCriticality || 'UNKNOWN'),
-        classificationMethod: String(asset.classificationMethod || 'CUSTOMER_DIRECT'),
-        guideContractId: String(asset.guideContractId || 'ASSET_CLASSIFICATION_GUIDE_V1'),
-        guideRevision: Number(asset.guideRevision || 1),
-      };
-    });
-  }
-
-  async function fetchAllManagedAssets() {
-    const output = [];
-    let after = null;
-    for (let page = 0; page < 100; page++) {
-      const params = new URLSearchParams({limit: '100', lifecycle: 'ALL'});
-      if (after) params.set('afterId', after);
-      const data = await (await api(`/api/v1/managed-assets?${params}`)).json();
-      output.push(...(data.assets || []));
-      after = data.nextAfterId || null;
-      if (!after) break;
+    if (value.contractId === BUNDLE_CONTRACT && value.schemaVersion === 2) {
+      return value.assets.map((asset, index) => normalizeBundleAsset(asset, index, false));
     }
-    return output;
-  }
-
-  function toBundleAsset(asset) {
-    const revision = asset.currentRevision || {};
-    const output = {
-      customerAssetKey: asset.customerAssetKey || '',
-      displayName: revision.displayName || '',
-      environment: revision.environment || 'UNKNOWN',
-      businessService: revision.businessService || '',
-      businessOwner: revision.businessOwner || '',
-      businessCriticality: revision.businessCriticality || 'UNKNOWN',
-      classificationMethod: revision.classificationMethod || 'CUSTOMER_DIRECT',
-    };
-    if (revision.classificationMethod === 'GUIDED') {
-      output.guideContractId = revision.guideContractId || 'ASSET_CLASSIFICATION_GUIDE_V1';
-      output.guideRevision = revision.guideRevision || 1;
+    if (value.contractId === LEGACY_BUNDLE_CONTRACT && value.schemaVersion === 1) {
+      return value.assets.map((asset, index) => normalizeBundleAsset(asset, index, true));
     }
-    return output;
-  }
-
-  async function downloadCustomerBundle(status) {
-    try {
-      setStatus(status, 'Preparing customer data bundle…');
-      const assets = (await fetchAllManagedAssets()).map(toBundleAsset);
-      const bundle = {
-        contractId: BUNDLE_CONTRACT,
-        schemaVersion: 1,
-        exportedAt: new Date().toISOString(),
-        semantics: 'CUSTOMER_OWNED_ORGANIZATIONAL_ASSET_CONTEXT',
-        assets,
-      };
-      const blob = new Blob([JSON.stringify(bundle, null, 2) + '\n'], {type: 'application/json'});
-      const href = URL.createObjectURL(blob);
-      const link = el('a', {href, download: 'rbvm-customer-assets.json'});
-      document.body.append(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(href);
-      setStatus(status, `Downloaded ${assets.length} managed asset record${assets.length === 1 ? '' : 's'}.`, 'success');
-    } catch (error) {
-      setStatus(status, error.message, 'error');
-    }
+    throw new Error(`Expected ${BUNDLE_CONTRACT} schema version 2.`);
   }
 
   function mergeBundleIntoSetup(current, imported) {
     if (!current || !Array.isArray(current.candidates) || !current.candidates.length) return imported;
     const byKey = new Map(imported.filter(asset => asset.customerAssetKey).map(asset => [asset.customerAssetKey, asset]));
     const byName = new Map();
-    imported.forEach(asset => {
-      const name = asset.displayName.normalize('NFKC').trim().toLowerCase();
-      if (!name) return;
+    for (const asset of imported) {
+      const name = normalizeName(asset.displayName);
+      if (!name) continue;
       if (byName.has(name)) byName.set(name, null);
       else byName.set(name, asset);
-    });
+    }
     return current.candidates.map(candidate => {
       const matched = candidate.customerAssetKey
         ? byKey.get(candidate.customerAssetKey)
-        : byName.get(candidate.displayName.normalize('NFKC').trim().toLowerCase());
+        : byName.get(normalizeName(candidate.displayName));
       return matched ? {...candidate, ...matched, customerAssetKey: candidate.customerAssetKey || matched.customerAssetKey} : candidate;
     });
   }
 
-  async function persistAssetContext(asset, existingAssets) {
-    if (!asset.customerAssetKey && !asset.displayName) throw new Error('Each asset needs a customer key or display name.');
-    let existing = null;
-    if (asset.customerAssetKey) {
-      existing = existingAssets.find(value => value.customerAssetKey === asset.customerAssetKey) || null;
-    } else {
-      const normalizedName = asset.displayName.normalize('NFKC').trim().toLowerCase();
-      const matches = existingAssets.filter(value => String(value.currentRevision?.displayName || '').normalize('NFKC').trim().toLowerCase() === normalizedName);
-      if (matches.length > 1) throw new Error(`Display name ${asset.displayName} matches multiple managed assets; add a customer asset key.`);
-      existing = matches[0] || null;
-    }
+  function downloadJson(filename, value) {
+    const blob = new Blob([JSON.stringify(value, null, 2) + '\n'], {type: 'application/json'});
+    const href = URL.createObjectURL(blob);
+    const link = el('a', {href, download: filename});
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(href);
+  }
 
-    const payload = {
-      displayName: asset.displayName || asset.customerAssetKey,
-      environment: asset.environment || 'UNKNOWN',
-      businessService: asset.businessService || '',
-      businessOwner: asset.businessOwner || '',
-      businessCriticality: asset.businessCriticality || 'UNKNOWN',
-      classificationMethod: asset.classificationMethod || 'CUSTOMER_DIRECT',
-      changeNote: 'Customer context saved from CSV-first Customer Asset Setup V1',
-    };
-    if (payload.classificationMethod === 'GUIDED') {
-      payload.guideContractId = asset.guideContractId || 'ASSET_CLASSIFICATION_GUIDE_V1';
-      payload.guideRevision = Number(asset.guideRevision || 1);
+  function focusSetupMode(root, panel) {
+    if (new URLSearchParams(location.search).get('setup') !== '1') return;
+    const header = root.querySelector('.page-header');
+    for (const child of [...root.children]) {
+      if (child !== header && child !== panel) child.hidden = true;
     }
-
-    if (!existing) {
-      if (asset.customerAssetKey) payload.customerAssetKey = asset.customerAssetKey;
-      return (await api('/api/v1/managed-assets', {
-        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload),
-      })).json();
-    }
-
-    const currentResponse = await api(`/api/v1/managed-assets/${encodeURIComponent(existing.id)}`);
-    const current = await currentResponse.json();
-    const etag = currentResponse.headers.get('ETag');
-    if (!etag) throw new Error(`Managed asset ${existing.id} did not provide an ETag.`);
-    payload.lifecycleStatus = current.currentRevision?.lifecycleStatus || 'ACTIVE';
-    await api(`/api/v1/managed-assets/${encodeURIComponent(existing.id)}/revisions`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json', 'If-Match': etag},
-      body: JSON.stringify(payload),
-    });
-    return current;
   }
 
   function injectCustomerAssetSetup(root) {
@@ -425,34 +365,59 @@
     const header = root.querySelector('.page-header');
     if (!header) return;
 
-    let setup = activeSetup;
+    let setup = activeSetup || {
+      contractId: CONTRACT,
+      sourceFileName: '',
+      createdAt: new Date().toISOString(),
+      candidates: [],
+      run: null,
+      savedAt: null,
+    };
+    activeSetup = setup;
+
     const status = el('div', {class: 'status-message', role: 'status', 'aria-live': 'polite'});
     const editorsHost = el('div', {class: 'stack'});
     const upload = el('input', {type: 'file', accept: '.json,application/json', hidden: true});
     const uploadButton = button('Upload customer data');
-    const downloadButton = button('Download customer data');
+    const addButton = button('Add asset manually', 'ghost');
     const saveButton = button('Save customer data', 'primary');
-    const runId = new URLSearchParams(location.search).get('runId') || setup?.run?.runId || '';
+    const downloadButton = button('Download customer data');
+    downloadButton.disabled = !setup.savedAt;
+    const runId = new URLSearchParams(location.search).get('runId') || setup.run?.runId || '';
     const enrichedButton = runId ? button('Download enriched CSV') : null;
+    const finishButton = new URLSearchParams(location.search).get('setup') === '1' ? button('Finish setup', 'ghost') : null;
     let editors = [];
+
+    const markDirty = () => {
+      setup.savedAt = null;
+      downloadButton.disabled = true;
+    };
 
     const renderEditors = () => {
       editorsHost.replaceChildren();
       editors = [];
-      const candidates = Array.isArray(setup?.candidates) ? setup.candidates : [];
+      const candidates = Array.isArray(setup.candidates) ? setup.candidates : [];
       if (!candidates.length) {
-        editorsHost.append(callout('No current CSV asset candidates. Upload a saved customer data bundle here, or use Create asset for one-by-one manual entry.', 'warning'));
-        saveButton.disabled = true;
+        editorsHost.append(callout('No assets loaded yet. Upload a previously downloaded customer-data file or add an asset manually.', 'warning'));
         return;
       }
-      saveButton.disabled = false;
-      editorsHost.append(callout(`${candidates.length} asset${candidates.length === 1 ? '' : 's'} need customer-owned context. Public vulnerability data does not fill these fields.`));
+      editorsHost.append(callout(`${candidates.length} asset${candidates.length === 1 ? '' : 's'} loaded. Complete only the two customer fields: Asset Criticality and Internet Facing.`));
       candidates.forEach((candidate, index) => {
-        const editor = createAssetEditor(candidate, index);
+        const editor = createAssetEditor(candidate, index, markDirty, removeIndex => {
+          setup.candidates.splice(removeIndex, 1);
+          markDirty();
+          renderEditors();
+        });
         editors.push(editor);
         editorsHost.append(editor.node);
       });
     };
+
+    addButton.addEventListener('click', () => {
+      setup.candidates.push({customerAssetKey: '', displayName: '', assetCriticality: 'UNKNOWN', internetFacing: 'UNKNOWN'});
+      markDirty();
+      renderEditors();
+    });
 
     uploadButton.addEventListener('click', () => upload.click());
     upload.addEventListener('change', async () => {
@@ -461,11 +426,10 @@
       try {
         setStatus(status, `Loading ${file.name}…`);
         const imported = validateBundle(JSON.parse(await file.text()));
-        setup = setup || {contractId: CONTRACT, sourceFileName: '', createdAt: new Date().toISOString(), run: null, candidates: []};
         setup.candidates = mergeBundleIntoSetup(setup, imported);
-        activeSetup = setup;
+        setup.savedAt = null;
         renderEditors();
-        setStatus(status, `Loaded customer context for ${imported.length} asset${imported.length === 1 ? '' : 's'}. Review and save.`, 'success');
+        setStatus(status, `Loaded customer data for ${imported.length} asset${imported.length === 1 ? '' : 's'}. Review any UNKNOWN values and save.`, 'success');
       } catch (error) {
         setStatus(status, error.message, 'error');
       } finally {
@@ -473,7 +437,45 @@
       }
     });
 
-    downloadButton.addEventListener('click', () => downloadCustomerBundle(status));
+    saveButton.addEventListener('click', () => {
+      const values = editors.map(editor => editor.read());
+      if (!values.length) {
+        setStatus(status, 'Load or add at least one asset first.', 'error');
+        return;
+      }
+      const invalidIdentity = values.filter(value => !value.customerAssetKey && !value.displayName).length;
+      const incomplete = values.filter(value => value.assetCriticality === 'UNKNOWN' || value.internetFacing === 'UNKNOWN').length;
+      if (invalidIdentity) {
+        setStatus(status, `${invalidIdentity} asset${invalidIdentity === 1 ? '' : 's'} need an Asset ID or Asset Name.`, 'error');
+        return;
+      }
+      if (incomplete) {
+        setStatus(status, `${incomplete} asset${incomplete === 1 ? '' : 's'} still need Asset Criticality and/or Internet Facing.`, 'error');
+        return;
+      }
+      setup.candidates = values;
+      setup.savedAt = new Date().toISOString();
+      activeSetup = setup;
+      downloadButton.disabled = false;
+      setStatus(status, `Saved ${values.length} customer asset context record${values.length === 1 ? '' : 's'} for this run. Download the customer-data file to reuse them next time.`, 'success');
+    });
+
+    downloadButton.addEventListener('click', () => {
+      if (!setup.savedAt) {
+        setStatus(status, 'Save customer data before downloading it.', 'error');
+        return;
+      }
+      downloadJson('rbvm-customer-assets-v2.json', {
+        contractId: BUNDLE_CONTRACT,
+        schemaVersion: 2,
+        exportedAt: new Date().toISOString(),
+        semantics: 'CUSTOMER_DECLARED_MVP_ASSET_CONTEXT',
+        note: 'internetFacing is a customer-declared asset-level current state; it is not endpoint-scoped NETWORK_REACHABILITY_CSV_V1 evidence.',
+        assets: setup.candidates,
+      });
+      setStatus(status, `Downloaded reusable customer data for ${setup.candidates.length} asset${setup.candidates.length === 1 ? '' : 's'}.`, 'success');
+    });
+
     if (enrichedButton) {
       enrichedButton.addEventListener('click', () => {
         const link = el('a', {href: `/api/v1/csv-first-enrichments/${encodeURIComponent(runId)}/csv`, download: 'rbvm-enriched.csv'});
@@ -482,51 +484,29 @@
         link.remove();
       });
     }
-
-    saveButton.addEventListener('click', async () => {
-      if (!editors.length) return;
-      saveButton.disabled = true;
-      uploadButton.disabled = true;
-      downloadButton.disabled = true;
-      try {
-        const values = editors.map(editor => editor.read());
-        setStatus(status, `Saving customer context for ${values.length} asset${values.length === 1 ? '' : 's'}…`);
-        let existing = await fetchAllManagedAssets();
-        let saved = 0;
-        for (const value of values) {
-          await persistAssetContext(value, existing);
-          saved++;
-          if (saved % 10 === 0 || saved === values.length) setStatus(status, `Saved ${saved} of ${values.length} assets…`);
-          existing = await fetchAllManagedAssets();
-        }
-        setup.candidates = values;
-        activeSetup = setup;
-        setStatus(status, `Saved ${saved} customer asset record${saved === 1 ? '' : 's'}. Download customer data now to reuse it with the next CSV.`, 'success');
-      } catch (error) {
-        setStatus(status, error.status === 412 ? 'An asset changed while saving. Refresh Assets and retry after reviewing the latest revision.' : error.message, 'error');
-      } finally {
-        saveButton.disabled = false;
-        uploadButton.disabled = false;
-        downloadButton.disabled = false;
-      }
-    });
+    if (finishButton) finishButton.addEventListener('click', () => spaGo('/assets?tab=managed'));
 
     const panel = el('section', {'data-customer-asset-setup': 'true', class: 'panel'},
-      el('div', {class: 'panel-header'}, el('div', {},
-        el('h2', {class: 'panel-title', text: 'Customer asset context'}),
-        el('p', {class: 'panel-subtitle', text: 'Enter customer-only information manually, or upload the reusable file downloaded from a previous run.'})
-      )),
-      el('div', {class: 'panel-body'}, el('div', {class: 'stack'},
-        callout('Reusable bundle contains organizational asset context only. It does not mix customer truth with CVSS, EPSS, KEV or other public evidence.'),
-        upload,
-        el('div', {class: 'inline-actions'}, uploadButton, downloadButton, saveButton, enrichedButton),
-        status,
-        editorsHost
-      ))
+      el('div', {class: 'panel-header'},
+        el('div', {},
+          el('h2', {class: 'panel-title', text: 'Customer Asset Context — MVP'}),
+          el('p', {class: 'panel-subtitle', text: 'Asset identity comes from the uploaded CSV. The customer supplies only Asset Criticality and whether the asset is currently Internet facing.'})
+        )
+      ),
+      el('div', {class: 'panel-body'},
+        el('div', {class: 'stack'},
+          callout('No Business Owner, Business Service, Environment, CR/IR/AR, or detailed reachability is required in this MVP step.'),
+          upload,
+          el('div', {class: 'inline-actions'}, uploadButton, addButton, saveButton, downloadButton, enrichedButton, finishButton),
+          status,
+          editorsHost
+        )
+      )
     );
 
     renderEditors();
     header.insertAdjacentElement('afterend', panel);
+    focusSetupMode(root, panel);
   }
 
   new MutationObserver(schedule).observe(document.documentElement, {childList: true, subtree: true});
