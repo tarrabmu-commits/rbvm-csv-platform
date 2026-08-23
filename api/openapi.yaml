@@ -1208,6 +1208,10 @@ paths:
         '503': { $ref: '#/components/responses/Problem' }
 
 
+  /risk-method-selection-policy-activation/current/resolved:
+    $ref: './resolved-active-risk-method-v1.openapi.yaml#/paths/~1api~1v1~1risk-method-selection-policy-activation~1current~1resolved'
+  /risk-method-selection-policy-activations/{activationRevision}/{eventSha256}/resolved:
+    $ref: './resolved-active-risk-method-v1.openapi.yaml#/paths/~1api~1v1~1risk-method-selection-policy-activations~1{activationRevision}~1{eventSha256}~1resolved'
   /risk-method-selection-policy-activation/current:
     $ref: './risk-method-selection-policy-activation-v1.openapi.yaml#/paths/~1api~1v1~1risk-method-selection-policy-activation~1current'
   /risk-method-selection-policy-activations/{activationRevision}/{eventSha256}:
