@@ -40,6 +40,7 @@ import io.rbvm.postgres.EpssEvidenceReader;
 import io.rbvm.postgres.EpssImportResult;
 import io.rbvm.postgres.EpssImporter;
 import io.rbvm.postgres.FormulaResultRuntimeFactory;
+import io.rbvm.postgres.RiskMethodSelectionPolicyRuntimeFactory;
 import io.rbvm.postgres.NetworkReachabilityEvidenceReader;
 import io.rbvm.postgres.NetworkReachabilityImportResult;
 import io.rbvm.postgres.NetworkReachabilityImporter;
@@ -123,6 +124,7 @@ public final class CsvPlatformServer implements AutoCloseable {
     private Optional<FindingContextAssociationHttpRouter> findingContextAssociationRouter = Optional.empty();
     private Optional<FormulaResultHttpRouter> formulaResultRouter = Optional.empty();
     private Optional<DerivedRiskResultHttpRouter> derivedRiskResultRouter = Optional.empty();
+    private Optional<RiskMethodSelectionPolicyHttpRouter> riskMethodSelectionPolicyRouter = Optional.empty();
     private final Instant startedAt = Instant.now();
     private final AtomicLong requestsTotal = new AtomicLong();
     private final AtomicLong problemsTotal = new AtomicLong();
@@ -719,6 +721,16 @@ public final class CsvPlatformServer implements AutoCloseable {
         ));
     }
 
+    /** Enable exact immutable V25 risk-method selection policy transport before server start. */
+    public void enableRiskMethodSelectionPolicyApi(RiskMethodSelectionPolicyApi api) {
+        if (riskMethodSelectionPolicyRouter.isPresent()) {
+            throw new IllegalStateException("Risk Method Selection Policy API is already enabled");
+        }
+        riskMethodSelectionPolicyRouter = Optional.of(new RiskMethodSelectionPolicyHttpRouter(
+                Objects.requireNonNull(api, "api")
+        ));
+    }
+
     public void start() {
         server.start();
     }
@@ -930,6 +942,25 @@ public final class CsvPlatformServer implements AutoCloseable {
                 derivedRiskResults.routeAuthorized(exchange, method, principal);
                 return;
             }
+            if (RiskMethodSelectionPolicyHttpRouter.inNamespace(path)) {
+                if (!RiskMethodSelectionPolicyHttpRouter.handles(path)) {
+                    throw new HttpProblem(
+                            404,
+                            "NOT_FOUND",
+                            "The requested risk method selection policy route does not exist"
+                    );
+                }
+                ApiRole requiredRole = RiskMethodSelectionPolicyHttpRouter.requiredRole(exchange, method);
+                AuthPrincipal principal = authorize(exchange, requiredRole);
+                RiskMethodSelectionPolicyHttpRouter riskMethodPolicies =
+                        riskMethodSelectionPolicyRouter.orElseThrow(() -> new HttpProblem(
+                                503,
+                                "RISK_METHOD_SELECTION_POLICY_PERSISTENCE_UNAVAILABLE",
+                                "Risk Method Selection Policy API requires PostgreSQL schema version 25 or newer"
+                        ));
+                riskMethodPolicies.routeAuthorized(exchange, method, principal);
+                return;
+            }
             if ("/api/v1/cases".equals(path)) {
                 requireMethod(exchange, method, "GET");
                 authorize(exchange, ApiRole.VIEWER);
@@ -1063,6 +1094,9 @@ public final class CsvPlatformServer implements AutoCloseable {
             }
 
             throw new HttpProblem(404, "NOT_FOUND", "The requested route does not exist");
+        } catch (RiskMethodSelectionPolicyApi.ApiProblem problem) {
+            problemsTotal.incrementAndGet();
+            sendProblem(exchange, problem.status(), problem.code(), problem.getMessage(), correlationId);
         } catch (DerivedRiskResultApi.ApiProblem problem) {
             problemsTotal.incrementAndGet();
             sendProblem(exchange, problem.status(), problem.code(), problem.getMessage(), correlationId);
@@ -1168,6 +1202,11 @@ public final class CsvPlatformServer implements AutoCloseable {
                 "readEnabled", derivedRiskResultRouter.isPresent(),
                 "materializationEnabled", derivedRiskResultRouter.isPresent(),
                 "replayVerified", derivedRiskResultRouter.isPresent()
+        ));
+        health.put("riskMethodSelectionPolicies", Map.of(
+                "exactReadEnabled", riskMethodSelectionPolicyRouter.isPresent(),
+                "installationEnabled", riskMethodSelectionPolicyRouter.isPresent(),
+                "selectionSemantics", "EXACT_REVISION_AND_SHA_NO_CURRENT_LATEST_OR_DEFAULT"
         ));
         return health;
     }
@@ -2067,6 +2106,9 @@ public final class CsvPlatformServer implements AutoCloseable {
                 + "# TYPE rbvm_derived_risk_result_api_enabled gauge\n"
                 + "rbvm_derived_risk_result_api_enabled "
                 + (derivedRiskResultRouter.isPresent() ? 1 : 0) + "\n"
+                + "# TYPE rbvm_risk_method_selection_policy_api_enabled gauge\n"
+                + "rbvm_risk_method_selection_policy_api_enabled "
+                + (riskMethodSelectionPolicyRouter.isPresent() ? 1 : 0) + "\n"
                 + "# TYPE rbvm_process_uptime_seconds gauge\n"
                 + "rbvm_process_uptime_seconds " + uptime + "\n"
                 + "# TYPE rbvm_imports_stored gauge\n"
@@ -2115,6 +2157,8 @@ public final class CsvPlatformServer implements AutoCloseable {
                 FormulaResultRuntimeFactory.fromEnvironment(System.getenv());
         Optional<DerivedRiskResultRuntimeFactory.Runtime> derivedRiskResultRuntime =
                 DerivedRiskResultRuntimeFactory.fromEnvironment(System.getenv());
+        Optional<RiskMethodSelectionPolicyRuntimeFactory.Runtime> riskMethodSelectionPolicyRuntime =
+                RiskMethodSelectionPolicyRuntimeFactory.fromEnvironment(System.getenv());
         ApiKeyAuthenticator authenticator = ApiKeyAuthenticator.fromEnvironment(System.getenv());
         RequestRateLimiter rateLimiter = RequestRateLimiter.fromEnvironment(System.getenv());
         CanonicalProjection canonicalProjection = runtime.canonicalProjection();
@@ -2159,6 +2203,11 @@ public final class CsvPlatformServer implements AutoCloseable {
                 )
         ));
         Runtime.getRuntime().addShutdownHook(new Thread(application::close, "rbvm-shutdown"));
+        riskMethodSelectionPolicyRuntime.ifPresent(context ->
+                application.enableRiskMethodSelectionPolicyApi(
+                        new RiskMethodSelectionPolicyApi(context.policies())
+                )
+        );
         application.start();
         System.out.println("RBVM CSV Platform is running at " + application.baseUri());
         System.out.println("CVSS v3.1 operator UI: " + application.baseUri().resolve("/cvss"));
@@ -2196,6 +2245,8 @@ public final class CsvPlatformServer implements AutoCloseable {
                 + (formulaResultRuntime.isPresent() ? "ENABLED" : "DISABLED"));
         System.out.println("Derived Risk Result API: "
                 + (derivedRiskResultRuntime.isPresent() ? "ENABLED" : "DISABLED"));
+        System.out.println("Risk Method Selection Policy API: "
+                + (riskMethodSelectionPolicyRuntime.isPresent() ? "ENABLED" : "DISABLED"));
         System.out.println("API authentication: "
                 + (authenticator.enabled() ? "API_KEY" : "DISABLED"));
         new CountDownLatch(1).await();
