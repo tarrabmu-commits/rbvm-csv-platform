@@ -5,9 +5,11 @@ on:
     paths:
       - 'scripts/enrich-uploaded-csv.py'
       - 'scripts/analyze-csv-run-evidence.py'
+      - 'scripts/evaluate-rbvm-v2-method-candidates.py'
       - 'scripts/cvss_v4_official.py'
       - 'scripts/collect-public-vulnerability-intel.py'
       - 'scripts/run-csv-v2-live-benchmark.sh'
+      - 'docs/RBVM_V2_METHOD_ADMISSION_V1.md'
       - 'data/benchmarks/**'
       - '.github/workflows/csv-v2-live-benchmark.yml'
   push:
@@ -15,9 +17,11 @@ on:
     paths:
       - 'scripts/enrich-uploaded-csv.py'
       - 'scripts/analyze-csv-run-evidence.py'
+      - 'scripts/evaluate-rbvm-v2-method-candidates.py'
       - 'scripts/cvss_v4_official.py'
       - 'scripts/collect-public-vulnerability-intel.py'
       - 'scripts/run-csv-v2-live-benchmark.sh'
+      - 'docs/RBVM_V2_METHOD_ADMISSION_V1.md'
       - 'data/benchmarks/**'
       - '.github/workflows/csv-v2-live-benchmark.yml'
   workflow_dispatch:
