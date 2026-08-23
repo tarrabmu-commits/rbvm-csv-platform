@@ -1,0 +1,162 @@
+{
+  "freezeContractId": "RBVM_MVP_PRIORITY_POLICY_V1_FREEZE_V1",
+  "freezeVersion": 1,
+  "status": "FROZEN_FOR_MVP",
+  "frozenOn": "2026-08-24",
+  "classification": "RBVM_POLICY",
+  "method": {
+    "methodId": "RBVM_MVP_PRIORITY_POLICY_V1",
+    "methodVersion": 1,
+    "methodSha256": "88d5cdb8702c6c0ed2c033c3df6b8abbe1aa392f44f4507685b54082a16dc388",
+    "outputSemantics": "RELATIVE_TREATMENT_PRIORITY_PARETO_FRONT_WITHIN_INPUT_SET",
+    "organizationalRisk": false,
+    "dimensions": [
+      {
+        "name": "CISA_KEV",
+        "source": "KEV_Listed",
+        "orientation": "HIGHER_IS_MORE_URGENT",
+        "mapping": {
+          "false": 0,
+          "true": 1
+        }
+      },
+      {
+        "name": "CUSTOMER_INTERNET_FACING",
+        "source": "Internet_Facing",
+        "orientation": "HIGHER_IS_MORE_URGENT",
+        "mapping": {
+          "NO": 0,
+          "YES": 1
+        }
+      },
+      {
+        "name": "CUSTOMER_ASSET_CRITICALITY",
+        "source": "Asset_Criticality",
+        "orientation": "HIGHER_IS_MORE_URGENT",
+        "mapping": {
+          "HIGH": 3,
+          "LOW": 1,
+          "MISSION_CRITICAL": 4,
+          "MODERATE": 2
+        }
+      },
+      {
+        "name": "FIRST_EPSS_30_DAY_PROBABILITY",
+        "source": "EPSS_Probability",
+        "orientation": "HIGHER_IS_MORE_URGENT",
+        "range": [
+          0,
+          1
+        ]
+      },
+      {
+        "name": "CVSS_V4_CONTEXTUAL_TECHNICAL_SEVERITY",
+        "source": "CVSS4_Context_Score",
+        "orientation": "HIGHER_IS_MORE_URGENT",
+        "range": [
+          0,
+          10
+        ]
+      }
+    ],
+    "dominance": "A_DOMINATES_B_IFF_ALL_DIMENSIONS_A_GTE_B_AND_AT_LEAST_ONE_GT",
+    "fronting": "ITERATIVE_NONDOMINATED_SORT; FRONT_1_HIGHEST_RELATIVE_TREATMENT_PRIORITY",
+    "missingEvidencePolicy": "UNRANKABLE; DO_NOT_IMPUTE",
+    "thresholds": [],
+    "weights": []
+  },
+  "contracts": {
+    "report": "RBVM_MVP_PRIORITY_REPORT_V1",
+    "explainability": "RBVM_MVP_PRIORITY_EXPLAINABILITY_V1",
+    "priorityHttp": "CSV_FIRST_MVP_PRIORITY_HTTP_V1",
+    "liveBenchmark": "CSV_V2_LIVE_BENCHMARK_V4"
+  },
+  "outputColumns": [
+    "RBVM_MVP_Priority_Status",
+    "RBVM_MVP_Priority_Front",
+    "RBVM_MVP_Priority_Dominated_By",
+    "RBVM_MVP_Priority_Dominates",
+    "RBVM_MVP_Priority_Blockers",
+    "RBVM_MVP_Priority_Explanation",
+    "RBVM_MVP_Priority_Method_SHA256"
+  ],
+  "explainability": {
+    "changesPriority": false,
+    "rowColumn": "RBVM_MVP_Priority_Explanation",
+    "derivation": "DETERMINISTIC_RENDERING_OF_ADMITTED_INPUTS_FRONT_AND_DOMINANCE_COUNTS"
+  },
+  "goldenBenchmark": {
+    "path": "testdata/rbvm-mvp-priority-golden.csv",
+    "sha256": "7a2fc323ce1e619386f20023b4ec84b7331241890a95691db7a577dbb0f50853",
+    "rankedRows": 5,
+    "unrankableRows": 1,
+    "frontCounts": {
+      "1": 3,
+      "2": 1,
+      "3": 1
+    },
+    "expectedCases": {
+      "A_KNOWN_EXPLOITED_STRONG_CONTEXT": {
+        "status": "RANKED_RELATIVE_ONLY",
+        "front": "1"
+      },
+      "B_HIGHER_PROBABILITY_NO_KEV": {
+        "status": "RANKED_RELATIVE_ONLY",
+        "front": "1"
+      },
+      "C_KEV_BUT_LOWER_CONTEXT": {
+        "status": "RANKED_RELATIVE_ONLY",
+        "front": "2"
+      },
+      "D_DOMINATED_BASELINE": {
+        "status": "RANKED_RELATIVE_ONLY",
+        "front": "3"
+      },
+      "E_MISSING_CUSTOMER_EXPOSURE": {
+        "status": "UNRANKABLE_MISSING_EVIDENCE",
+        "front": ""
+      },
+      "F_MAX_TECHNICAL_TRADEOFF": {
+        "status": "RANKED_RELATIVE_ONLY",
+        "front": "1"
+      }
+    }
+  },
+  "liveBenchmark": {
+    "script": "scripts/run-csv-v2-live-benchmark.sh",
+    "corpus": "data/benchmarks/cvss4-live-corpus.csv",
+    "customerContext": "data/benchmarks/cvss4-live-customer-context.json",
+    "requiredInvariants": [
+      "ROW_PRESERVING_PRIORITY_OUTPUT",
+      "EXACT_PRIORITY_METHOD_ID_AND_SHA",
+      "EXPLAINABILITY_CONTRACT_PRESENT",
+      "ORGANIZATIONAL_RISK_NON_COMPUTABLE",
+      "NO_MAV_INFERENCE_FROM_INTERNET_FACING",
+      "NO_V2_PRIMARY_METHOD_AUTO_ADMISSION"
+    ]
+  },
+  "changeControl": {
+    "semanticChangeRequiresNewMethodVersion": true,
+    "semanticFields": [
+      "dimensions",
+      "source-columns",
+      "categorical-mappings",
+      "dimension-orientation",
+      "dominance-rule",
+      "fronting-rule",
+      "missing-evidence-policy",
+      "weights",
+      "thresholds",
+      "output-semantics",
+      "organizational-risk-claim"
+    ],
+    "allowedV1NonSemanticChanges": [
+      "documentation-clarification",
+      "presentation-only-visualization",
+      "explainability-wording-when-changesPriority-remains-false",
+      "performance-refactor-proven-output-equivalent",
+      "additional-regression-tests-without-changing-expected-existing-cases"
+    ],
+    "forbiddenSilentMutation": true
+  }
+}
