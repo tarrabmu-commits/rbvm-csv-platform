@@ -70,30 +70,13 @@
     }));
   }
 
-  function csvEscape(value) {
-    const text = String(value ?? '');
-    return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
-  }
-
-  function downloadCsv(filename, rows) {
-    if (!rows.length) return;
-    const headers = Object.keys(rows[0]);
-    const text = [headers, ...rows.map(row => headers.map(header => row[header] ?? ''))]
-      .map(values => values.map(csvEscape).join(','))
-      .join('\r\n') + '\r\n';
-    const blob = new Blob([text], {type: 'text/csv;charset=utf-8'});
-    const href = URL.createObjectURL(blob);
-    const link = el('a', {href, download: filename});
-    document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(href);
-  }
-
   function customerBundle(panel) {
     const assets = [];
     for (const details of panel.querySelectorAll('details.panel')) {
       const inputs = details.querySelectorAll('input[type="text"]');
       const selects = details.querySelectorAll('select');
       if (inputs.length < 2 || selects.length < 2) continue;
-      const asset = {
+      assets.push({
         customerAssetKey: inputs[0].value.trim(),
         displayName: inputs[1].value.trim(),
         assetCriticality: selects[0].value,
@@ -101,8 +84,7 @@
         cvssConfidentialityRequirement: selects[2]?.value || 'X',
         cvssIntegrityRequirement: selects[3]?.value || 'X',
         cvssAvailabilityRequirement: selects[4]?.value || 'X',
-      };
-      assets.push(asset);
+      });
     }
     if (!assets.length) throw new Error('No customer assets are loaded.');
     const incomplete = assets.filter(asset =>
@@ -156,6 +138,15 @@
     return el('div', {class: 'metric'}, el('div', {class: 'metric-label', text: label}), el('div', {class: 'metric-value', text: value}), detail ? el('div', {class: 'metric-detail', text: detail}) : null);
   }
 
+  function artifactButton(label, href, filename, kind = 'secondary') {
+    const control = button(label, kind);
+    control.addEventListener('click', () => {
+      const link = el('a', {href, download: filename});
+      document.body.append(link); link.click(); link.remove();
+    });
+    return control;
+  }
+
   function renderTable(host, allRows) {
     host.replaceChildren();
     const search = el('input', {type: 'search', class: 'search-input', placeholder: 'Search CVE, asset or product…', 'aria-label': 'Search CSV run findings'});
@@ -206,7 +197,9 @@
     render();
   }
 
-  function reviewPanel(rows, runId, admission) {
+  function reviewPanel(rows, run, admission) {
+    const runId = run.runId;
+    const analysisId = run.analysisId;
     const uniqueCves = new Set(rows.map(row => row.CVE_ID).filter(Boolean)).size;
     const uniqueAssets = new Set(rows.map(row => row.Agent || row.Agent_ID).filter(Boolean)).size;
     const cvssPresent = rows.filter(row => row.CVSS4_Status === 'PRESENT').length;
@@ -220,13 +213,9 @@
     const riskRows = Number(admission?.selection?.riskComputedRows || 0);
     const host = el('div');
 
-    const download = button('Download contextual analysis CSV');
-    download.addEventListener('click', () => downloadCsv(`rbvm-contextual-analysis-${runId}.csv`, rows));
-    const downloadAdmission = button('Download method admission', 'secondary');
-    downloadAdmission.addEventListener('click', () => {
-      const link = el('a', {href: `/api/v1/csv-first-enrichments/${encodeURIComponent(runId)}/method-admission`, download: `rbvm-method-admission-${runId}.json`});
-      document.body.append(link); link.click(); link.remove();
-    });
+    const downloadAnalysis = artifactButton('Download contextual analysis CSV', run.analysisCsv, `rbvm-contextual-analysis-${runId}-${analysisId}.csv`);
+    const downloadAdmission = artifactButton('Download method admission', run.methodAdmission, `rbvm-method-admission-${runId}-${analysisId}.json`);
+    const downloadBundle = artifactButton('Download exact customer bundle', run.customerBundle, `rbvm-customer-bundle-${runId}-${analysisId}.json`, 'ghost');
     const close = button('Back to Assets', 'ghost');
     close.addEventListener('click', () => {
       document.querySelector('[data-csv-run-review]')?.remove();
@@ -239,9 +228,9 @@
       el('div', {class: 'panel-header'},
         el('div', {},
           el('h2', {class: 'panel-title', text: 'Finding Evidence Review — CSV Run'}),
-          el('p', {class: 'panel-subtitle', text: 'Server-side contextual CVSS v4 joined with public threat intelligence and direct customer context. Organizational Risk is not inferred.'})
+          el('p', {class: 'panel-subtitle', text: `Immutable contextual analysis ${analysisId}. Server-side CVSS v4 context + public threat intelligence + direct customer context; Organizational Risk is not inferred.`})
         ),
-        el('div', {class: 'inline-actions'}, download, downloadAdmission, close)
+        el('div', {class: 'inline-actions'}, downloadAnalysis, downloadAdmission, downloadBundle, close)
       ),
       el('div', {class: 'panel-body'}, el('div', {class: 'stack'},
         callout('Contextual CVSS remains technical vulnerability severity. CR/IR/AR are direct customer CVSS v4 Security Requirements; Asset Criticality is not mapped to them, Internet Facing is not mapped to MAV, and EPSS is not multiplied by CVSS.'),
@@ -281,10 +270,10 @@
     }
     buttonNode.disabled = true;
     try {
-      status.textContent = 'Calculating contextual CVSS and evaluating risk-method admission…';
+      status.textContent = 'Creating an immutable contextual analysis and evaluating risk-method admission…';
       status.className = 'status-message';
       const bundle = customerBundle(panel);
-      const response = await fetch(`/api/v1/csv-first-enrichments/${encodeURIComponent(runId)}/analysis`, {
+      const response = await fetch(`/api/v1/csv-first-enrichments/${encodeURIComponent(runId)}/analyses`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json; charset=utf-8'},
         body: JSON.stringify(bundle),
@@ -292,7 +281,9 @@
       });
       if (!response.ok) throw new Error(await responseProblem(response, `Contextual analysis failed (HTTP ${response.status}).`));
       const run = await response.json();
-      if (run.contractId !== 'CSV_FIRST_CONTEXTUAL_ANALYSIS_HTTP_V1') throw new Error('Unexpected contextual-analysis response contract.');
+      if (run.contractId !== 'CSV_FIRST_CONTEXTUAL_ANALYSIS_HTTP_V1' || run.immutable !== true || !run.analysisId) {
+        throw new Error('Unexpected contextual-analysis response contract.');
+      }
 
       const [analysisResponse, admissionResponse] = await Promise.all([
         fetch(run.analysisCsv, {cache: 'no-store'}),
@@ -302,13 +293,13 @@
       if (!admissionResponse.ok) throw new Error(`Method-admission report could not be loaded (HTTP ${admissionResponse.status}).`);
       const rows = parseCsv(await analysisResponse.text());
       const admission = await admissionResponse.json();
-      loaded = {runId, rows, admission};
+      loaded = {run, rows, admission};
 
       document.querySelector('[data-csv-run-review]')?.remove();
-      const review = reviewPanel(rows, runId, admission);
+      const review = reviewPanel(rows, run, admission);
       panel.insertAdjacentElement('afterend', review);
       panel.hidden = true;
-      status.textContent = `Contextual review ready for ${rows.length} finding rows.`;
+      status.textContent = `Contextual review ${run.analysisId} ready for ${rows.length} finding rows.`;
       status.className = 'status-message success';
       review.scrollIntoView({block: 'start'});
     } catch (error) {
