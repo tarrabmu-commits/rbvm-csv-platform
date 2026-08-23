@@ -1,0 +1,7 @@
+Agent,Agent_ID,CVE_ID,Severity,Affected_Product,Detected_At
+benchmark-edge-01,bench-001,CVE-2025-2026,HIGH,Moxa NPort 6100-G2/6200-G2,2026-08-23T17:40:00Z
+benchmark-app-01,bench-002,CVE-2025-27515,MEDIUM,Laravel,2026-08-23T17:40:00Z
+benchmark-backup-01,bench-003,CVE-2025-3928,HIGH,Commvault Web Server,2026-08-23T17:40:00Z
+benchmark-cms-01,bench-004,CVE-2025-32432,CRITICAL,Craft CMS,2026-08-23T17:40:00Z
+benchmark-win-01,bench-005,CVE-2025-30400,HIGH,Microsoft Windows DWM Core Library,2026-08-23T17:40:00Z
+benchmark-web-02,bench-006,CVE-2025-54068,CRITICAL,Livewire,2026-08-23T17:40:00Z

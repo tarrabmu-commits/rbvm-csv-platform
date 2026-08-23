@@ -10,6 +10,7 @@ Criticality/Internet Facing values are converted into CVSS Environmental metrics
 
 import argparse
 import csv
+from decimal import Decimal, InvalidOperation
 import hashlib
 import json
 from pathlib import Path
@@ -25,6 +26,9 @@ BASE_KEYS = ("AV", "AC", "AT", "PR", "UI", "VC", "VI", "VA", "SC", "SI", "SA")
 THREAT_KEYS = ("E",)
 ENV_KEYS = ("CR", "IR", "AR", "MAV", "MAC", "MAT", "MPR", "MUI", "MVC", "MVI", "MVA", "MSC", "MSI", "MSA")
 SUPP_KEYS = ("S", "AU", "R", "V", "RE", "U")
+CVSS4_METRIC_ORDER = BASE_KEYS + THREAT_KEYS + ENV_KEYS + SUPP_KEYS
+CVSS4_OPTIONAL_KEYS = set(THREAT_KEYS + ENV_KEYS + SUPP_KEYS)
+CVSS4_KNOWN_KEYS = set(CVSS4_METRIC_ORDER)
 
 ENRICHMENT_HEADERS = [
     "CVSS4_Status", "CVSS4_Assessment_Count", "CVSS4_Semantic_Assessment_Count",
@@ -194,10 +198,68 @@ def distinct_assessments(record):
     return [unique[key] for key in sorted(unique)]
 
 
+def parse_cvss4_vector(vector):
+    raw = text(vector).strip()
+    parts = raw.split("/")
+    if not parts or parts[0].upper() != "CVSS:4.0":
+        return None
+    metrics = {}
+    for segment in parts[1:]:
+        if ":" not in segment:
+            return None
+        key, value = segment.split(":", 1)
+        key = key.strip().upper()
+        value = value.strip().upper()
+        if not key or not value:
+            return None
+        if key in metrics and metrics[key] != value:
+            return None
+        metrics[key] = value
+    return metrics
+
+
+def canonical_cvss4_vector(vector):
+    """Canonicalize CVSS v4 semantics without choosing a provider winner.
+
+    FIRST CVSS v4 optional metrics default to X/Not Defined. Some providers emit
+    every optional X metric while others publish the compact Base vector. Those
+    serializations are semantically equivalent and must not create false source
+    ambiguity. Raw provider vectors remain preserved in CVSS4_Assessments_JSON.
+    """
+    raw = text(vector).strip()
+    metrics = parse_cvss4_vector(raw)
+    if metrics is None:
+        return raw
+    if any(key not in metrics for key in BASE_KEYS):
+        return raw
+    pieces = [f"{key}:{metrics[key]}" for key in BASE_KEYS]
+    for key in THREAT_KEYS + ENV_KEYS + SUPP_KEYS:
+        if key in metrics and metrics[key] != "X":
+            pieces.append(f"{key}:{metrics[key]}")
+    for key in sorted(set(metrics) - CVSS4_KNOWN_KEYS):
+        pieces.append(f"{key}:{metrics[key]}")
+    return "CVSS:4.0/" + "/".join(pieces)
+
+
+def canonical_score(value):
+    raw = text(value).strip()
+    if not raw:
+        return raw
+    try:
+        number = Decimal(raw)
+    except InvalidOperation:
+        return raw
+    return format(number.normalize(), "f")
+
+
 def semantic_assessment_groups(assessments):
     groups = {}
     for assessment in assessments:
-        key = (text(assessment.get("vector")), text(assessment.get("baseScore")), text(assessment.get("baseSeverity")))
+        key = (
+            canonical_cvss4_vector(assessment.get("vector")),
+            canonical_score(assessment.get("baseScore")),
+            text(assessment.get("baseSeverity")).strip().upper(),
+        )
         groups.setdefault(key, []).append(assessment)
     return groups
 
@@ -229,12 +291,18 @@ def cvss_columns(record):
         "CVSS4_Base_Score": text(assessment.get("baseScore")),
         "CVSS4_Base_Severity": text(assessment.get("baseSeverity")),
     })
+
+    vector_metrics = parse_cvss4_vector(assessment.get("vector")) or {}
+    for key in CVSS4_METRIC_ORDER:
+        if key in vector_metrics:
+            result[f"CVSS4_{key}"] = text(vector_metrics[key])
+
     metrics = assessment.get("metrics") if isinstance(assessment.get("metrics"), dict) else {}
     for family in ("base", "threat", "environmental", "supplemental"):
         values = metrics.get(family) if isinstance(metrics.get(family), dict) else {}
         for key, value in values.items():
             header = f"CVSS4_{key}"
-            if header in ENRICHMENT_HEADERS:
+            if header in ENRICHMENT_HEADERS and not result.get(header):
                 result[header] = text(value)
     return result
 
