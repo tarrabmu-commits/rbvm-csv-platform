@@ -5,6 +5,7 @@ ROOT = Path(__file__).resolve().parents[1]
 api = (ROOT / "src/main/java/io/rbvm/csv/RiskMethodSelectionPolicyApi.java").read_text()
 router = (ROOT / "src/main/java/io/rbvm/csv/RiskMethodSelectionPolicyHttpRouter.java").read_text()
 api_test = (ROOT / "src/test/java/io/rbvm/csv/ResolvedActiveRiskMethodApiSelfTest.java").read_text()
+derived_test = (ROOT / "src/test/java/io/rbvm/csv/ResolvedActiveRiskMethodDerivedApiSelfTest.java").read_text()
 http_test = (ROOT / "src/test/java/io/rbvm/csv/CsvResolvedActiveRiskMethodHttpSelfTest.java").read_text()
 openapi = (ROOT / "api/resolved-active-risk-method-v1.openapi.yaml").read_text()
 combined = (ROOT / "api/openapi.yaml").read_text()
@@ -59,6 +60,16 @@ for marker in (
     assert marker in api_test, f"resolved API self-test missing {marker!r}"
 
 for marker in (
+    'RbvmDerivedRiskMethodologyCatalog.definitions()',
+    'RbvmRiskMethodSelectionPolicy.derived(1, definition)',
+    'selectedMethod.get("methodFamily").equals("STANDARD_DERIVED")',
+    'selectedMethod.get("methodId").equals(definition.methodologyId())',
+    'selectedMethod.get("methodVersion").equals(definition.version())',
+    'selectedMethod.get("methodSha256").equals(definition.methodologySha256())',
+):
+    assert marker in derived_test, f"resolved derived API self-test missing {marker!r}"
+
+for marker in (
     '/api/v1/risk-method-selection-policy-activation/current/resolved',
     '/api/v1/risk-method-selection-policy-activations/7/',
     'RBVM_RESOLVED_ACTIVE_RISK_METHOD_API_V1',
@@ -108,6 +119,7 @@ for marker in (
     assert marker in normalized_doc, f"resolved API documentation missing {marker!r}"
 
 assert 'ResolvedActiveRiskMethodApiSelfTest.main(args);' in platform
+assert 'ResolvedActiveRiskMethodDerivedApiSelfTest.main(args);' in platform
 assert 'CsvResolvedActiveRiskMethodHttpSelfTest.main(args);' in platform
 assert 'verify-resolved-active-risk-method.py' in verify_sh
 
