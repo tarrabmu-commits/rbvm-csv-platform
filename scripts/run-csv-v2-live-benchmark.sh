@@ -56,7 +56,9 @@ enrichment = json.loads(enrich_report.read_text(encoding='utf-8'))
 
 base_validation = Counter(str(r.get('CVSS4_Base_Score_Validation') or 'NOT_APPLICABLE') for r in rows)
 calc_status = Counter(str(r.get('CVSS4_Calculated_Status') or 'NOT_CALCULATED') for r in rows)
-nomenclature = Counter(str(r.get('CVSS4_Calculated_Nomenclature') or 'NONE') for r in rows)
+public_nomenclature = Counter(str(r.get('CVSS4_Calculated_Nomenclature') or 'NONE') for r in rows)
+context_nomenclature = Counter(str(r.get('CVSS4_Context_Nomenclature') or 'NONE') for r in rows)
+environmental_status = Counter(str(r.get('CVSS4_Environmental_Requirement_Status') or 'NONE') for r in rows)
 cvss_status = Counter(str(r.get('CVSS4_Status') or 'MISSING') for r in rows)
 context_status = Counter(str(r.get('Customer_Context_Status') or 'MISSING') for r in rows)
 
@@ -69,11 +71,22 @@ for r in rows:
         'publishedBaseScore': r.get('CVSS4_Base_Score'),
         'calculatedBaseScore': r.get('CVSS4_Base_Score_Calculated'),
         'baseScoreValidation': r.get('CVSS4_Base_Score_Validation'),
-        'calculatedStatus': r.get('CVSS4_Calculated_Status'),
-        'nomenclature': r.get('CVSS4_Calculated_Nomenclature'),
-        'calculatedScore': r.get('CVSS4_Calculated_Score'),
-        'calculatedSeverity': r.get('CVSS4_Calculated_Severity'),
+        'publicCalculatedStatus': r.get('CVSS4_Calculated_Status'),
+        'publicNomenclature': r.get('CVSS4_Calculated_Nomenclature'),
+        'publicScore': r.get('CVSS4_Calculated_Score'),
+        'publicSeverity': r.get('CVSS4_Calculated_Severity'),
         'threatEResolution': r.get('CVSS4_Threat_E_Resolution'),
+        'cr': r.get('CVSS4_CR_Resolved'),
+        'ir': r.get('CVSS4_IR_Resolved'),
+        'ar': r.get('CVSS4_AR_Resolved'),
+        'mav': r.get('CVSS4_MAV_Resolved'),
+        'environmentalRequirementStatus': r.get('CVSS4_Environmental_Requirement_Status'),
+        'environmentalRequirementSource': r.get('CVSS4_Environmental_Requirement_Source'),
+        'contextMode': r.get('CVSS4_Context_Mode'),
+        'contextScoreStatus': r.get('CVSS4_Context_Score_Status'),
+        'contextNomenclature': r.get('CVSS4_Context_Nomenclature'),
+        'contextScore': r.get('CVSS4_Context_Score'),
+        'contextSeverity': r.get('CVSS4_Context_Severity'),
         'epssProbability': r.get('EPSS_Probability'),
         'epssPercentile': r.get('EPSS_Percentile'),
         'kevListed': r.get('KEV_Listed'),
@@ -90,11 +103,13 @@ matched = sum(r.get('Customer_Context_Status') in {'MATCHED_KEY', 'MATCHED_NAME'
 epss_present = sum(bool(str(r.get('EPSS_Probability') or '').strip()) for r in rows)
 kev_listed = sum(truthy(r.get('KEV_Listed')) for r in rows)
 ssvc_present = sum(any(str(r.get(k) or '').strip() for k in ('CISA_Exploitation', 'CISA_Automatable', 'CISA_Technical_Impact')) for r in rows)
-calculated = sum(r.get('CVSS4_Calculated_Status') == 'CALCULATED' for r in rows)
+public_calculated = sum(r.get('CVSS4_Calculated_Status') == 'CALCULATED' for r in rows)
+contextual_calculated = sum(r.get('CVSS4_Context_Score_Status') == 'CALCULATED_FIRST_REFERENCE_COMPATIBLE' for r in rows)
+environmental_defined = sum(r.get('CVSS4_Environmental_Requirement_Status') in {'PARTIAL', 'COMPLETE'} for r in rows)
 
 result = {
-    'contractId': 'CSV_V2_LIVE_BENCHMARK_V1',
-    'semantics': 'LIVE_PUBLIC_INTELLIGENCE_PLUS_SYNTHETIC_ORGANIZATION_CONTEXT',
+    'contractId': 'CSV_V2_LIVE_BENCHMARK_V2',
+    'semantics': 'LIVE_PUBLIC_INTELLIGENCE_PLUS_SYNTHETIC_DIRECT_CVSS_ENVIRONMENTAL_REQUIREMENTS',
     'inputCorpusSha256': sha256_file(corpus),
     'customerContextSha256': sha256_file(context),
     'observedAt': enrichment.get('observedAt'),
@@ -107,7 +122,11 @@ result = {
         'cvss4Status': dict(sorted(cvss_status.items())),
         'cvss4CalculatedStatus': dict(sorted(calc_status.items())),
         'baseScoreValidation': dict(sorted(base_validation.items())),
-        'calculatedNomenclature': dict(sorted(nomenclature.items())),
+        'publicNomenclature': dict(sorted(public_nomenclature.items())),
+        'contextNomenclature': dict(sorted(context_nomenclature.items())),
+        'environmentalRequirementStatus': dict(sorted(environmental_status.items())),
+        'environmentalRequirementDefinedRows': environmental_defined,
+        'contextualCvssCalculatedRows': contextual_calculated,
         'epssPresentRows': epss_present,
         'kevListedRows': kev_listed,
         'cisaSsvcPresentRows': ssvc_present,
@@ -119,7 +138,7 @@ result = {
         'status': analysis.get('rbvmV2', {}).get('status'),
         'riskComputedRows': analysis.get('rbvmV2', {}).get('riskComputedRows'),
         'reason': analysis.get('rbvmV2', {}).get('reason'),
-        'benchmarkDecision': 'EVIDENCE_PIPELINE_MEASURABLE_ORGANIZATIONAL_RISK_COMPOSITION_STILL_UNAPPROVED',
+        'benchmarkDecision': 'CONTEXTUAL_CVSS_IS_COMPUTABLE_WHEN_DIRECT_CR_IR_AR_EXIST_ORGANIZATIONAL_RISK_COMPOSITION_STILL_UNAPPROVED',
     },
 }
 
@@ -130,12 +149,22 @@ if len(rows) != 6:
     raise SystemExit(f'benchmark corpus row count changed unexpectedly: {len(rows)}')
 if matched != len(rows):
     raise SystemExit(f'customer context join incomplete: {matched}/{len(rows)}')
-if calculated < 3:
-    raise SystemExit(f'expected at least 3 live CVSS v4 calculations, got {calculated}')
+if public_calculated < 3:
+    raise SystemExit(f'expected at least 3 live CVSS v4 calculations, got {public_calculated}')
+if contextual_calculated < public_calculated:
+    raise SystemExit(f'contextual CVSS projection lost calculated rows: {contextual_calculated}/{public_calculated}')
+if environmental_defined < 4:
+    raise SystemExit(f'expected direct synthetic CR/IR/AR on at least 4 rows, got {environmental_defined}')
+if context_nomenclature.get('CVSS-BE', 0) < 1:
+    raise SystemExit('expected at least one live CVSS-BE result from direct CR/IR/AR')
+if context_nomenclature.get('CVSS-BTE', 0) < 2:
+    raise SystemExit('expected at least two live CVSS-BTE results from Threat + direct CR/IR/AR')
 if epss_present < 5:
     raise SystemExit(f'expected EPSS on at least 5 rows, got {epss_present}')
 if kev_listed < 2:
     raise SystemExit(f'expected at least 2 KEV-listed rows, got {kev_listed}')
+if any(r.get('CVSS4_MAV_Resolved') != 'X' for r in rows):
+    raise SystemExit('benchmark must not infer MAV from Internet Facing')
 if analysis.get('rbvmV2', {}).get('riskComputedRows') != 0:
     raise SystemExit('benchmark must not silently compute organizational risk')
 PY

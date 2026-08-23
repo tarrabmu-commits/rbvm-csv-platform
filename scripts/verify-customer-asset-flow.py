@@ -6,7 +6,8 @@ UI = (ROOT / "src/main/resources/web/customer-flow.js").read_text(encoding="utf-
 COMPILE = (ROOT / "scripts/compile.sh").read_text(encoding="utf-8")
 
 required = [
-    'CSV_FIRST_CUSTOMER_ASSET_SETUP_UI_V2',
+    'CSV_FIRST_CUSTOMER_ASSET_SETUP_UI_V3',
+    'RBVM_CUSTOMER_ASSET_BUNDLE_V3',
     'RBVM_CUSTOMER_ASSET_BUNDLE_V2',
     'RBVM_CUSTOMER_ASSET_BUNDLE_V1',
     'Enrich CSV & continue to Assets',
@@ -20,8 +21,15 @@ required = [
     'Internet Facing?',
     'assetCriticality',
     'internetFacing',
-    "YES: 'Yes — Internet Facing'",
-    "NO: 'No — Not Internet Facing'",
+    'Confidentiality Requirement (CVSS CR)',
+    'Integrity Requirement (CVSS IR)',
+    'Availability Requirement (CVSS AR)',
+    'cvssConfidentialityRequirement',
+    'cvssIntegrityRequirement',
+    'cvssAvailabilityRequirement',
+    "SECURITY_REQUIREMENT = ['X', 'L', 'M', 'H']",
+    "X: `Not Defined — ${metric}:X`",
+    'CR/IR/AR may remain X',
     'activeSetup',
     'spaGo(',
     'CVE_ID',
@@ -46,17 +54,28 @@ for forbidden in [
     'CVSS4_Base_Score *',
     'sessionStorage',
     'localStorage',
+    'assetCriticality === \'HIGH\' ? \'H\'',
+    'internetFacing === \'YES\' ? \'N\'',
 ]:
     if forbidden in UI:
-        raise AssertionError(f"MVP customer flow contains forbidden field/inference/persistence: {forbidden}")
+        raise AssertionError(f"customer flow contains forbidden inference/persistence: {forbidden}")
 
-if "candidate.customerAssetKey\n        ? byKey.get(candidate.customerAssetKey)" not in UI:
+if "candidate.customerAssetKey ? byKey.get(candidate.customerAssetKey)" not in UI:
     raise AssertionError('bundle reuse must match customer asset key before display name')
 
 if "value.assetCriticality === 'UNKNOWN' || value.internetFacing === 'UNKNOWN'" not in UI:
-    raise AssertionError('save must reject incomplete MVP customer context')
+    raise AssertionError('save must reject incomplete required customer context')
 
-if 'NETWORK_REACHABILITY_CSV_V1 evidence' not in UI:
-    raise AssertionError('customer Internet-facing boolean must remain semantically separate from endpoint reachability evidence')
+if "version === 3 ? validRequirement(asset.cvssConfidentialityRequirement" not in UI:
+    raise AssertionError('V3 direct CR must be validated without inference')
+if "version === 3 ? validRequirement(asset.cvssIntegrityRequirement" not in UI:
+    raise AssertionError('V3 direct IR must be validated without inference')
+if "version === 3 ? validRequirement(asset.cvssAvailabilityRequirement" not in UI:
+    raise AssertionError('V3 direct AR must be validated without inference')
 
-print('CSV-first MVP customer asset UI structural checks: PASS')
+if 'NETWORK_REACHABILITY_CSV_V1 evidence or MAV' not in UI:
+    raise AssertionError('Internet-facing boolean must remain separate from reachability/MAV')
+if 'Asset Criticality does not derive CR/IR/AR' not in UI:
+    raise AssertionError('customer flow must state CR/IR/AR are not derived from criticality')
+
+print('CSV-first customer asset UI V3 + direct CVSS Environmental requirements: PASS')

@@ -3,16 +3,18 @@
 
 Inputs:
 - enriched CSV produced by enrich-uploaded-csv.py
-- optional RBVM_CUSTOMER_ASSET_BUNDLE_V2 JSON
+- optional RBVM_CUSTOMER_ASSET_BUNDLE_V2 or V3 JSON
 
 Outputs:
 - row-preserving evidence/benchmark CSV
 - deterministic coverage/readiness JSON
 
 CVSS technical severity, EPSS probability, KEV/SSVC threat signals, and customer
-context remain separate. Official CVSS-B/CVSS-BT values calculated during CSV
-enrichment are consumed as severity evidence only. Asset-level Internet Facing is
-not converted to MAV, and scalar Asset Criticality is not converted to CR/IR/AR.
+context remain separate. Public CVSS-B/CVSS-BT values are consumed as severity
+evidence. V3 customer bundles may declare CVSS v4 CR/IR/AR directly using native
+X/L/M/H metric values; these declarations can produce CVSS-BE/CVSS-BTE contextual
+technical severity. Asset Criticality is never converted to CR/IR/AR and asset-level
+Internet Facing is never converted to MAV.
 """
 
 import argparse
@@ -22,13 +24,20 @@ import json
 from collections import Counter
 from pathlib import Path
 
+from cvss_v4_official import CvssV4Error, score_record
+
 CRITICALITY = {"MISSION_CRITICAL", "HIGH", "MODERATE", "LOW"}
 INTERNET = {"YES", "NO"}
+SECURITY_REQUIREMENT = {"X", "L", "M", "H"}
+BUNDLE_V3 = "RBVM_CUSTOMER_ASSET_BUNDLE_V3"
+BUNDLE_V2 = "RBVM_CUSTOMER_ASSET_BUNDLE_V2"
+ENV_SOURCE = "CUSTOMER_DECLARED_CVSS_V4_SECURITY_REQUIREMENTS"
 
 ANALYSIS_COLUMNS = [
     "Customer_Context_Status", "Asset_Criticality", "Internet_Facing",
     "CVSS4_Threat_E_Status", "CVSS4_Threat_E_Resolved",
     "CVSS4_CR_Resolved", "CVSS4_IR_Resolved", "CVSS4_AR_Resolved", "CVSS4_MAV_Resolved",
+    "CVSS4_Environmental_Requirement_Status", "CVSS4_Environmental_Requirement_Source",
     "CVSS4_Context_Mode", "CVSS4_Context_Score_Status", "CVSS4_Context_Nomenclature",
     "CVSS4_Context_Vector", "CVSS4_Context_Score", "CVSS4_Context_Severity",
     "RBVM_V2_Status", "RBVM_V2_Blockers",
@@ -67,12 +76,24 @@ def read_csv(path):
         return headers, list(reader)
 
 
+def requirement(asset, field, index, enabled):
+    if not enabled:
+        return "X"
+    value = str(asset.get(field) or "X").strip().upper()
+    if value not in SECURITY_REQUIREMENT:
+        raise RuntimeError(f"customer asset {index} has invalid {field}; expected X/L/M/H")
+    return value
+
+
 def load_bundle(path):
     if not path:
-        return [], None
+        return [], None, None, None
     value = json.loads(path.read_text(encoding="utf-8"))
-    if value.get("contractId") != "RBVM_CUSTOMER_ASSET_BUNDLE_V2" or value.get("schemaVersion") != 2:
-        raise RuntimeError("expected RBVM_CUSTOMER_ASSET_BUNDLE_V2 schemaVersion 2")
+    contract_id = value.get("contractId")
+    schema_version = value.get("schemaVersion")
+    if (contract_id, schema_version) not in {(BUNDLE_V3, 3), (BUNDLE_V2, 2)}:
+        raise RuntimeError("expected RBVM_CUSTOMER_ASSET_BUNDLE_V3 schemaVersion 3 or legacy V2 schemaVersion 2")
+    environmental_enabled = contract_id == BUNDLE_V3
     assets = value.get("assets")
     if not isinstance(assets, list):
         raise RuntimeError("customer bundle assets must be an array")
@@ -88,8 +109,16 @@ def load_bundle(path):
             raise RuntimeError(f"customer asset {index} has invalid criticality")
         if internet != "UNKNOWN" and internet not in INTERNET:
             raise RuntimeError(f"customer asset {index} has invalid internetFacing")
-        normalized.append({"customerAssetKey": key, "displayName": name, "assetCriticality": criticality, "internetFacing": internet})
-    return normalized, canonical_sha(value)
+        normalized.append({
+            "customerAssetKey": key,
+            "displayName": name,
+            "assetCriticality": criticality,
+            "internetFacing": internet,
+            "cvssConfidentialityRequirement": requirement(asset, "cvssConfidentialityRequirement", index, environmental_enabled),
+            "cvssIntegrityRequirement": requirement(asset, "cvssIntegrityRequirement", index, environmental_enabled),
+            "cvssAvailabilityRequirement": requirement(asset, "cvssAvailabilityRequirement", index, environmental_enabled),
+        })
+    return normalized, canonical_sha(value), contract_id, schema_version
 
 
 def build_asset_indexes(assets):
@@ -139,40 +168,88 @@ def resolve_threat_e(row):
     return "NOT_DEFINED", "X"
 
 
-def score_projection(row, mode):
-    status = str(row.get("CVSS4_Calculated_Status") or "")
-    if status == "CALCULATED":
-        return {
-            "CVSS4_Context_Score_Status": "CALCULATED_FIRST_REFERENCE_COMPATIBLE",
-            "CVSS4_Context_Nomenclature": str(row.get("CVSS4_Calculated_Nomenclature") or ""),
-            "CVSS4_Context_Vector": str(row.get("CVSS4_Calculated_Vector") or ""),
-            "CVSS4_Context_Score": str(row.get("CVSS4_Calculated_Score") or ""),
-            "CVSS4_Context_Severity": str(row.get("CVSS4_Calculated_Severity") or ""),
-        }
-    if status == "AMBIGUOUS_THREAT_CONFLICT":
+def environmental_requirements(asset):
+    if not asset:
+        return "X", "X", "X", "NO_MATCHED_CUSTOMER_CONTEXT", ""
+    cr = asset["cvssConfidentialityRequirement"]
+    ir = asset["cvssIntegrityRequirement"]
+    ar = asset["cvssAvailabilityRequirement"]
+    defined = [value for value in (cr, ir, ar) if value != "X"]
+    if not defined:
+        return cr, ir, ar, "NOT_DEFINED", ""
+    status = "COMPLETE" if len(defined) == 3 else "PARTIAL"
+    return cr, ir, ar, status, ENV_SOURCE
+
+
+def append_environmental(vector, cr, ir, ar):
+    result = str(vector or "").strip()
+    for key, value in (("CR", cr), ("IR", ir), ("AR", ar)):
+        if value != "X":
+            result += f"/{key}:{value}"
+    return result
+
+
+def score_context(row, cr, ir, ar, environmental_status):
+    public_status = str(row.get("CVSS4_Calculated_Status") or "")
+    if public_status == "AMBIGUOUS_THREAT_CONFLICT":
         return {
             "CVSS4_Context_Score_Status": "AMBIGUOUS_THREAT_CONFLICT",
             "CVSS4_Context_Nomenclature": "", "CVSS4_Context_Vector": "",
             "CVSS4_Context_Score": "", "CVSS4_Context_Severity": "",
         }
+    if public_status != "CALCULATED":
+        return {
+            "CVSS4_Context_Score_Status": public_status or "NOT_APPLICABLE",
+            "CVSS4_Context_Nomenclature": "", "CVSS4_Context_Vector": "",
+            "CVSS4_Context_Score": "", "CVSS4_Context_Severity": "",
+        }
+
+    public_vector = str(row.get("CVSS4_Calculated_Vector") or "").strip()
+    if environmental_status in {"NOT_DEFINED", "NO_MATCHED_CUSTOMER_CONTEXT"}:
+        return {
+            "CVSS4_Context_Score_Status": "CALCULATED_FIRST_REFERENCE_COMPATIBLE",
+            "CVSS4_Context_Nomenclature": str(row.get("CVSS4_Calculated_Nomenclature") or ""),
+            "CVSS4_Context_Vector": public_vector,
+            "CVSS4_Context_Score": str(row.get("CVSS4_Calculated_Score") or ""),
+            "CVSS4_Context_Severity": str(row.get("CVSS4_Calculated_Severity") or ""),
+        }
+
+    contextual_vector = append_environmental(public_vector, cr, ir, ar)
+    try:
+        calculated = score_record(contextual_vector)
+    except CvssV4Error:
+        return {
+            "CVSS4_Context_Score_Status": "ENGINE_REJECTED_ENVIRONMENTAL_VECTOR",
+            "CVSS4_Context_Nomenclature": "", "CVSS4_Context_Vector": contextual_vector,
+            "CVSS4_Context_Score": "", "CVSS4_Context_Severity": "",
+        }
     return {
-        "CVSS4_Context_Score_Status": "NOT_CALCULATED_OFFICIAL_ENGINE_REQUIRED" if mode == "BT_INPUT_READY" else "NOT_APPLICABLE",
-        "CVSS4_Context_Nomenclature": "", "CVSS4_Context_Vector": "",
-        "CVSS4_Context_Score": "", "CVSS4_Context_Severity": "",
+        "CVSS4_Context_Score_Status": "CALCULATED_FIRST_REFERENCE_COMPATIBLE",
+        "CVSS4_Context_Nomenclature": calculated["nomenclature"],
+        "CVSS4_Context_Vector": calculated["vector"],
+        "CVSS4_Context_Score": str(calculated["score"]),
+        "CVSS4_Context_Severity": calculated["severity"],
     }
+
+
+def context_mode(score):
+    nomenclature = score.get("CVSS4_Context_Nomenclature")
+    return {
+        "CVSS-B": "B_ONLY",
+        "CVSS-BT": "BT",
+        "CVSS-BE": "BE",
+        "CVSS-BTE": "BTE",
+    }.get(nomenclature, "UNAVAILABLE")
 
 
 def analyze_row(row, asset, context_status):
     threat_status, threat_e = resolve_threat_e(row)
     criticality = asset["assetCriticality"] if asset else "UNKNOWN"
     internet = asset["internetFacing"] if asset else "UNKNOWN"
-    cr = ir = ar = mav = "X"
-    if row.get("CVSS4_Status") != "PRESENT":
-        mode = "UNAVAILABLE"
-    elif threat_status.startswith("PRESENT"):
-        mode = "BT_INPUT_READY"
-    else:
-        mode = "B_ONLY"
+    cr, ir, ar, environmental_status, environmental_source = environmental_requirements(asset)
+    mav = "X"
+    score = score_context(row, cr, ir, ar, environmental_status)
+    mode = context_mode(score)
 
     blockers = ["ORGANIZATIONAL_RISK_COMPOSITION_POLICY_NOT_APPROVED"]
     if row.get("CVSS4_Status") != "PRESENT": blockers.append("CVSS4_BASE_NOT_PRESENT")
@@ -180,15 +257,26 @@ def analyze_row(row, asset, context_status):
     if context_status not in {"MATCHED_KEY", "MATCHED_NAME"}: blockers.append("CUSTOMER_CONTEXT_NOT_MATCHED")
     if criticality == "UNKNOWN": blockers.append("ASSET_CRITICALITY_UNKNOWN")
     if internet == "UNKNOWN": blockers.append("INTERNET_FACING_UNKNOWN")
-    blockers.extend(["CR_IR_AR_NOT_DEFINED", "INTERNET_FACING_NOT_EQUIVALENT_TO_MAV"])
+    if environmental_status in {"NOT_DEFINED", "NO_MATCHED_CUSTOMER_CONTEXT"}: blockers.append("CVSS4_SECURITY_REQUIREMENTS_NOT_DEFINED")
+    blockers.append("INTERNET_FACING_NOT_EQUIVALENT_TO_MAV")
 
     result = {
-        "Customer_Context_Status": context_status, "Asset_Criticality": criticality, "Internet_Facing": internet,
-        "CVSS4_Threat_E_Status": threat_status, "CVSS4_Threat_E_Resolved": threat_e,
-        "CVSS4_CR_Resolved": cr, "CVSS4_IR_Resolved": ir, "CVSS4_AR_Resolved": ar, "CVSS4_MAV_Resolved": mav,
-        "CVSS4_Context_Mode": mode, "RBVM_V2_Status": "NON_COMPUTABLE", "RBVM_V2_Blockers": "|".join(blockers),
+        "Customer_Context_Status": context_status,
+        "Asset_Criticality": criticality,
+        "Internet_Facing": internet,
+        "CVSS4_Threat_E_Status": threat_status,
+        "CVSS4_Threat_E_Resolved": threat_e,
+        "CVSS4_CR_Resolved": cr,
+        "CVSS4_IR_Resolved": ir,
+        "CVSS4_AR_Resolved": ar,
+        "CVSS4_MAV_Resolved": mav,
+        "CVSS4_Environmental_Requirement_Status": environmental_status,
+        "CVSS4_Environmental_Requirement_Source": environmental_source,
+        "CVSS4_Context_Mode": mode,
+        "RBVM_V2_Status": "NON_COMPUTABLE",
+        "RBVM_V2_Blockers": "|".join(blockers),
     }
-    result.update(score_projection(row, mode))
+    result.update(score)
     return result
 
 
@@ -196,25 +284,37 @@ def write_csv(path, headers, rows):
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=headers)
-        writer.writeheader(); writer.writerows(rows)
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 def main():
     a = args()
     headers, rows = read_csv(a.enriched_csv)
-    assets, bundle_sha = load_bundle(a.customer_bundle)
+    assets, bundle_sha, bundle_contract, bundle_schema = load_bundle(a.customer_bundle)
     by_key, by_name = build_asset_indexes(assets)
     output = []
-    context_counts, cvss_counts, calculated_counts, threat_counts, mode_counts = Counter(), Counter(), Counter(), Counter(), Counter()
+    context_counts = Counter()
+    cvss_counts = Counter()
+    calculated_counts = Counter()
+    threat_counts = Counter()
+    environmental_counts = Counter()
+    mode_counts = Counter()
+    contextual_nomenclature_counts = Counter()
+
     for row in rows:
         asset, context_status = match_asset(row, by_key, by_name)
         extra = analyze_row(row, asset, context_status)
-        joined = dict(row); joined.update(extra); output.append(joined)
+        joined = dict(row)
+        joined.update(extra)
+        output.append(joined)
         context_counts[context_status] += 1
         cvss_counts[str(row.get("CVSS4_Status") or "MISSING")] += 1
         calculated_counts[str(row.get("CVSS4_Calculated_Status") or "LEGACY_NOT_CALCULATED")] += 1
         threat_counts[extra["CVSS4_Threat_E_Status"]] += 1
+        environmental_counts[extra["CVSS4_Environmental_Requirement_Status"]] += 1
         mode_counts[extra["CVSS4_Context_Mode"]] += 1
+        contextual_nomenclature_counts[extra["CVSS4_Context_Nomenclature"] or "NONE"] += 1
 
     write_csv(a.analysis_csv, headers + ANALYSIS_COLUMNS, output)
     unique_cves = len({str(row.get("CVE_ID") or "") for row in rows if row.get("CVE_ID")})
@@ -222,29 +322,54 @@ def main():
     epss_present = sum(bool(str(row.get("EPSS_Probability") or "").strip()) for row in rows)
     kev_listed = sum(is_true(row.get("KEV_Listed")) for row in rows)
     ssvc_present = sum(any(str(row.get(k) or "").strip() for k in ("CISA_Exploitation", "CISA_Automatable", "CISA_Technical_Impact")) for row in rows)
-    complete_context = sum(row["Customer_Context_Status"] in {"MATCHED_KEY", "MATCHED_NAME"} and row["Asset_Criticality"] != "UNKNOWN" and row["Internet_Facing"] != "UNKNOWN" for row in output)
+    complete_context = sum(
+        row["Customer_Context_Status"] in {"MATCHED_KEY", "MATCHED_NAME"}
+        and row["Asset_Criticality"] != "UNKNOWN"
+        and row["Internet_Facing"] != "UNKNOWN"
+        for row in output
+    )
+    environmental_defined = sum(row["CVSS4_Environmental_Requirement_Status"] in {"PARTIAL", "COMPLETE"} for row in output)
+    contextual_calculated = sum(row["CVSS4_Context_Score_Status"] == "CALCULATED_FIRST_REFERENCE_COMPATIBLE" for row in output)
 
     summary = {
-        "contractId": "CSV_RUN_EVIDENCE_ANALYSIS_V1",
-        "source": {"enrichedCsv": a.enriched_csv.name, "customerBundle": a.customer_bundle.name if a.customer_bundle else None, "customerBundleSha256": bundle_sha},
+        "contractId": "CSV_RUN_EVIDENCE_ANALYSIS_V2",
+        "source": {
+            "enrichedCsv": a.enriched_csv.name,
+            "customerBundle": a.customer_bundle.name if a.customer_bundle else None,
+            "customerBundleSha256": bundle_sha,
+            "customerBundleContractId": bundle_contract,
+            "customerBundleSchemaVersion": bundle_schema,
+        },
         "scope": {"findingRows": len(rows), "uniqueCves": unique_cves, "uniqueAssets": unique_assets},
         "coverage": {
-            "cvss4Status": dict(sorted(cvss_counts.items())), "cvss4CalculatedStatus": dict(sorted(calculated_counts.items())),
-            "epssPresentRows": epss_present, "kevListedRows": kev_listed, "cisaSsvcPresentRows": ssvc_present,
-            "customerContextStatus": dict(sorted(context_counts.items())), "customerContextCompleteRows": complete_context,
+            "cvss4Status": dict(sorted(cvss_counts.items())),
+            "cvss4CalculatedStatus": dict(sorted(calculated_counts.items())),
+            "epssPresentRows": epss_present,
+            "kevListedRows": kev_listed,
+            "cisaSsvcPresentRows": ssvc_present,
+            "customerContextStatus": dict(sorted(context_counts.items())),
+            "customerContextCompleteRows": complete_context,
+            "environmentalRequirementStatus": dict(sorted(environmental_counts.items())),
+            "environmentalRequirementDefinedRows": environmental_defined,
+            "contextualCvssCalculatedRows": contextual_calculated,
+            "contextualNomenclature": dict(sorted(contextual_nomenclature_counts.items())),
         },
         "cvss4Context": {
-            "threatEResolutionStatus": dict(sorted(threat_counts.items())), "mode": dict(sorted(mode_counts.items())),
+            "resolverContractId": "CVSS_V4_CONTEXT_RESOLVER_V2",
+            "threatEResolutionStatus": dict(sorted(threat_counts.items())),
+            "environmentalRequirementStatus": dict(sorted(environmental_counts.items())),
+            "mode": dict(sorted(mode_counts.items())),
             "calculator": "FIRST_REFERENCE_COMPATIBLE_V4_0",
-            "environmentalPolicy": "CR/IR/AR/MAV remain X; scalar criticality and asset-level Internet Facing are not mapped",
+            "environmentalPolicy": "CR/IR/AR are accepted only as direct customer CVSS X/L/M/H declarations; Asset Criticality is not mapped; MAV remains X and Internet Facing is not mapped",
         },
         "benchmarkFields": [
             "Severity", "CVSS4_Base_Score", "CVSS4_Base_Severity", "CVSS4_Calculated_Nomenclature", "CVSS4_Calculated_Score", "CVSS4_Calculated_Severity",
+            "CVSS4_CR_Resolved", "CVSS4_IR_Resolved", "CVSS4_AR_Resolved", "CVSS4_Context_Nomenclature", "CVSS4_Context_Score", "CVSS4_Context_Severity",
             "EPSS_Probability", "KEV_Listed", "CISA_Exploitation", "CISA_Automatable", "CISA_Technical_Impact", "Asset_Criticality", "Internet_Facing",
         ],
         "rbvmV2": {
             "status": "NON_COMPUTABLE",
-            "reason": "No approved authoritative composition from CVSS severity + EPSS probability + KEV + scalar asset criticality + asset-level Internet Facing to organizational risk",
+            "reason": "Contextual CVSS severity can now be calculated when direct CR/IR/AR evidence exists, but no approved authoritative composition maps contextual severity + EPSS + KEV + organization context to Organizational Risk",
             "riskComputedRows": 0,
         },
     }
