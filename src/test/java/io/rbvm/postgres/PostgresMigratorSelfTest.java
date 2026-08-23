@@ -17,7 +17,7 @@ import java.util.Locale;
 import java.util.Map;
 
 public final class PostgresMigratorSelfTest {
-    private static final int LATEST_SCHEMA_VERSION = 26;
+    private static final int LATEST_SCHEMA_VERSION = 27;
 
     private PostgresMigratorSelfTest() {
     }
@@ -92,6 +92,8 @@ public final class PostgresMigratorSelfTest {
                 sql.contains("CREATE VIEW rbvm.current_risk_method_selection_policy_activation"));
         assert database.executedSql.stream().anyMatch(sql ->
                 sql.contains("CREATE VIEW rbvm.active_risk_method_selection_policy"));
+        assert database.executedSql.stream().anyMatch(sql ->
+                sql.contains("CREATE TABLE rbvm.active_risk_method_execution_binding"));
 
         long observationCreates = count(database, "CREATE TABLE rbvm.observation (");
         long operationalFindingCreates = count(database, "CREATE VIEW rbvm.operational_finding");
@@ -132,6 +134,10 @@ public final class PostgresMigratorSelfTest {
                 database,
                 "CREATE TABLE rbvm.risk_method_selection_policy_activation_event"
         );
+        long activeRiskMethodExecutionBindingCreates = count(
+                database,
+                "CREATE TABLE rbvm.active_risk_method_execution_binding"
+        );
 
         assert migrator.migrate() == LATEST_SCHEMA_VERSION;
         assert database.commits == LATEST_SCHEMA_VERSION : "replay must not reapply migrations";
@@ -170,6 +176,8 @@ public final class PostgresMigratorSelfTest {
                 == riskMethodSelectionCreates;
         assert count(database, "CREATE TABLE rbvm.risk_method_selection_policy_activation_event")
                 == riskMethodSelectionActivationCreates;
+        assert count(database, "CREATE TABLE rbvm.active_risk_method_execution_binding")
+                == activeRiskMethodExecutionBindingCreates;
         assert database.advisoryLocks == 2;
         assert database.advisoryUnlocks == 2;
     }

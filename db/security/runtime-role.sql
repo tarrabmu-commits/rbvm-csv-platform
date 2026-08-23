@@ -56,7 +56,8 @@ GRANT SELECT, INSERT ON
     rbvm.formula_result,
     rbvm.derived_risk_result,
     rbvm.risk_method_selection_policy,
-    rbvm.risk_method_selection_policy_activation_event
+    rbvm.risk_method_selection_policy_activation_event,
+    rbvm.active_risk_method_execution_binding
 TO rbvm_runtime;
 
 GRANT SELECT ON
@@ -131,3 +132,4 @@ REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.formula_result FROM rbvm_runtime;
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.derived_risk_result FROM rbvm_runtime;
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.risk_method_selection_policy FROM rbvm_runtime;
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.risk_method_selection_policy_activation_event FROM rbvm_runtime;
+REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.active_risk_method_execution_binding FROM rbvm_runtime;
