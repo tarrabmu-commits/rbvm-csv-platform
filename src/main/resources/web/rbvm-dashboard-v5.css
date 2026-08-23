@@ -1,0 +1,251 @@
+.v5-card {
+  position: relative;
+}
+
+.v5-loading {
+  min-height: 120px;
+  display: grid;
+  place-items: center;
+  color: var(--muted, #667085);
+}
+
+.v5-donut-wrap {
+  display: grid;
+  grid-template-columns: minmax(180px, .8fr) minmax(180px, 1.2fr);
+  gap: 18px;
+  align-items: center;
+}
+
+.v5-donut {
+  width: min(100%, 220px);
+  margin: 0 auto;
+}
+
+.v5-donut-track {
+  stroke: var(--surface-subtle, #eef1f5);
+}
+
+.v5-donut-segment {
+  transition: opacity .2s ease;
+}
+
+.v5-donut:hover .v5-donut-segment {
+  opacity: .86;
+}
+
+.v5-donut-value {
+  fill: var(--text, #101828);
+  font-size: 1.6rem;
+  font-weight: 780;
+}
+
+.v5-donut-label {
+  fill: var(--muted, #667085);
+  font-size: .7rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.v5-legend {
+  display: grid;
+  gap: 8px;
+  color: var(--muted, #667085);
+  font-size: .83rem;
+}
+
+.v5-legend > span {
+  display: grid;
+  grid-template-columns: 10px 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.v5-legend-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.v5-status-open { stroke: #4777df; background: #4777df; }
+.v5-status-source-resolved { stroke: #3e9b73; background: #3e9b73; }
+.v5-status-accepted-risk { stroke: #aa6fd1; background: #aa6fd1; }
+.v5-status-false-positive { stroke: #8d99aa; background: #8d99aa; }
+.v5-status-closed-manual { stroke: #525f73; background: #525f73; }
+.v5-status-unknown { stroke: #c5cad4; background: #c5cad4; }
+.v5-fresh { stroke: #3e9b73; background: #3e9b73; }
+.v5-stale { stroke: #d18b38; background: #d18b38; }
+.v5-missing { stroke: #9aa4b4; background: #9aa4b4; }
+
+.v5-cohort-wrap {
+  min-width: 0;
+}
+
+.v5-cohort-chart {
+  width: 100%;
+  min-height: 260px;
+  overflow: visible;
+}
+
+.v5-grid-line {
+  stroke: var(--border, #d9dee7);
+  stroke-width: 1;
+  opacity: .72;
+}
+
+.v5-axis-text,
+.v5-axis-label {
+  fill: var(--muted, #667085);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+.v5-axis-text {
+  font-size: 11px;
+}
+
+.v5-axis-label {
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.v5-cohort-bar {
+  fill: var(--accent, #3f6df6);
+}
+
+.v5-chart-notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 8px;
+  color: var(--muted, #667085);
+  font-size: .8rem;
+}
+
+.v5-chart-notes span {
+  position: relative;
+  padding-left: 11px;
+}
+
+.v5-chart-notes span::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: .48em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent, #3f6df6);
+}
+
+.v5-reference {
+  display: grid;
+  gap: 14px;
+}
+
+.v5-reference-bars {
+  display: grid;
+  gap: 10px;
+}
+
+.v5-reference-row {
+  display: grid;
+  grid-template-columns: minmax(145px, 1fr) minmax(100px, 1.8fr) auto;
+  gap: 10px;
+  align-items: center;
+  font-size: .86rem;
+}
+
+.v5-reference-track {
+  display: block;
+  height: 10px;
+  background: var(--surface-subtle, #eef1f5);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.v5-reference-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.v5-due-past { background: #b8404f; }
+.v5-due-soon { background: #d47536; }
+.v5-due-next { background: #c7a137; }
+.v5-due-later { background: #4d82d8; }
+
+.v5-reference-note {
+  margin: 0;
+  padding: 11px 13px;
+  border: 1px solid var(--border, #d9dee7);
+  border-radius: 10px;
+  background: var(--surface-subtle, #f7f8fa);
+  color: var(--muted, #667085);
+  font-size: .8rem;
+  line-height: 1.45;
+}
+
+.v5-semantic-guardrail {
+  display: grid;
+  gap: 8px;
+  border-left: 4px solid #7d68c4;
+  padding: 4px 0 4px 14px;
+}
+
+.v5-semantic-guardrail p {
+  margin: 0;
+}
+
+.v5-semantic-guardrail code {
+  display: inline-block;
+  width: fit-content;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  padding: 4px 7px;
+  border-radius: 6px;
+  background: var(--surface-subtle, #eef1f5);
+  font-size: .72rem;
+}
+
+@media (max-width: 767px) {
+  .v5-donut-wrap {
+    grid-template-columns: 1fr;
+  }
+
+  .v5-reference-row {
+    grid-template-columns: minmax(110px, 1fr) minmax(80px, 1.2fr) auto;
+  }
+
+  .v5-cohort-chart {
+    min-height: 220px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v5-donut-segment {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .v5-donut-segment,
+  .v5-legend-dot,
+  .v5-cohort-bar,
+  .v5-reference-fill {
+    forced-color-adjust: auto;
+    stroke: Highlight;
+    fill: Highlight;
+    background: Highlight;
+  }
+}
+
+@media print {
+  .v5-card {
+    break-inside: avoid;
+  }
+
+  .v5-cohort-chart {
+    min-height: 220px;
+  }
+}
