@@ -3,7 +3,7 @@
 ## Purpose
 
 The V1 API exposes the immutable `RBVM_RISK_METHOD_SELECTION_POLICY_V1` registry without adding an
-active/current/default methodology concept.
+active/current/default methodology concept to the V25 policy registry itself.
 
 It is a control-plane API. It does not evaluate Formula V1, OWASP-derived risk, or Microsoft-derived
 risk and it does not convert those risk results into Priority, Treatment, SLA, or remediation state.
@@ -70,21 +70,25 @@ Therefore:
 This mirrors the Formula and Derived Risk transport rule that backend/schema availability is not
 leaked before authorization.
 
-## Deliberately absent endpoints
+## Deliberately absent V25 policy endpoints
 
-V1 has no collection list endpoint and no routes or parameters for:
+The immutable policy-registry routes have no collection list endpoint and no routes or parameters
+for:
 
 - `latest`
 - `current`
 - `default`
 - `preferred`
-- activation/deactivation
+- activation/deactivation inside the V25 policy registry
 - catalog-order precedence
 - fallback
 - score averaging
 
-If RBVM later needs an organization-wide active policy pointer, that must be a separate versioned,
-auditable activation contract. It must not be inferred from the highest policy revision.
+RBVM now provides activation through the separate versioned, auditable activation contract
+`RBVM_RISK_METHOD_SELECTION_POLICY_ACTIVATION_EVENT_V1` on PostgreSQL V26. That contract references
+an exact policy revision and SHA and orders only explicit activation revisions; it does not infer an
+active policy from the highest V25 policy revision. See
+[`RISK_METHOD_SELECTION_POLICY_ACTIVATION_API_V1.md`](RISK_METHOD_SELECTION_POLICY_ACTIVATION_API_V1.md).
 
 ## Method independence
 
@@ -98,6 +102,6 @@ stores:
 
 ## Runtime capability
 
-`RiskMethodSelectionPolicyRuntimeFactory` exposes this API only when PostgreSQL schema version is at
-least `25`. The server publishes capability state in health/metrics only; this state is not a
-methodology default.
+`RiskMethodSelectionPolicyRuntimeFactory` exposes the V25 policy registry when PostgreSQL schema
+version is at least `25`. On schema `26+`, the same runtime additionally attaches the explicit V26
+activation capability; schema 25 policy reads/installations remain independently available.
