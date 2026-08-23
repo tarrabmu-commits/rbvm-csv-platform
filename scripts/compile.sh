@@ -36,10 +36,21 @@ python3 "$ROOT_DIR/scripts/stabilize-frontend-runtime.py" "$MAIN_CLASSES/web/rbv
 if [[ -f "$ROOT_DIR/src/main/resources/web/customer-flow.js" ]]; then
   printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
   cat "$ROOT_DIR/src/main/resources/web/customer-flow.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
+  # Product UI opts into the async V1 enrichment job transport while the
+  # source module retains compatibility with the legacy synchronous route.
+  python3 "$ROOT_DIR/scripts/stabilize-csv-first-async-runtime.py" "$MAIN_CLASSES/web/rbvm-ui.js"
 fi
 if [[ -f "$ROOT_DIR/src/main/resources/web/csv-run-review.js" ]]; then
   printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
   cat "$ROOT_DIR/src/main/resources/web/csv-run-review.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
+fi
+if [[ -f "$ROOT_DIR/src/main/resources/web/csv-first-job-status.js" ]]; then
+  printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
+  cat "$ROOT_DIR/src/main/resources/web/csv-first-job-status.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
+fi
+if [[ -f "$ROOT_DIR/src/main/resources/web/csv-first-job-status.css" ]]; then
+  printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.css"
+  cat "$ROOT_DIR/src/main/resources/web/csv-first-job-status.css" >> "$MAIN_CLASSES/web/rbvm-ui.css"
 fi
 if [[ -f "$ROOT_DIR/src/main/resources/web/csv-run-visuals.js" ]]; then
   printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
