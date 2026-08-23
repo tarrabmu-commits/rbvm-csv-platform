@@ -36,7 +36,6 @@ import java.util.regex.Pattern;
  */
 public final class CsvFirstCanonicalEvidenceHttpHandler implements HttpHandler {
     public static final String CONTRACT_ID = "CSV_FIRST_CANONICAL_PUBLIC_EVIDENCE_HTTP_V1";
-    private static final String ROOT = "/api/v1/csv-first-canonical-evidence";
     private static final Pattern PATH = Pattern.compile(
             "^/api/v1/csv-first-canonical-evidence/([0-9a-fA-F-]{36})$");
     private static final Duration PROCESS_TIMEOUT = Duration.ofMinutes(10);
@@ -44,14 +43,14 @@ public final class CsvFirstCanonicalEvidenceHttpHandler implements HttpHandler {
     private final Path dataDirectory;
     private final Path repositoryRoot;
     private final String python;
-    private final EpssImporter epssImporter;
-    private final CisaKevImporter kevImporter;
+    private final Optional<EpssImporter> epssImporter;
+    private final Optional<CisaKevImporter> kevImporter;
     private final ApiKeyAuthenticator authenticator;
 
     public CsvFirstCanonicalEvidenceHttpHandler(
             Path dataDirectory,
-            EpssImporter epssImporter,
-            CisaKevImporter kevImporter,
+            Optional<EpssImporter> epssImporter,
+            Optional<CisaKevImporter> kevImporter,
             ApiKeyAuthenticator authenticator
     ) {
         this.dataDirectory = Objects.requireNonNull(dataDirectory, "dataDirectory")
@@ -93,6 +92,12 @@ public final class CsvFirstCanonicalEvidenceHttpHandler implements HttpHandler {
     }
 
     private void materialize(HttpExchange exchange, UUID runId) throws Exception {
+        if (epssImporter.isEmpty() || kevImporter.isEmpty()) {
+            problem(exchange, 503, "CANONICAL_EVIDENCE_PERSISTENCE_UNAVAILABLE",
+                    "Canonical EPSS/KEV persistence is unavailable in this runtime");
+            return;
+        }
+
         Path input = sourcePath(runId);
         if (!Files.isRegularFile(input) || Files.isSymbolicLink(input)) {
             problem(exchange, 404, "RUN_SOURCE_NOT_FOUND", "The original CSV-first source artifact does not exist");
@@ -133,8 +138,8 @@ public final class CsvFirstCanonicalEvidenceHttpHandler implements HttpHandler {
                             kevCsv.toString(), "--report", kevReport.toString()),
                     directory.resolve("build-kev.log"), "CISA_KEV_BUILD_FAILED");
 
-            Map<String, Object> epss = epssImporter.importFile(epssCsv).toMap();
-            Map<String, Object> kev = kevImporter.importFile(kevCsv).toMap();
+            Map<String, Object> epss = epssImporter.orElseThrow().importFile(epssCsv).toMap();
+            Map<String, Object> kev = kevImporter.orElseThrow().importFile(kevCsv).toMap();
 
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("contractId", CONTRACT_ID);
