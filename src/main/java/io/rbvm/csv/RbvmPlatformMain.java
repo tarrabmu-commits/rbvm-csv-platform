@@ -146,8 +146,8 @@ public final class RbvmPlatformMain {
             Path dataDirectory,
             long maximumUploadBytes,
             Optional<CanonicalImportFindingExporter> canonicalImportFindings,
-            EpssImporter epssImporter,
-            CisaKevImporter cisaKevImporter,
+            Optional<EpssImporter> epssImporter,
+            Optional<CisaKevImporter> cisaKevImporter,
             ApiKeyAuthenticator authenticator
     ) throws ReflectiveOperationException {
         // Transitional registration seam: CsvPlatformServer predates extension
