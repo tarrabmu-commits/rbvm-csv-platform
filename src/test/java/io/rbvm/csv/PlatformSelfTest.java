@@ -67,6 +67,7 @@ public final class PlatformSelfTest {
         DefaultFormulaResultMaterializerSelfTest.main(args);
         DerivedRiskResultReplayVerifierSelfTest.main(args);
         DefaultDerivedRiskResultMaterializerSelfTest.main(args);
+        FormulaCatalogApiSelfTest.main(args);
         FormulaResultApiSelfTest.main(args);
         DerivedRiskResultApiSelfTest.main(args);
         DecisionInputApiSelfTest.main(args);
@@ -83,6 +84,7 @@ public final class PlatformSelfTest {
         CsvManagedAssetHttpSelfTest.main(args);
         CsvScannerManagedAssetLinkHttpSelfTest.main(args);
         CsvFindingContextAssociationHttpSelfTest.main(args);
+        CsvFormulaCatalogHttpSelfTest.main(args);
         CsvFormulaResultHttpSelfTest.main(args);
         CsvFormulaResultMaterializationHttpSelfTest.main(args);
         CsvDerivedRiskResultHttpSelfTest.main(args);

@@ -1,0 +1,117 @@
+openapi: 3.0.3
+info:
+  title: RBVM Formula Catalog API V1
+  version: 1.0.0
+  description: >-
+    Authenticated discovery of implemented immutable RBVM Formula identities. Catalog order
+    carries no precedence or preference and no latest/current/default Formula is defined.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/formulas:
+    get:
+      operationId: listRbvmFormulas
+      summary: Discover exact implemented RBVM Formula identities
+      description: >-
+        Returns immutable Formula identity metadata for exact downstream result lookup.
+        The response is discovery-only and does not select a Formula on behalf of the caller.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Deterministic Formula catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormulaCatalogResponse'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Sha256:
+      type: string
+      pattern: '^[a-f0-9]{64}$'
+    FormulaCatalogResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - contractId
+        - selectionSemantics
+        - formulas
+      properties:
+        contractId:
+          type: string
+          enum: [RBVM_FORMULA_CATALOG_API_V1]
+        selectionSemantics:
+          type: string
+          enum: [EXPLICIT_ID_AND_SHA_ONLY_NO_DEFAULT]
+        formulas:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/FormulaDefinition'
+    FormulaDefinition:
+      type: object
+      additionalProperties: false
+      required:
+        - formulaId
+        - formulaVersion
+        - formulaSha256
+        - classification
+        - inputContractId
+        - outputName
+        - numericMinimum
+        - numericMaximum
+        - resultStates
+        - outputSemantics
+      properties:
+        formulaId:
+          type: string
+          enum: [RBVM_FORMULA_V1]
+        formulaVersion:
+          type: integer
+          enum: [1]
+        formulaSha256:
+          $ref: '#/components/schemas/Sha256'
+        classification:
+          type: string
+          enum: [RBVM_POLICY]
+        inputContractId:
+          type: string
+          enum: [RBVM_DECISION_INPUT_SNAPSHOT_V3]
+        outputName:
+          type: string
+          enum: [RBVM Relative Risk Index]
+        numericMinimum:
+          type: string
+          enum: ['0.00']
+        numericMaximum:
+          type: string
+          enum: ['100.00']
+        resultStates:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items:
+            type: string
+            enum: [COMPUTED, NOT_APPLICABLE, NON_COMPUTABLE]
+        outputSemantics:
+          type: string
+          enum:
+            - DIMENSIONLESS_RELATIVE_RISK_INDEX_NOT_PRIORITY_SLA_TREATMENT_OR_PROBABILITY
+  responses:
+    Problem:
+      description: RFC-style API problem response
+      content:
+        application/problem+json:
+          schema:
+            type: object
+            additionalProperties: true
