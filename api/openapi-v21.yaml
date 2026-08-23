@@ -42,6 +42,8 @@ paths:
   /scanner-assets: {$ref: './openapi.yaml#/paths/~1scanner-assets'}
   /scanner-assets/{scannerAssetId}/managed-asset-link: {$ref: './openapi.yaml#/paths/~1scanner-assets~1{scannerAssetId}~1managed-asset-link'}
   /scanner-assets/{scannerAssetId}/managed-asset-link/revisions: {$ref: './openapi.yaml#/paths/~1scanner-assets~1{scannerAssetId}~1managed-asset-link~1revisions'}
+  /risk-method-selection-policies/{revision}/{policySha256}: {$ref: './openapi.yaml#/paths/~1risk-method-selection-policies~1{revision}~1{policySha256}'}
+  /risk-method-selection-policy-installations/{revision}/{methodFamily}/{methodId}/{methodVersion}/{methodSha256}: {$ref: './openapi.yaml#/paths/~1risk-method-selection-policy-installations~1{revision}~1{methodFamily}~1{methodId}~1{methodVersion}~1{methodSha256}'}
   /findings/{findingId}/reachability-links: {$ref: './finding-context-association-v1.openapi.yaml#/paths/~1findings~1{findingId}~1reachability-links'}
   /findings/{findingId}/reachability-links/current: {$ref: './finding-context-association-v1.openapi.yaml#/paths/~1findings~1{findingId}~1reachability-links~1current'}
   /findings/{findingId}/reachability-links/revisions: {$ref: './finding-context-association-v1.openapi.yaml#/paths/~1findings~1{findingId}~1reachability-links~1revisions'}

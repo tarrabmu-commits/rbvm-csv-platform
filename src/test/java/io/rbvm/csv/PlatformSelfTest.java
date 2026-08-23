@@ -72,6 +72,7 @@ public final class PlatformSelfTest {
         FormulaCatalogApiSelfTest.main(args);
         FormulaResultApiSelfTest.main(args);
         DerivedRiskResultApiSelfTest.main(args);
+        RiskMethodSelectionPolicyApiSelfTest.main(args);
         DecisionInputApiSelfTest.main(args);
         DomainCatalogSelfTest.main(args);
         ApiSecuritySelfTest.main(args);
@@ -90,6 +91,7 @@ public final class PlatformSelfTest {
         CsvFormulaResultHttpSelfTest.main(args);
         CsvFormulaResultMaterializationHttpSelfTest.main(args);
         CsvDerivedRiskResultHttpSelfTest.main(args);
+        CsvRiskMethodSelectionPolicyHttpSelfTest.main(args);
         CsvDecisionInputHttpSelfTest.main(args);
         CanonicalProjectionSelfTest.main(args);
         PostgresFoundationSelfTest.main(args);

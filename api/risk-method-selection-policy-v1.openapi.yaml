@@ -1,0 +1,230 @@
+openapi: 3.0.3
+info:
+  title: RBVM Risk Method Selection Policy API V1
+  version: 1.0.0
+  description: >-
+    Exact immutable control-plane API for tenant-scoped primary risk-method selection policy
+    revisions. There is no current, latest, default, fallback, or score-averaging semantic.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/risk-method-selection-policies/{revision}/{policySha256}:
+    get:
+      operationId: getRiskMethodSelectionPolicy
+      summary: Read one exact immutable policy revision and SHA identity
+      parameters:
+        - $ref: '#/components/parameters/Revision'
+        - $ref: '#/components/parameters/PolicySha256'
+      responses:
+        '200':
+          description: Exact immutable policy
+          headers:
+            ETag:
+              schema: { type: string }
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyResponse'
+        '400': { $ref: '#/components/responses/InvalidIdentity' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/InsufficientRole' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/CapabilityUnavailable' }
+  /api/v1/risk-method-selection-policy-installations/{revision}/{methodFamily}/{methodId}/{methodVersion}/{methodSha256}:
+    post:
+      operationId: installRiskMethodSelectionPolicy
+      summary: Install or replay one explicit immutable primary risk-method policy revision
+      parameters:
+        - $ref: '#/components/parameters/Revision'
+        - $ref: '#/components/parameters/MethodFamily'
+        - $ref: '#/components/parameters/MethodId'
+        - $ref: '#/components/parameters/MethodVersion'
+        - $ref: '#/components/parameters/MethodSha256'
+      responses:
+        '201':
+          description: Immutable policy revision inserted
+          headers:
+            ETag:
+              schema: { type: string }
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstallationResponse'
+        '200':
+          description: Exact immutable policy installation replayed
+          headers:
+            ETag:
+              schema: { type: string }
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstallationResponse'
+        '400': { $ref: '#/components/responses/InvalidIdentity' }
+        '401': { $ref: '#/components/responses/AuthenticationRequired' }
+        '403': { $ref: '#/components/responses/InsufficientRole' }
+        '404': { $ref: '#/components/responses/MethodNotFound' }
+        '409': { $ref: '#/components/responses/RevisionConflict' }
+        '503': { $ref: '#/components/responses/CapabilityUnavailable' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    Revision:
+      name: revision
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+    PolicySha256:
+      name: policySha256
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/Sha256' }
+    MethodFamily:
+      name: methodFamily
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [RBVM_FORMULA, STANDARD_DERIVED]
+    MethodId:
+      name: methodId
+      in: path
+      required: true
+      schema: { type: string, minLength: 1 }
+    MethodVersion:
+      name: methodVersion
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+    MethodSha256:
+      name: methodSha256
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/Sha256' }
+  schemas:
+    Sha256:
+      type: string
+      pattern: '^[a-f0-9]{64}$'
+    Policy:
+      type: object
+      additionalProperties: false
+      required:
+        - policyContractId
+        - semantics
+        - revision
+        - policySha256
+        - selectionRole
+        - methodFamily
+        - methodId
+        - methodVersion
+        - methodSha256
+        - canonicalPayloadFormat
+        - canonicalPayloadBase64
+      properties:
+        policyContractId:
+          type: string
+          enum: [RBVM_RISK_METHOD_SELECTION_POLICY_V1]
+        semantics:
+          type: string
+          enum: [TENANT_SCOPED_EXPLICIT_PRIMARY_RISK_METHOD_EXACT_IDENTITY]
+        revision: { type: integer, minimum: 1 }
+        policySha256: { $ref: '#/components/schemas/Sha256' }
+        selectionRole:
+          type: string
+          enum: [PRIMARY]
+        methodFamily:
+          type: string
+          enum: [RBVM_FORMULA, STANDARD_DERIVED]
+        methodId: { type: string, minLength: 1 }
+        methodVersion: { type: integer, minimum: 1 }
+        methodSha256: { $ref: '#/components/schemas/Sha256' }
+        canonicalPayloadFormat:
+          type: string
+          enum: [RBVM_RISK_METHOD_SELECTION_POLICY_CANONICAL_BINARY_V1]
+        canonicalPayloadBase64:
+          type: string
+          format: byte
+    PolicyResponse:
+      type: object
+      additionalProperties: false
+      required: [contractId, selectionSemantics, policy]
+      properties:
+        contractId:
+          type: string
+          enum: [RBVM_RISK_METHOD_SELECTION_POLICY_API_V1]
+        selectionSemantics:
+          type: string
+          enum: [EXACT_REVISION_AND_SHA_NO_CURRENT_LATEST_OR_DEFAULT]
+        policy:
+          $ref: '#/components/schemas/Policy'
+    InstallationResponse:
+      type: object
+      additionalProperties: false
+      required: [contractId, installationStatus, selectionSemantics, policy]
+      properties:
+        contractId:
+          type: string
+          enum: [RBVM_RISK_METHOD_SELECTION_POLICY_INSTALLATION_API_V1]
+        installationStatus:
+          type: string
+          enum: [INSERTED, REPLAYED]
+        selectionSemantics:
+          type: string
+          enum: [EXACT_REVISION_AND_SHA_NO_CURRENT_LATEST_OR_DEFAULT]
+        policy:
+          $ref: '#/components/schemas/Policy'
+    Problem:
+      type: object
+      additionalProperties: true
+      required: [type, title, status, detail]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+  responses:
+    InvalidIdentity:
+      description: Invalid exact policy or method identity
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    AuthenticationRequired:
+      description: Authentication required
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    InsufficientRole:
+      description: Authenticated principal lacks the required route role
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: Exact policy revision/SHA identity does not exist
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    MethodNotFound:
+      description: Exact Formula or standard-derived method identity is not implemented
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    RevisionConflict:
+      description: Revision is already bound to another immutable policy identity
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    CapabilityUnavailable:
+      description: PostgreSQL V25 risk-method policy persistence is unavailable
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
