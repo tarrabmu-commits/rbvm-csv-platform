@@ -21,8 +21,8 @@ required_indexes = [
     "CASE current_severity",
     "last_observed_at DESC",
     "public_id",
-    "CREATE INDEX case_tenant_vulnerability_lookup_idx",
-    "ON rbvm.vulnerability_case (tenant_id, vulnerability_id)",
+    "CREATE INDEX observation_tenant_vulnerability_lookup_idx",
+    "ON rbvm.observation (tenant_id, vulnerability_id)",
 ]
 for token in required_indexes:
     if token not in migration:
@@ -49,10 +49,12 @@ match = re.search(
 if not match:
     raise AssertionError("Could not locate dedicated intelligence active_vulnerability CTE")
 active = match.group(1)
-if "FROM rbvm.vulnerability_case c" not in active or "c.tenant_id = ?" not in active:
-    raise AssertionError("Dedicated intelligence summary is not bounded by tenant-scoped canonical cases")
-if "rbvm.observation" in active:
-    raise AssertionError("Dedicated intelligence summary must not rescan observations just to identify CVEs")
+if "SELECT DISTINCT o.vulnerability_id AS id" not in active:
+    raise AssertionError("Dedicated intelligence summary must preserve every observed CVE")
+if "FROM rbvm.observation o" not in active or "o.tenant_id = ?" not in active:
+    raise AssertionError("Dedicated intelligence summary is not bounded by tenant-scoped observations")
+if "rbvm.vulnerability_case" in active:
+    raise AssertionError("Dedicated intelligence summary must not narrow observed CVEs to case rows")
 
 # Performance change only: evidence sources and aggregate interpretation remain unchanged.
 for token in [
