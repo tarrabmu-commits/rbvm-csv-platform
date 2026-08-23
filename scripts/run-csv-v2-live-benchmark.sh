@@ -16,6 +16,8 @@ COLLECTOR_REPORT="$OUT_DIR/collector-report.json"
 ANALYSIS="$OUT_DIR/analysis.csv"
 ANALYSIS_SUMMARY="$OUT_DIR/analysis-summary.json"
 ADMISSION_REPORT="$OUT_DIR/method-admission.json"
+PRIORITY="$OUT_DIR/priority.csv"
+PRIORITY_REPORT="$OUT_DIR/priority-report.json"
 BENCHMARK_SUMMARY="$OUT_DIR/benchmark-summary.json"
 
 python3 "$ROOT_DIR/scripts/enrich-uploaded-csv.py" \
@@ -31,7 +33,10 @@ python3 "$ROOT_DIR/scripts/analyze-csv-run-evidence.py" \
 python3 "$ROOT_DIR/scripts/evaluate-rbvm-v2-method-candidates.py" \
   "$ANALYSIS" "$ADMISSION_REPORT"
 
-python3 - "$CORPUS" "$CONTEXT" "$ENRICH_REPORT" "$ANALYSIS" "$ANALYSIS_SUMMARY" "$ADMISSION_REPORT" "$BENCHMARK_SUMMARY" <<'PY'
+python3 "$ROOT_DIR/scripts/rank-rbvm-mvp-priority.py" \
+  "$ANALYSIS" "$PRIORITY" "$PRIORITY_REPORT"
+
+python3 - "$CORPUS" "$CONTEXT" "$ENRICH_REPORT" "$ANALYSIS" "$ANALYSIS_SUMMARY" "$ADMISSION_REPORT" "$PRIORITY" "$PRIORITY_REPORT" "$BENCHMARK_SUMMARY" <<'PY'
 import csv
 import hashlib
 import json
@@ -39,7 +44,19 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-corpus, context, enrich_report, analysis_csv, analysis_summary, admission_report, output = map(Path, sys.argv[1:])
+(
+    corpus,
+    context,
+    enrich_report,
+    analysis_csv,
+    analysis_summary,
+    admission_report,
+    priority_csv,
+    priority_report,
+    output,
+) = map(Path, sys.argv[1:])
+
+EXPECTED_PRIORITY_METHOD_SHA = "88d5cdb8702c6c0ed2c033c3df6b8abbe1aa392f44f4507685b54082a16dc388"
 
 
 def sha256_file(path):
@@ -55,9 +72,19 @@ def truthy(value):
 
 with analysis_csv.open('r', encoding='utf-8-sig', newline='') as f:
     rows = list(csv.DictReader(f))
+with priority_csv.open('r', encoding='utf-8-sig', newline='') as f:
+    priority_rows = list(csv.DictReader(f))
 analysis = json.loads(analysis_summary.read_text(encoding='utf-8'))
 admission = json.loads(admission_report.read_text(encoding='utf-8'))
+priority = json.loads(priority_report.read_text(encoding='utf-8'))
 enrichment = json.loads(enrich_report.read_text(encoding='utf-8'))
+
+if len(priority_rows) != len(rows):
+    raise SystemExit(f'priority output is not row preserving: {len(priority_rows)}/{len(rows)}')
+for index, (analysis_row, priority_row) in enumerate(zip(rows, priority_rows), start=1):
+    for identity in ('Agent', 'Agent_ID', 'CVE_ID', 'Affected_Product'):
+        if str(analysis_row.get(identity) or '') != str(priority_row.get(identity) or ''):
+            raise SystemExit(f'priority row identity drift at row {index}: {identity}')
 
 base_validation = Counter(str(r.get('CVSS4_Base_Score_Validation') or 'NOT_APPLICABLE') for r in rows)
 calc_status = Counter(str(r.get('CVSS4_Calculated_Status') or 'NOT_CALCULATED') for r in rows)
@@ -66,9 +93,10 @@ context_nomenclature = Counter(str(r.get('CVSS4_Context_Nomenclature') or 'NONE'
 environmental_status = Counter(str(r.get('CVSS4_Environmental_Requirement_Status') or 'NONE') for r in rows)
 cvss_status = Counter(str(r.get('CVSS4_Status') or 'MISSING') for r in rows)
 context_status = Counter(str(r.get('Customer_Context_Status') or 'MISSING') for r in rows)
+priority_status = Counter(str(r.get('RBVM_MVP_Priority_Status') or 'MISSING') for r in priority_rows)
 
 row_view = []
-for r in rows:
+for r, p in zip(rows, priority_rows):
     row_view.append({
         'cveId': r.get('CVE_ID'),
         'asset': r.get('Agent') or r.get('Agent_ID'),
@@ -102,6 +130,13 @@ for r in rows:
         'internetFacing': r.get('Internet_Facing'),
         'customerContextStatus': r.get('Customer_Context_Status'),
         'rbvmV2Status': r.get('RBVM_V2_Status'),
+        'mvpPriorityStatus': p.get('RBVM_MVP_Priority_Status'),
+        'mvpPriorityFront': p.get('RBVM_MVP_Priority_Front'),
+        'mvpPriorityDominatedBy': p.get('RBVM_MVP_Priority_Dominated_By'),
+        'mvpPriorityDominates': p.get('RBVM_MVP_Priority_Dominates'),
+        'mvpPriorityBlockers': p.get('RBVM_MVP_Priority_Blockers'),
+        'mvpPriorityExplanation': p.get('RBVM_MVP_Priority_Explanation'),
+        'mvpPriorityMethodSha256': p.get('RBVM_MVP_Priority_Method_SHA256'),
     })
 
 matched = sum(r.get('Customer_Context_Status') in {'MATCHED_KEY', 'MATCHED_NAME'} for r in rows)
@@ -111,6 +146,8 @@ ssvc_present = sum(any(str(r.get(k) or '').strip() for k in ('CISA_Exploitation'
 public_calculated = sum(r.get('CVSS4_Calculated_Status') == 'CALCULATED' for r in rows)
 contextual_calculated = sum(r.get('CVSS4_Context_Score_Status') == 'CALCULATED_FIRST_REFERENCE_COMPATIBLE' for r in rows)
 environmental_defined = sum(r.get('CVSS4_Environmental_Requirement_Status') in {'PARTIAL', 'COMPLETE'} for r in rows)
+priority_ranked = int(priority.get('rankedRows') or 0)
+priority_unrankable = int(priority.get('unrankableRows') or 0)
 
 candidate_states = {
     (candidate.get('methodId') or 'UNDEFINED_V2'): candidate.get('admissionState')
@@ -118,13 +155,16 @@ candidate_states = {
 }
 
 result = {
-    'contractId': 'CSV_V2_LIVE_BENCHMARK_V3',
-    'semantics': 'LIVE_PUBLIC_INTELLIGENCE_PLUS_SYNTHETIC_DIRECT_CVSS_ENVIRONMENTAL_REQUIREMENTS_PLUS_RISK_METHOD_ADMISSION',
+    'contractId': 'CSV_V2_LIVE_BENCHMARK_V4',
+    'semantics': 'LIVE_PUBLIC_INTELLIGENCE_PLUS_SYNTHETIC_DIRECT_CVSS_ENVIRONMENTAL_REQUIREMENTS_PLUS_RISK_METHOD_ADMISSION_PLUS_MVP_RELATIVE_PRIORITY',
     'inputCorpusSha256': sha256_file(corpus),
     'customerContextSha256': sha256_file(context),
     'observedAt': enrichment.get('observedAt'),
     'publicIntelSnapshotSha256': enrichment.get('publicIntelSnapshotSha256'),
     'methodAdmissionReportSha256': admission.get('reportSha256'),
+    'mvpPriorityInputSha256': priority.get('inputSha256'),
+    'mvpPriorityOutputSha256': priority.get('outputSha256'),
+    'mvpPriorityReportSha256': priority.get('reportSha256'),
     'scope': {
         'findingRows': len(rows),
         'uniqueCves': len({r.get('CVE_ID') for r in rows if r.get('CVE_ID')}),
@@ -143,6 +183,11 @@ result = {
         'cisaSsvcPresentRows': ssvc_present,
         'customerContextMatchedRows': matched,
         'customerContextStatus': dict(sorted(context_status.items())),
+        'mvpPriorityStatus': dict(sorted(priority_status.items())),
+        'mvpPriorityRankedRows': priority_ranked,
+        'mvpPriorityUnrankableRows': priority_unrankable,
+        'mvpPriorityFrontCounts': priority.get('frontCounts', {}),
+        'mvpPriorityUnrankableReasons': priority.get('unrankableReasons', {}),
     },
     'methodAdmission': {
         'state': admission.get('selection', {}).get('state'),
@@ -150,12 +195,20 @@ result = {
         'candidateStates': dict(sorted(candidate_states.items())),
         'csvFirstCapability': admission.get('csvFirstCapability'),
     },
+    'mvpPriority': {
+        'methodId': priority.get('methodId'),
+        'methodSha256': priority.get('methodSha256'),
+        'semantics': priority.get('prioritySemantics'),
+        'explainability': priority.get('explainability'),
+        'organizationalRiskComputed': priority.get('organizationalRiskComputed'),
+        'riskStatus': priority.get('riskStatus'),
+    },
     'rows': row_view,
     'rbvmV2': {
         'status': analysis.get('rbvmV2', {}).get('status'),
         'riskComputedRows': analysis.get('rbvmV2', {}).get('riskComputedRows'),
         'reason': analysis.get('rbvmV2', {}).get('reason'),
-        'benchmarkDecision': 'CONTEXTUAL_CVSS_IS_COMPUTABLE_BUT_NO_V2_ORGANIZATIONAL_RISK_METHOD_IS_ADMITTED',
+        'benchmarkDecision': 'CONTEXTUAL_CVSS_AND_MVP_RELATIVE_PRIORITY_ARE_COMPUTABLE_BUT_NO_V2_ORGANIZATIONAL_RISK_METHOD_IS_ADMITTED',
     },
 }
 
@@ -196,7 +249,40 @@ if candidate_states.get('OWASP_DERIVED_RBVM_V1') != 'BLOCKED_INPUT_CONTRACT':
     raise SystemExit('OWASP-derived V1 must remain blocked without exact Decision Input V3')
 if candidate_states.get('MICROSOFT_PD_DERIVED_RBVM_V1') != 'BLOCKED_INPUT_CONTRACT':
     raise SystemExit('Microsoft-derived V1 must remain blocked without exact Decision Input V3')
+
+if priority.get('methodId') != 'RBVM_MVP_PRIORITY_POLICY_V1':
+    raise SystemExit('live benchmark priority method identity drift')
+if priority.get('methodSha256') != EXPECTED_PRIORITY_METHOD_SHA:
+    raise SystemExit('live benchmark priority method SHA drift')
+if priority.get('organizationalRiskComputed') is not False or priority.get('riskStatus') != 'NON_COMPUTABLE':
+    raise SystemExit('MVP priority must not compute Organizational Risk')
+if priority.get('explainability', {}).get('contractId') != 'RBVM_MVP_PRIORITY_EXPLAINABILITY_V1':
+    raise SystemExit('MVP priority explainability contract drift')
+if priority_ranked + priority_unrankable != len(rows):
+    raise SystemExit('MVP priority coverage does not account for every row')
+if priority_ranked < 1:
+    raise SystemExit('live benchmark expected at least one rankable MVP priority row')
+if int(priority.get('frontCounts', {}).get('1', 0)) < 1:
+    raise SystemExit('live benchmark expected at least one Front 1 row')
+for index, row in enumerate(priority_rows, start=1):
+    if row.get('RBVM_MVP_Priority_Method_SHA256') != EXPECTED_PRIORITY_METHOD_SHA:
+        raise SystemExit(f'priority method SHA drift at row {index}')
+    if not str(row.get('RBVM_MVP_Priority_Explanation') or '').strip():
+        raise SystemExit(f'priority explanation missing at row {index}')
+    if row.get('RBVM_V2_Status') != 'NON_COMPUTABLE':
+        raise SystemExit(f'priority derivation mutated Organizational Risk state at row {index}')
+    status = row.get('RBVM_MVP_Priority_Status')
+    if status == 'RANKED_RELATIVE_ONLY':
+        if not row.get('RBVM_MVP_Priority_Front'):
+            raise SystemExit(f'ranked priority missing front at row {index}')
+        if not str(row.get('RBVM_MVP_Priority_Explanation') or '').startswith('Front '):
+            raise SystemExit(f'ranked priority explanation missing front semantics at row {index}')
+    elif status == 'UNRANKABLE_MISSING_EVIDENCE':
+        if not row.get('RBVM_MVP_Priority_Blockers'):
+            raise SystemExit(f'unrankable priority missing blockers at row {index}')
+    else:
+        raise SystemExit(f'unexpected priority status at row {index}: {status}')
 PY
 
-sha256sum "$CORPUS" "$CONTEXT" "$ENRICHED" "$SNAPSHOT" "$ANALYSIS" "$ADMISSION_REPORT" "$BENCHMARK_SUMMARY" > "$OUT_DIR/SHA256SUMS"
+sha256sum "$CORPUS" "$CONTEXT" "$ENRICHED" "$SNAPSHOT" "$ANALYSIS" "$ADMISSION_REPORT" "$PRIORITY" "$PRIORITY_REPORT" "$BENCHMARK_SUMMARY" > "$OUT_DIR/SHA256SUMS"
 printf '%s\n' "CSV V2 live benchmark: PASS output=$OUT_DIR"
