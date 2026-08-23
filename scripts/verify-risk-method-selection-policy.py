@@ -13,6 +13,7 @@ migrator = (ROOT / "src/main/java/io/rbvm/postgres/PostgresMigrator.java").read_
 live = (ROOT / "src/test/java/io/rbvm/postgres/PostgresV25RiskMethodSelectionPolicyLiveSelfTest.java").read_text()
 workflow = (ROOT / ".github/workflows/postgres-integration.yml").read_text()
 doc = (ROOT / "docs/RISK_METHOD_SELECTION_POLICY_V1.md").read_text()
+normalized_doc = " ".join(doc.split())
 
 for marker in [
     'ID = "RBVM_RISK_METHOD_SELECTION_POLICY_V1"',
@@ -113,6 +114,6 @@ for marker in [
     'no current/latest/default view',
     'HTTP/API activation or browser controls are intentionally not part',
 ]:
-    assert marker in doc, f"risk method selection documentation missing {marker!r}"
+    assert marker in normalized_doc, f"risk method selection documentation missing {marker!r}"
 
 print("Risk method selection policy V1 structural checks: PASS")
