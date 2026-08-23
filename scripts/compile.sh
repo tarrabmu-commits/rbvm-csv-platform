@@ -23,6 +23,13 @@ find "$ROOT_DIR/src/main/java" -name '*.java' -print > "$BUILD_DIR/main-sources.
 if [[ -d "$ROOT_DIR/src/main/resources" ]]; then
   cp -R "$ROOT_DIR/src/main/resources/." "$MAIN_CLASSES/"
 fi
+
+# Transitional stabilization: the legacy Overview renderer used allCases(),
+# which crawled up to 60 pages before the new Dashboard could take ownership.
+# Rewrite only that exact runtime call to a bounded first page; the transform
+# fails closed if the source shape drifts.
+python3 "$ROOT_DIR/scripts/stabilize-frontend-runtime.py" "$MAIN_CLASSES/web/rbvm-ui.js"
+
 # Frontend System V2 remains one served dependency-free bundle. Keep the
 # CSV-first workflow modules isolated in source, then concatenate them
 # deterministically into the runtime rbvm-ui.js artifact.
