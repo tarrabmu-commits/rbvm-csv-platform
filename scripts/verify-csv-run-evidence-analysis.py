@@ -24,7 +24,7 @@ for token in [
     "RBVM_FORMULA_V2_READINESS_V1",
     "NON_COMPUTABLE",
     "No approved organizational-risk composition policy",
-    "CVSS x EPSS",
+    "EPSS probability must not be multiplied by ordinal CVSS severity",
 ]:
     if token not in FORMULA_DOC:
         raise AssertionError(f"Formula V2 readiness contract missing: {token}")
