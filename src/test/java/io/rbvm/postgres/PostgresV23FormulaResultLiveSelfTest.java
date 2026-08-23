@@ -27,7 +27,7 @@ public final class PostgresV23FormulaResultLiveSelfTest {
                 settings.password()
         );
         int schemaVersion = new PostgresMigrator(ownerConnections).migrate();
-        require(schemaVersion == 24, "expected schema version 24, found " + schemaVersion);
+        require(schemaVersion == 25, "expected schema version 25, found " + schemaVersion);
 
         invokeLegacy("seedCanonicalFinding", new Class<?>[]{JdbcConnectionFactory.class}, ownerConnections);
         invokeV22("seedScopedEvidence", new Class<?>[]{JdbcConnectionFactory.class}, ownerConnections);
@@ -171,7 +171,7 @@ public final class PostgresV23FormulaResultLiveSelfTest {
                 "Formula materialization retries must not create duplicate rows");
 
         System.out.println(
-                "PostgresV23FormulaResultLiveSelfTest: PASS schema=24 decision_history=PASS "
+                "PostgresV23FormulaResultLiveSelfTest: PASS schema=25 decision_history=PASS "
                         + "methodology_catalog=PASS decision_materialization_replay=PASS "
                         + "materialization=PASS formula_result=PASS decision_v3_append_only=PASS "
                         + "idempotency=PASS replay=PASS append_only=PASS"
