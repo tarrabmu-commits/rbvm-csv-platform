@@ -324,6 +324,8 @@ public final class CsvFirstEnrichmentHttpHandler implements HttpHandler {
     }
 
     private static final class UploadTooLargeException extends Exception {
+        private static final long serialVersionUID = 1L;
+
         private UploadTooLargeException(String message) { super(message); }
     }
 }
