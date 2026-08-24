@@ -34,6 +34,17 @@ def run(*args):
     )
 
 
+def run_expect_failure(*args):
+    completed = subprocess.run(
+        [sys.executable, str(BUILDER), *map(str, args)],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    assert completed.returncode != 0, completed.stdout
+
+
 def manifest(path):
     result = {}
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -93,6 +104,7 @@ def main():
             gzip.compress(
                 json.dumps(
                     {
+                        "totalResults": 1,
                         "vulnerabilities": [
                             {
                                 "cve": {
@@ -102,7 +114,7 @@ def main():
                                     "vulnStatus": "Analyzed",
                                 }
                             }
-                        ]
+                        ],
                     }
                 ).encode("utf-8")
             )
@@ -111,16 +123,50 @@ def main():
             "NVD",
             nvd,
             root / "nvd-bundle",
-            "https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-modified.json.gz",
-            "modified-fixture",
+            "https://services.nvd.nist.gov/rest/json/cves/2.0",
+            "bootstrap-fixture",
         )
         assert nvd_rows[0][0:2] == ["CVE-2026-10001", "ACTIVE"]
+        assert nvd_rows[0][2] == "2026-08-23T12:00:00Z"
+        assert nvd_rows[0][3] == "2026-08-20T00:00:00Z"
+
+        partial_nvd = root / "partial-nvd.json"
+        partial_nvd.write_text(
+            json.dumps(
+                {
+                    "totalResults": 2,
+                    "vulnerabilities": [
+                        {
+                            "cve": {
+                                "id": "CVE-2026-10009",
+                                "published": "2026-08-20T00:00:00.000",
+                                "lastModified": "2026-08-23T12:00:00.000",
+                            }
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        run_expect_failure(
+            "NVD",
+            partial_nvd,
+            root / "partial-nvd-bundle",
+            "--mode",
+            "BOOTSTRAP",
+            "--source-uri",
+            "https://services.nvd.nist.gov/rest/json/cves/2.0",
+            "--source-version",
+            "partial",
+            "--observed-at",
+            "2026-08-24T05:00:00Z",
+        )
 
         epss = root / "epss.csv.gz"
         epss.write_bytes(
             gzip.compress(
                 (
-                    "#model_version:v5,score_date:2026-08-24\n"
+                    "#model_version:v2026.06.15,score_date:2026-08-24\n"
                     "cve,epss,percentile\n"
                     "CVE-2026-10001,0.420000,0.990000\n"
                 ).encode("utf-8")
@@ -135,12 +181,36 @@ def main():
             epss,
             root / "epss-bundle",
             "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz",
-            "v5-2026-08-24",
+            "v2026.06.15-2026-08-24",
             previous,
         )
         assert [row[1] for row in epss_rows] == ["ACTIVE", "TOMBSTONE"]
         assert epss_rows[1][0] == "CVE-2026-10002"
         assert epss_rows[1][5] == ""
+
+        bad_epss = root / "bad-epss.csv.gz"
+        bad_epss.write_bytes(
+            gzip.compress(
+                (
+                    "#model_version:v2026.06.15,score_date:2026-08-24\n"
+                    "cve,epss,percentile\n"
+                    "CVE-2026-10008,1.5,0.9\n"
+                ).encode("utf-8")
+            )
+        )
+        run_expect_failure(
+            "FIRST_EPSS",
+            bad_epss,
+            root / "bad-epss-bundle",
+            "--mode",
+            "BOOTSTRAP",
+            "--source-uri",
+            "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz",
+            "--source-version",
+            "invalid-probability",
+            "--observed-at",
+            "2026-08-24T05:00:00Z",
+        )
 
         cisa = root / "kev.json"
         cisa.write_text(
@@ -173,8 +243,9 @@ def main():
 
         cve_zip = root / "cvelist.zip"
         with zipfile.ZipFile(cve_zip, "w") as archive:
+            archive.writestr("cvelistV5-main/deltaLog.json", json.dumps({"ignored": True}))
             archive.writestr(
-                "cves/2026/10xxx/CVE-2026-10004.json",
+                "cvelistV5-main/cves/2026/10xxx/CVE-2026-10004.json",
                 json.dumps(
                     {
                         "dataType": "CVE_RECORD",
@@ -193,9 +264,10 @@ def main():
             "CVE_PROGRAM",
             cve_zip,
             root / "cve-bundle",
-            "https://github.com/CVEProject/cvelistV5/releases/download/cve_fixture/cvelistV5.zip",
-            "2026-08-24-midnight-fixture",
+            "https://github.com/CVEProject/cvelistV5/archive/refs/heads/main.zip",
+            "2026-08-24-main-fixture",
         )
+        assert len(cve_rows) == 1
         assert cve_rows[0][0:2] == ["CVE-2026-10004", "ACTIVE"]
 
         bad_cisa = root / "bad-kev.json"
@@ -203,28 +275,19 @@ def main():
             json.dumps({"count": 2, "vulnerabilities": [{"cveID": "CVE-2026-10005"}]}),
             encoding="utf-8",
         )
-        failed = subprocess.run(
-            [
-                sys.executable,
-                str(BUILDER),
-                "CISA_KEV",
-                str(bad_cisa),
-                str(root / "bad-bundle"),
-                "--mode",
-                "BOOTSTRAP",
-                "--source-uri",
-                "https://example.invalid/kev.json",
-                "--source-version",
-                "bad",
-                "--observed-at",
-                "2026-08-24T05:00:00Z",
-            ],
-            cwd=ROOT,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
+        run_expect_failure(
+            "CISA_KEV",
+            bad_cisa,
+            root / "bad-bundle",
+            "--mode",
+            "BOOTSTRAP",
+            "--source-uri",
+            "https://example.invalid/kev.json",
+            "--source-version",
+            "bad",
+            "--observed-at",
+            "2026-08-24T05:00:00Z",
         )
-        assert failed.returncode != 0
 
     print("Public intelligence sync bundle checks: PASS")
 
