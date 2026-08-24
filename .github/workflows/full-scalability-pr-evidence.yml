@@ -4,7 +4,7 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   progressive-evidence:
@@ -27,8 +27,6 @@ jobs:
           --health-retries 12
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          ref: ${{ github.head_ref }}
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
@@ -36,63 +34,7 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
-      - id: promote
-        name: Promote resource-exhaustion classification
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          runner = Path('scripts/run-full-scalability-benchmark.py')
-          source = runner.read_text()
-          intro_anchor = '        metrics = {\n            "status": "PASS" if completed.returncode == 0 else "FAILED",\n'
-          intro_replacement = '''        stderr_tail = tail(stderr_file) if completed.returncode != 0 else ""
-          status = "PASS"
-          if completed.returncode != 0:
-              resource_failure = completed.returncode in {137, -9}
-              marker = "SQLState="
-              if marker in stderr_tail:
-                  sqlstate = stderr_tail.split(marker, 1)[1][:5]
-                  resource_failure = resource_failure or sqlstate.startswith("53")
-              status = "RESOURCE_EXHAUSTION" if resource_failure else "FAILED"
-          metrics = {
-              "status": status,
-          '''.replace('          ', '        ')
-          tail_anchor = '        if completed.returncode != 0:\n            metrics["stderrTail"] = tail(stderr_file)\n'
-          tail_replacement = '        if stderr_tail:\n            metrics["stderrTail"] = stderr_tail\n'
-          if 'status = "RESOURCE_EXHAUSTION" if resource_failure else "FAILED"' not in source:
-              assert source.count(intro_anchor) == 1, 'run_stage intro marker drifted'
-              assert source.count(tail_anchor) == 1, 'run_stage stderr marker drifted'
-              source = source.replace(intro_anchor, intro_replacement, 1)
-              source = source.replace(tail_anchor, tail_replacement, 1)
-              runner.write_text(source)
-
-          verifier = Path('scripts/verify-full-scalability-benchmark.py')
-          source = verifier.read_text()
-          anchor = '    \'"MEASURED_BOTTLENECK_OR_FAILURE"\',\n'
-          addition = '    \'"RESOURCE_EXHAUSTION"\',\n'
-          if addition not in source:
-              assert source.count(anchor) == 1, 'benchmark verifier capacity marker drifted'
-              verifier.write_text(source.replace(anchor, anchor + addition, 1))
-          PY
-          git diff --check -- \
-            scripts/run-full-scalability-benchmark.py \
-            scripts/verify-full-scalability-benchmark.py
-          python3 scripts/verify-full-scalability-benchmark.py
-          if git diff --quiet -- \
-              scripts/run-full-scalability-benchmark.py \
-              scripts/verify-full-scalability-benchmark.py; then
-            echo 'promoted=false' >> "$GITHUB_OUTPUT"
-          else
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add scripts/run-full-scalability-benchmark.py scripts/verify-full-scalability-benchmark.py
-            git commit -m 'Classify benchmark resource exhaustion'
-            git push origin HEAD:${{ github.head_ref }}
-            echo 'promoted=true' >> "$GITHUB_OUTPUT"
-          fi
       - name: Fetch pinned pgJDBC
-        if: steps.promote.outputs.promoted == 'false'
         env:
           PGJDBC_VERSION: '42.7.13'
           PGJDBC_SHA256: '6e0e4cc2d8cae902084f8a2b18728b073a6fd9d1f87c9d8bff8f298c18185b93'
@@ -105,10 +47,8 @@ jobs:
           printf '%s  %s\n' "$PGJDBC_SHA256" "$driver" | sha256sum --check
           printf 'RBVM_POSTGRES_DRIVER_JAR=%s\n' "$driver" >> "$GITHUB_ENV"
       - name: Compile benchmark runtime
-        if: steps.promote.outputs.promoted == 'false'
         run: ./scripts/compile.sh --tests
       - name: Run production 200K resource-bottleneck evidence
-        if: steps.promote.outputs.promoted == 'false'
         env:
           RBVM_PROJECTION_BACKEND: POSTGRESQL
           RBVM_JDBC_URL: jdbc:postgresql://127.0.0.1:5432/rbvm?sslmode=disable
@@ -124,8 +64,21 @@ jobs:
             --stress-max-rows 200000 \
             --tier-timeout-seconds 900 \
             --output-directory build/full-scalability-pr-evidence
+      - name: Assert measured resource bottleneck
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          summary = json.loads(Path('build/full-scalability-pr-evidence/summary.json').read_text())
+          assert summary['capacityStatus'] == 'MEASURED_BOTTLENECK_OR_FAILURE'
+          assert summary['measuredBottleneck']['rows'] == 200000
+          assert summary['measuredBottleneck']['stage'] == 'canonicalProjectionManifest'
+          assert summary['measuredBottleneck']['type'] == 'RESOURCE_EXHAUSTION'
+          print('200K PostgreSQL resource bottleneck classification: PASS')
+          PY
       - name: Upload benchmark evidence
-        if: always() && steps.promote.outputs.promoted == 'false'
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: rbvm-full-scalability-pr-evidence-${{ github.sha }}
