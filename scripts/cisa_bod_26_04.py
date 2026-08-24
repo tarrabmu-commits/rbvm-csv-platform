@@ -81,6 +81,8 @@ _TABLE = {
     for in_kev, publicly_exposed, automatable, technical_impact, outcome in TABLE_ROWS
 }
 
+UNRESOLVED_TOKENS = frozenset({"unknown", "missing", "incomplete"})
+
 
 @dataclass(frozen=True)
 class ResolvedValue:
@@ -103,7 +105,7 @@ def _raw(value: object) -> str:
 
 def _resolve(value: object, semantic_id: str, aliases: dict[str, str], missing: str, invalid: str) -> ResolvedValue:
     raw = _raw(value)
-    if not raw:
+    if not raw or raw.casefold() in UNRESOLVED_TOKENS:
         return ResolvedValue("MISSING", None, raw, semantic_id, missing)
     canonical = aliases.get(raw.casefold())
     if canonical is None:
