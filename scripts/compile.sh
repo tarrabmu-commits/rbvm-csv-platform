@@ -40,6 +40,11 @@ cp "$ROOT_DIR/scripts/build-public-intelligence-sync-bundle.py" "$INTEL_TOOLS/"
 # fails closed if the source shape drifts.
 python3 "$ROOT_DIR/scripts/stabilize-frontend-runtime.py" "$MAIN_CLASSES/web/rbvm-ui.js"
 
+# Intelligence Sources is a native Frontend System V2 route. Integrate it into
+# the compiled core bundle with exact fail-closed anchors instead of shipping
+# another runtime overlay or MutationObserver-based page replacement.
+python3 "$ROOT_DIR/scripts/integrate-public-intelligence-sources-ui.py" "$MAIN_CLASSES/web/rbvm-ui.js"
+
 # Frontend System V2 remains one served dependency-free bundle. Keep the
 # CSV-first workflow modules isolated in source, then concatenate them
 # deterministically into the runtime rbvm-ui.js artifact.
