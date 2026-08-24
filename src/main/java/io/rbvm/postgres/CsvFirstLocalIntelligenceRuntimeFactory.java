@@ -24,6 +24,9 @@ public final class CsvFirstLocalIntelligenceRuntimeFactory {
         PostgresPublicIntelligenceStore store = new PostgresPublicIntelligenceStore(connections, false);
         PostgresPublicIntelligenceSyncJobStore status =
                 new PostgresPublicIntelligenceSyncJobStore(connections, false);
-        return Optional.of(new PostgresCsvFirstLocalIntelligenceSnapshotExporter(store, status));
+        CisaKevCatalogValidationReader cisaValidation =
+                new PostgresCisaKevCatalogValidationReader(connections);
+        return Optional.of(new PostgresCsvFirstLocalIntelligenceSnapshotExporter(
+                store, status, cisaValidation));
     }
 }
