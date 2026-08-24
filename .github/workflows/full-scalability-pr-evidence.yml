@@ -46,21 +46,21 @@ jobs:
             --output "$driver"
           printf '%s  %s\n' "$PGJDBC_SHA256" "$driver" | sha256sum --check
           printf 'RBVM_POSTGRES_DRIVER_JAR=%s\n' "$driver" >> "$GITHUB_ENV"
-      - name: Disable parent mutation flush for attribution only
+      - name: Disable case recomputation for attribution only
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
           path = Path('src/main/java/io/rbvm/postgres/PostgresCanonicalProjection.java')
           source = path.read_text()
-          old = '                accumulator.parentMutations.flush(connection);\n'
-          assert source.count(old) == 1, 'parent mutation flush marker drifted'
+          old = '                recomputeCases(connection, tenantId, sourceProfileId, now);\n'
+          assert source.count(old) == 1, 'case recomputation marker drifted'
           path.write_text(source.replace(old, '', 1))
           PY
           git diff --check -- src/main/java/io/rbvm/postgres/PostgresCanonicalProjection.java
       - name: Compile benchmark runtime
         run: ./scripts/compile.sh --tests
-      - name: Run 10K parent-flush attribution A/B
+      - name: Run 10K case-recompute attribution A/B
         env:
           RBVM_PROJECTION_BACKEND: POSTGRESQL
           RBVM_JDBC_URL: jdbc:postgresql://127.0.0.1:5432/rbvm?sslmode=disable
