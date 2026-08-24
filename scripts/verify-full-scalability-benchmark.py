@@ -2,14 +2,21 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-runner = (ROOT / "scripts/run-full-scalability-benchmark.py").read_text(encoding="utf-8")
-isolated_runner = (ROOT / "scripts/run-full-scalability-benchmark-isolated.py").read_text(encoding="utf-8")
+runner_path = ROOT / "scripts/run-full-scalability-benchmark.py"
+isolated_runner_path = ROOT / "scripts/run-full-scalability-benchmark-isolated.py"
+runner = runner_path.read_text(encoding="utf-8")
+isolated_runner = isolated_runner_path.read_text(encoding="utf-8")
 bridge = (ROOT / "src/test/java/io/rbvm/postgres/PostgresFullScalabilityBenchmarkBridge.java").read_text(encoding="utf-8")
 probe = (ROOT / "src/test/java/io/rbvm/postgres/PostgresFullScalabilityLocalExportProbe.java").read_text(encoding="utf-8")
 projection = (ROOT / "src/main/java/io/rbvm/postgres/PostgresCanonicalProjection.java").read_text(encoding="utf-8")
 doc = (ROOT / "docs/FULL_SCALABILITY_BENCHMARK_V1.md").read_text(encoding="utf-8")
 full_workflow = (ROOT / ".github/workflows/full-scalability-benchmark.yml").read_text(encoding="utf-8")
 postgres_workflow = (ROOT / ".github/workflows/postgres-integration.yml").read_text(encoding="utf-8")
+
+# Structural token checks are not a substitute for Python syntax validation. Compile both
+# benchmark entry points without executing them so malformed promotion edits fail immediately.
+compile(runner, str(runner_path), "exec")
+compile(isolated_runner, str(isolated_runner_path), "exec")
 
 for token in [
     "RBVM_FULL_SCALABILITY_BENCHMARK_V1",
@@ -18,6 +25,9 @@ for token in [
     '"CAPACITY_NOT_REACHED_AT_RUN_SAFETY_CEILING"',
     '"MEASURED_BOTTLENECK_OR_FAILURE"',
     '"RESOURCE_EXHAUSTION"',
+    'marker = "SQLState="',
+    'sqlstate.startswith("53")',
+    'completed.returncode in {137, -9}',
     '"--stress"',
     '"--stress-max-rows"',
     '"--unique-cve-ratio"',
