@@ -34,7 +34,7 @@ final class CsvFirstLocalEnrichmentExecutor {
     }
 
     record Result(boolean success, String failureCode, String detail, boolean timedOut, boolean interrupted) {
-        static Result success() {
+        static Result completed() {
             return new Result(true, null, null, false, false);
         }
 
@@ -165,7 +165,7 @@ final class CsvFirstLocalEnrichmentExecutor {
 
             Files.deleteIfExists(snapshotLog);
             Files.deleteIfExists(enrichmentLog);
-            return Result.success();
+            return Result.completed();
         } catch (IOException exception) {
             return Result.failed("LOCAL_ENRICHMENT_IO_FAILED", diagnostic(exception, "local enrichment I/O failed"));
         }
