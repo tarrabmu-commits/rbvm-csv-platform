@@ -51,6 +51,16 @@ if navigate_source not in transform or popstate_source not in transform:
 if "SPA navigation cache release" not in transform or "history navigation cache release" not in transform:
     raise AssertionError('cache-release transforms must be independently fail-closed')
 
+for token in [
+    "managed asset table pagination",
+    "filtered.slice(assetPage*PAGE_SIZE,assetPage*PAGE_SIZE+PAGE_SIZE)",
+    "pageLabel.textContent=`${filtered.length} matching · page ${assetPage+1} of ${pages}`",
+    "previousPage.addEventListener('click'",
+    "nextPage.addEventListener('click'",
+]:
+    if token not in transform:
+        raise AssertionError(f'managed asset DOM pagination guard missing: {token}')
+
 for invalid_token in ['var(--surface-2)', 'var(--surface-3)', 'var(--muted)', 'var(--accent)']:
     if invalid_token in css:
         raise AssertionError(f'dashboard uses nonexistent theme token: {invalid_token}')
@@ -61,4 +71,4 @@ for required_token in ['var(--surface-subtle)', 'var(--text-muted)', 'var(--bran
 if "One dashboard renderer in the core SPA" not in doc:
     raise AssertionError("stabilization documentation is incomplete")
 
-print("RBVM stabilization V1 bounded-dashboard + navigation cache-release checks: PASS")
+print("RBVM stabilization V1 bounded-dashboard/assets + navigation cache-release checks: PASS")
