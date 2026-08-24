@@ -24,6 +24,16 @@ if [[ -d "$ROOT_DIR/src/main/resources" ]]; then
   cp -R "$ROOT_DIR/src/main/resources/." "$MAIN_CLASSES/"
 fi
 
+# Package the standard-library-only public-intelligence source tools as JAR resources.
+# Product runtime extracts fixed copies into an owner-only job directory and invokes them
+# without a shell. This keeps source acquisition/bundle parsing identical to the verified
+# offline contracts while the Java coordinator owns lifecycle and PostgreSQL admission.
+INTEL_TOOLS="$MAIN_CLASSES/intelligence-tools/scripts"
+mkdir -p "$INTEL_TOOLS"
+cp "$ROOT_DIR/scripts/fetch-local-public-intelligence-source.py" "$INTEL_TOOLS/"
+cp "$ROOT_DIR/scripts/build-public-intelligence-bundle-from-acquisition.py" "$INTEL_TOOLS/"
+cp "$ROOT_DIR/scripts/build-public-intelligence-sync-bundle.py" "$INTEL_TOOLS/"
+
 # Transitional stabilization: the legacy Overview renderer used allCases(),
 # which crawled up to 60 pages before the new Dashboard could take ownership.
 # Rewrite only that exact runtime call to a bounded first page; the transform
