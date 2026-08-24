@@ -17,6 +17,7 @@ for token in [
     '"tenThousandIsPlatformLimit": False',
     '"CAPACITY_NOT_REACHED_AT_RUN_SAFETY_CEILING"',
     '"MEASURED_BOTTLENECK_OR_FAILURE"',
+    '"RESOURCE_EXHAUSTION"',
     '"--stress"',
     '"--stress-max-rows"',
     '"--unique-cve-ratio"',

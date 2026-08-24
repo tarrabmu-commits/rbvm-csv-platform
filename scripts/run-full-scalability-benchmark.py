@@ -243,14 +243,23 @@ def run_stage(name, command, tier_dir, timeout, env=None):
                 check=False,
             )
         wall = time.perf_counter() - started
-        metrics = {
-            "status": "PASS" if completed.returncode == 0 else "FAILED",
+        stderr_tail = tail(stderr_file) if completed.returncode != 0 else ""
+status = "PASS"
+if completed.returncode != 0:
+    resource_failure = completed.returncode in {137, -9}
+    marker = "SQLState="
+    if marker in stderr_tail:
+        sqlstate = stderr_tail.split(marker, 1)[1][:5]
+        resource_failure = resource_failure or sqlstate.startswith("53")
+    status = "RESOURCE_EXHAUSTION" if resource_failure else "FAILED"
+metrics = {
+    "status": status,
             "returnCode": completed.returncode,
             "wallSeconds": round(wall, 3),
             **parse_time_v(time_file),
         }
-        if completed.returncode != 0:
-            metrics["stderrTail"] = tail(stderr_file)
+        if stderr_tail:
+            metrics["stderrTail"] = stderr_tail
         return metrics
     except subprocess.TimeoutExpired:
         wall = time.perf_counter() - started
