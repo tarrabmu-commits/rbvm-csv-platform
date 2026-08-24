@@ -35,7 +35,7 @@ The bootstrap does not assume that all years are missing. Before it starts, Post
 
 `https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-YYYY.json.gz`
 
-Only `COMPLETE` annual runs count as covered. Failed/staging annual runs do not count, and the `modified` source never counts as annual coverage.
+Only runs with provider `NVD`, sync mode `BOOTSTRAP`, status `COMPLETE`, and an exact annual source URI count as covered. Failed/staging annual runs do not count, an annual-looking run admitted with the wrong sync mode does not count, and the `modified` source never counts as annual coverage.
 
 Therefore a restart resumes from the first missing annual source instead of replaying already-complete years. If one annual job reaches V31 `FAILED`, the sequence stops immediately. It does not skip the failed year and it does not run the modified tail. A later startup derives coverage again from V30 and resumes from what is still missing.
 
