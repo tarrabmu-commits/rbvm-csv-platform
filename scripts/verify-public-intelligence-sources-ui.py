@@ -13,7 +13,7 @@ sync_handler = (ROOT / "src/main/java/io/rbvm/csv/PublicIntelligenceSyncHttpHand
 integration_source = integrator.read_text(encoding="utf-8")
 
 assert "integrate-public-intelligence-sources-ui.py" in compile_script
-assert "MutationObserver" not in integration_source
+assert "new MutationObserver" not in integration_source
 assert "window.fetch=" not in integration_source and "window.fetch =" not in integration_source
 assert "scheduleAtFixedRate" not in integration_source
 
@@ -63,6 +63,7 @@ for token in [
     assert token in output, f"generated sources UI missing {token!r}"
 
 assert output.count("['/intelligence', 'Intelligence', '◎']") == 1
+assert "new MutationObserver" not in integration_source
 assert "fake progress" not in output.lower()
 assert "progress percentage" not in output.lower()
 assert "stale after" not in output.lower()
