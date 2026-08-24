@@ -17,7 +17,7 @@ import java.util.Locale;
 import java.util.Map;
 
 public final class PostgresMigratorSelfTest {
-    private static final int LATEST_SCHEMA_VERSION = 30;
+    private static final int LATEST_SCHEMA_VERSION = 31;
 
     private PostgresMigratorSelfTest() {
     }
@@ -102,6 +102,10 @@ public final class PostgresMigratorSelfTest {
                 sql.contains("CREATE TABLE rbvm.public_intelligence_sync_run"));
         assert database.executedSql.stream().anyMatch(sql ->
                 sql.contains("CREATE VIEW rbvm.current_public_intelligence_record"));
+        assert database.executedSql.stream().anyMatch(sql ->
+                sql.contains("CREATE TABLE rbvm.public_intelligence_sync_job"));
+        assert database.executedSql.stream().anyMatch(sql ->
+                sql.contains("CREATE VIEW rbvm.public_intelligence_provider_status_v1"));
 
         long observationCreates = count(database, "CREATE TABLE rbvm.observation (");
         long operationalFindingCreates = count(database, "CREATE VIEW rbvm.operational_finding");
@@ -162,6 +166,14 @@ public final class PostgresMigratorSelfTest {
                 database,
                 "CREATE VIEW rbvm.current_public_intelligence_record"
         );
+        long publicIntelligenceJobCreates = count(
+                database,
+                "CREATE TABLE rbvm.public_intelligence_sync_job"
+        );
+        long publicIntelligenceProviderStatusCreates = count(
+                database,
+                "CREATE VIEW rbvm.public_intelligence_provider_status_v1"
+        );
 
         assert migrator.migrate() == LATEST_SCHEMA_VERSION;
         assert database.commits == LATEST_SCHEMA_VERSION : "replay must not reapply migrations";
@@ -210,6 +222,10 @@ public final class PostgresMigratorSelfTest {
                 == publicIntelligenceSyncCreates;
         assert count(database, "CREATE VIEW rbvm.current_public_intelligence_record")
                 == currentPublicIntelligenceCreates;
+        assert count(database, "CREATE TABLE rbvm.public_intelligence_sync_job")
+                == publicIntelligenceJobCreates;
+        assert count(database, "CREATE VIEW rbvm.public_intelligence_provider_status_v1")
+                == publicIntelligenceProviderStatusCreates;
         assert database.advisoryLocks == 2;
         assert database.advisoryUnlocks == 2;
     }

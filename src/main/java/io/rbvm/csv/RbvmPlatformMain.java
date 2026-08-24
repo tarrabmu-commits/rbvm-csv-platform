@@ -15,6 +15,9 @@ import io.rbvm.postgres.CisaKevImporter;
 import io.rbvm.postgres.DerivedRiskResultRuntimeFactory;
 import io.rbvm.postgres.EpssImporter;
 import io.rbvm.postgres.FormulaResultRuntimeFactory;
+import io.rbvm.postgres.PostgresPublicIntelligenceSyncJobStore;
+import io.rbvm.postgres.PublicIntelligenceStatusReader;
+import io.rbvm.postgres.PublicIntelligenceSyncRuntimeFactory;
 import io.rbvm.postgres.RiskMethodSelectionPolicyRuntimeFactory;
 import io.rbvm.security.ApiKeyAuthenticator;
 import io.rbvm.security.RequestRateLimiter;
@@ -61,6 +64,8 @@ public final class RbvmPlatformMain {
                 RiskMethodSelectionPolicyRuntimeFactory.fromEnvironment(environment);
         Optional<ActiveRiskMethodExecutionRuntimeFactory.Runtime> activeRiskMethodExecutionRuntime =
                 ActiveRiskMethodExecutionRuntimeFactory.fromEnvironment(environment);
+        Optional<PostgresPublicIntelligenceSyncJobStore> publicIntelligenceSyncRuntime =
+                PublicIntelligenceSyncRuntimeFactory.fromEnvironment(environment);
         ApiKeyAuthenticator authenticator = ApiKeyAuthenticator.fromEnvironment(environment);
         RequestRateLimiter rateLimiter = RequestRateLimiter.fromEnvironment(environment);
         CanonicalProjection canonicalProjection = runtime.canonicalProjection();
@@ -100,6 +105,7 @@ public final class RbvmPlatformMain {
                 canonicalMvpPriority,
                 runtime.epssImporter(),
                 runtime.cisaKevImporter(),
+                publicIntelligenceSyncRuntime,
                 authenticator
         );
 
@@ -112,9 +118,7 @@ public final class RbvmPlatformMain {
         ));
         derivedRiskResultRuntime.ifPresent(context -> application.enableDerivedRiskResultApi(
                 new DerivedRiskResultApi(
-                        context.results(),
-                        context.replayVerifier(),
-                        context.materializer()
+                        context.results(), context.replayVerifier(), context.materializer()
                 )
         ));
         riskMethodSelectionPolicyRuntime.ifPresent(context ->
@@ -145,6 +149,8 @@ public final class RbvmPlatformMain {
                 + application.baseUri().resolve("/api/v1/csv-first-canonical-evidence/{runId}"));
         System.out.println("Canonical import Finding manifest API: "
                 + application.baseUri().resolve("/api/v1/canonical-imports/{importId}/findings.csv"));
+        System.out.println("Public intelligence status API: "
+                + application.baseUri().resolve("/api/v1/intelligence/status"));
         System.out.println("Managed Assets operator UI: " + application.baseUri().resolve("/assets"));
         System.out.println("Data directory: " + dataDirectory.toAbsolutePath().normalize());
         System.out.println("Canonical projection: " + canonicalProjection.health().get("backend"));
@@ -160,6 +166,7 @@ public final class RbvmPlatformMain {
             Optional<CanonicalMvpPriorityStore> canonicalMvpPriority,
             Optional<EpssImporter> epssImporter,
             Optional<CisaKevImporter> cisaKevImporter,
+            Optional<? extends PublicIntelligenceStatusReader> publicIntelligenceStatus,
             ApiKeyAuthenticator authenticator
     ) throws ReflectiveOperationException {
         // Transitional registration seam: CsvPlatformServer predates extension
@@ -201,6 +208,10 @@ public final class RbvmPlatformMain {
         server.createContext(
                 "/api/v1/canonical-imports",
                 new CanonicalImportFindingHttpHandler(canonicalImportFindings, authenticator)
+        );
+        server.createContext(
+                PublicIntelligenceStatusHttpHandler.ROOT,
+                new PublicIntelligenceStatusHttpHandler(publicIntelligenceStatus, authenticator)
         );
     }
 

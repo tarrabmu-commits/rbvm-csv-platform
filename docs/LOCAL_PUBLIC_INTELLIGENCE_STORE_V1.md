@@ -17,9 +17,9 @@ Public source data is shared once for the platform. Customer context such as Ass
 
 ## V30 boundary
 
-V30 establishes the persistence and local-lookup contract. CSV enrichment is not switched to the local store by V30. Provider download/bootstrap adapters, incremental synchronization jobs, status HTTP APIs, the Update Intelligence Now UI, scheduled refresh, and CSV local-lookup cutover are follow-up layers built on this contract.
+V30 establishes the persistence and local-lookup contract. CSV enrichment is not switched to the local store by V30. Official-source acquisition, end-to-end synchronization lifecycle/status, operator-triggered refresh, scheduled refresh, UI, and CSV local-lookup cutover are layered on top without changing V30 provider-record semantics.
 
-This separation makes the persistence semantics testable before network behavior changes.
+This separation makes persistence, acquisition, orchestration, and product transport independently testable.
 
 ## Sync runs
 
@@ -63,12 +63,17 @@ A record SHA-256 binds CVE, record state, source timestamps, source JSON text, a
 
 The order is intentional. Filtering ACTIVE records before selecting the latest provider statement would allow an older record to reappear after a newer tombstone.
 
-`rbvm.public_intelligence_source_status` exposes both the latest synchronization attempt and the latest successful synchronization independently for all four supported providers. A future product status page can therefore distinguish:
+`rbvm.public_intelligence_source_status` exposes V30 source-run state and the latest successful source independently for all four supported providers.
 
-- never synchronized;
-- currently staging;
-- latest attempt failed while older successful data remains usable;
-- current successful source version and record count.
+V31 adds `rbvm.public_intelligence_sync_job` and `rbvm.public_intelligence_provider_status_v1`. The V31 job begins before network acquisition, so HTTPS/metadata/archive/bundle failures that occur before a V30 run exists are durable. The unified V31 view exposes the latest end-to-end job and the last successful V30 source independently.
+
+A product status page can therefore distinguish:
+
+- never attempted;
+- currently acquiring/building/admitting;
+- latest end-to-end attempt failed before or during V30 admission;
+- an older successful local source remains usable;
+- current successful source version, SHA, completion time, and record count.
 
 ## Local lookup
 
@@ -92,28 +97,33 @@ A future recalculation must create a new explicit analysis/materialization again
 
 ## Failure behavior
 
-The sync contract is fail-closed:
+The combined V31/V30 pipeline is fail-closed:
 
-1. provider bytes are downloaded and validated by the future adapter;
-2. a STAGING run is opened for the exact validated source identity;
-3. immutable records are appended;
-4. the record count is verified;
-5. only then does the run become COMPLETE.
+1. a V31 end-to-end job starts in `RUNNING / ACQUIRING` before any provider request;
+2. official provider bytes are acquired and validated by `PUBLIC_INTELLIGENCE_SOURCE_ACQUISITION_V1`;
+3. `PUBLIC_INTELLIGENCE_SYNC_BUNDLE_V1` is built and fully validated;
+4. only then is a V30 STAGING source run opened/replayed for the exact source identity;
+5. immutable records are appended and the exact record count is verified;
+6. the V30 run becomes COMPLETE;
+7. only after the linked V30 run is COMPLETE may the V31 job become COMPLETE.
 
-If any provider download, validation, parse, or import stage fails, the run becomes FAILED. Its records remain historical but are excluded from current lookup. The last successful complete provider state stays usable.
+If acquisition or bundle construction fails before V30 admission, the V31 job becomes FAILED without inventing a V30 run. If V30 admission fails after a source run exists, V30 remains STAGING/FAILED according to its contract and the V31 job becomes FAILED. In every case, the last successful COMPLETE provider state stays usable.
 
-## Next implementation layers
+## Implemented layers above V30
 
-The source-format/admission layer is defined by `PUBLIC_INTELLIGENCE_SYNC_BUNDLE_V1`: downloaded official NVD, FIRST EPSS, CISA KEV, and CVE Program payloads are converted into a SHA-bound provider-neutral bundle, fully validated, and admitted to V30 in bounded batches before a run can become COMPLETE.
+`PUBLIC_INTELLIGENCE_SYNC_BUNDLE_V1` provides the deterministic provider-format-to-V30 admission boundary.
 
-The remaining work on top of V30 is:
+`PUBLIC_INTELLIGENCE_SOURCE_ACQUISITION_V1` provides hardened official-source acquisition for NVD, FIRST EPSS, CISA KEV, and CVE Program with exact source provenance, size bounds, provider-specific validation, and credential/redirect boundaries.
 
-1. hardened official network acquisition/bootstrap orchestration for NVD, FIRST EPSS, CISA KEV, and CVE Program;
-2. incremental synchronization plus provider-level persisted status;
-3. background synchronization runtime with `GET /api/v1/intelligence/status` and Operator `POST /api/v1/intelligence/sync`;
-4. Intelligence Sources UI with manual **Update Intelligence Now**;
-5. daily server-side scheduling, stale-source policy, recovery, and observability;
-6. CSV enrichment cutover from live per-upload provider calls to `lookupCurrent(...)`;
-7. full scalability/capacity benchmarking at 1K, 5K, 10K, 25K, 50K, 100K+ Findings plus progressive stress testing to the measured bottleneck. 10K is a regression checkpoint, not a platform limit.
+`PUBLIC_INTELLIGENCE_SYNC_JOB_V1` (V31) provides the durable end-to-end job lifecycle plus `GET /api/v1/intelligence/status`, including failures that occur before V30 admission.
+
+## Remaining implementation layers
+
+1. background/manual orchestration that automatically executes acquisition → bundle → V30 admission while advancing/failing the V31 job;
+2. Operator `POST /api/v1/intelligence/sync` with explicit provider/mode semantics;
+3. Intelligence Sources UI with manual **Update Intelligence Now**;
+4. daily server-side scheduling, stale-source policy, recovery, and observability;
+5. CSV enrichment cutover from live per-upload provider calls to `lookupCurrent(...)`;
+6. full scalability/capacity benchmarking at 1K, 5K, 10K, 25K, 50K, 100K+ Findings plus progressive stress testing to the measured bottleneck. 10K is a regression checkpoint, not a platform limit.
 
 No change in this contract alters `RBVM_MVP_PRIORITY_POLICY_V1`, its frozen SHA, CVSS/EPSS/KEV semantics, or the intentionally `NON_COMPUTABLE` Organizational Risk state.

@@ -106,6 +106,7 @@ public final class PlatformSelfTest {
         CsvResolvedActiveRiskMethodHttpSelfTest.main(args);
         CsvActiveRiskMethodExecutionHttpSelfTest.main(args);
         CsvDecisionInputHttpSelfTest.main(args);
+        PublicIntelligenceStatusHttpSelfTest.main(args);
         CanonicalProjectionSelfTest.main(args);
         PostgresFoundationSelfTest.main(args);
         PostgresManagedAssetRegistrySelfTest.main(args);

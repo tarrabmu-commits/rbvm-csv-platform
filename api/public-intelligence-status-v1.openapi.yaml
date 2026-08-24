@@ -1,0 +1,170 @@
+openapi: 3.1.2
+info:
+  title: RBVM Public Intelligence Status API V1
+  version: 1.0.0
+  description: >-
+    Read-only operational status for the global local mirror of NVD, FIRST EPSS,
+    CISA KEV, and CVE Program public intelligence. The latest end-to-end job and
+    the last successful V30 source run are reported independently so a failed
+    refresh never hides the last usable local source state.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/intelligence/status:
+    get:
+      operationId: getPublicIntelligenceStatus
+      summary: Read all public-intelligence provider synchronization status
+      responses:
+        '200':
+          description: Four-provider operational status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicIntelligenceStatusResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Sha256Nullable:
+      type: [string, 'null']
+      pattern: '^[a-f0-9]{64}$'
+    UuidNullable:
+      type: [string, 'null']
+      format: uuid
+    InstantNullable:
+      type: [string, 'null']
+      format: date-time
+    StringNullable:
+      type: [string, 'null']
+    PublicIntelligenceStatusResponse:
+      type: object
+      additionalProperties: false
+      required: [contractId, generatedAt, providers]
+      properties:
+        contractId:
+          type: string
+          enum: [PUBLIC_INTELLIGENCE_STATUS_HTTP_V1]
+        generatedAt:
+          type: string
+          format: date-time
+        providers:
+          type: array
+          minItems: 4
+          maxItems: 4
+          items:
+            $ref: '#/components/schemas/ProviderStatus'
+    ProviderStatus:
+      type: object
+      additionalProperties: false
+      required: [provider, neverAttempted, neverSucceeded, latestJob, lastSuccess]
+      properties:
+        provider:
+          type: string
+          enum: [NVD, FIRST_EPSS, CISA_KEV, CVE_PROGRAM]
+        neverAttempted:
+          type: boolean
+        neverSucceeded:
+          type: boolean
+        latestJob:
+          $ref: '#/components/schemas/LatestJob'
+        lastSuccess:
+          $ref: '#/components/schemas/LastSuccess'
+    LatestJob:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - triggerSource
+        - status
+        - stage
+        - startedAt
+        - updatedAt
+        - completedAt
+        - sourceUri
+        - sourceVersion
+        - sourceSha256
+        - syncRunId
+        - errorCode
+        - errorDetail
+      properties:
+        id:
+          $ref: '#/components/schemas/UuidNullable'
+        triggerSource:
+          type: [string, 'null']
+          enum: [MANUAL, SCHEDULED, STARTUP, SYSTEM, null]
+        status:
+          type: [string, 'null']
+          enum: [RUNNING, COMPLETE, FAILED, null]
+        stage:
+          type: [string, 'null']
+          enum: [ACQUIRING, BUILDING, ADMITTING, COMPLETE, FAILED, null]
+        startedAt:
+          $ref: '#/components/schemas/InstantNullable'
+        updatedAt:
+          $ref: '#/components/schemas/InstantNullable'
+        completedAt:
+          $ref: '#/components/schemas/InstantNullable'
+        sourceUri:
+          type: [string, 'null']
+          format: uri
+        sourceVersion:
+          $ref: '#/components/schemas/StringNullable'
+        sourceSha256:
+          $ref: '#/components/schemas/Sha256Nullable'
+        syncRunId:
+          $ref: '#/components/schemas/UuidNullable'
+        errorCode:
+          $ref: '#/components/schemas/StringNullable'
+        errorDetail:
+          $ref: '#/components/schemas/StringNullable'
+    LastSuccess:
+      type: object
+      additionalProperties: false
+      required:
+        - syncRunId
+        - syncMode
+        - sourceUri
+        - sourceVersion
+        - sourceSha256
+        - sourcePublishedAt
+        - observedAt
+        - completedAt
+        - recordCount
+      properties:
+        syncRunId:
+          $ref: '#/components/schemas/UuidNullable'
+        syncMode:
+          type: [string, 'null']
+          enum: [BOOTSTRAP, INCREMENTAL, null]
+        sourceUri:
+          type: [string, 'null']
+          format: uri
+        sourceVersion:
+          $ref: '#/components/schemas/StringNullable'
+        sourceSha256:
+          $ref: '#/components/schemas/Sha256Nullable'
+        sourcePublishedAt:
+          $ref: '#/components/schemas/InstantNullable'
+        observedAt:
+          $ref: '#/components/schemas/InstantNullable'
+        completedAt:
+          $ref: '#/components/schemas/InstantNullable'
+        recordCount:
+          type: [integer, 'null']
+          minimum: 0
+  responses:
+    Problem:
+      description: API problem response
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
