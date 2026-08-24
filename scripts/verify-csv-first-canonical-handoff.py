@@ -42,9 +42,12 @@ for forbidden in ["POST", "DELETE", "PUT", "riskScore", "priorityScore"]:
 
 for token in [
     "rbvm.import_observation",
-    "rbvm.observation",
     "rbvm.exposure_observation",
     "rbvm.exposure",
+    "JOIN LATERAL",
+    "link.observation_id = io.observation_id",
+    "x.id = eo.exposure_id",
+    "OFFSET 0",
     "io.import_id = ?",
     "e.id AS finding_id",
     "MIN(io.source_row_number)",
