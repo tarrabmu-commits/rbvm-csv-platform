@@ -22,6 +22,7 @@ public final class PostgresPublicIntelligenceNvdBootstrapStateReader
             SELECT source_uri
             FROM rbvm.public_intelligence_sync_run
             WHERE provider = 'NVD'
+              AND sync_mode = 'BOOTSTRAP'
               AND status = 'COMPLETE'
             ORDER BY completed_at, id
             """;
