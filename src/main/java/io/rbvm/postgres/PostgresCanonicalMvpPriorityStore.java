@@ -237,10 +237,13 @@ public final class PostgresCanonicalMvpPriorityStore implements CanonicalMvpPrio
             statement.setBigDecimal(21, row.epssProbability());
             statement.setBigDecimal(22, row.contextualCvssV4());
             Long[] sourceRows = candidate.sourceRows().toArray(Long[]::new);
-            try (Array array = connection.createArrayOf("int8", sourceRows)) {
+            Array array = connection.createArrayOf("int8", sourceRows);
+            try {
                 statement.setArray(23, array);
                 statement.setTimestamp(24, Timestamp.from(materializedAt));
                 return statement.executeUpdate() == 1;
+            } finally {
+                array.free();
             }
         }
     }
