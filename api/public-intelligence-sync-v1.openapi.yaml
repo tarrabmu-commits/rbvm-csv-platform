@@ -1,0 +1,103 @@
+openapi: 3.1.2
+info:
+  title: RBVM Public Intelligence Sync API V1
+  version: 1.0.0
+  description: >-
+    Operator-only asynchronous trigger for one exact public-intelligence provider source.
+    Each accepted request creates one persisted V31 sync job and delegates acquisition,
+    bundle construction, and V30 source admission to the server-side orchestrator. The
+    endpoint does not calculate risk, priority, treatment, SLA, or customer evidence.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/intelligence/sync/{provider}:
+    post:
+      operationId: triggerPublicIntelligenceSync
+      summary: Trigger one provider synchronization job
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [NVD, FIRST_EPSS, CISA_KEV, CVE_PROGRAM]
+        - name: feed
+          in: query
+          required: false
+          description: >-
+            NVD only. Omit to use modified. A four-digit year requests one exact annual
+            JSON 2.0 feed. Non-NVD providers reject this parameter.
+          schema:
+            type: string
+            pattern: '^(modified|20[0-9]{2})$'
+      requestBody:
+        required: false
+        content: {}
+      responses:
+        '202':
+          description: Synchronization job accepted
+          headers:
+            Location:
+              description: Read-only provider status endpoint
+              schema:
+                type: string
+                enum: [/api/v1/intelligence/status]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncAccepted'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '405':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    SyncAccepted:
+      type: object
+      additionalProperties: false
+      required: [contractId, jobId, provider, nvdFeed, status, stage, startedAt, statusUri]
+      properties:
+        contractId:
+          type: string
+          enum: [PUBLIC_INTELLIGENCE_SYNC_HTTP_V1]
+        jobId:
+          type: string
+          format: uuid
+        provider:
+          type: string
+          enum: [NVD, FIRST_EPSS, CISA_KEV, CVE_PROGRAM]
+        nvdFeed:
+          type: [string, 'null']
+          pattern: '^(modified|20[0-9]{2})$'
+        status:
+          type: string
+          enum: [RUNNING]
+        stage:
+          type: string
+          enum: [ACQUIRING]
+        startedAt:
+          type: string
+          format: date-time
+        statusUri:
+          type: string
+          enum: [/api/v1/intelligence/status]
+  responses:
+    Problem:
+      description: API problem response
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true

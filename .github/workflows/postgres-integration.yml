@@ -68,3 +68,4 @@ jobs:
           java -ea -cp "$classpath" io.rbvm.postgres.PostgresV30PublicIntelligenceStoreLiveSelfTest
           java -ea -cp "$classpath" io.rbvm.postgres.PostgresPublicIntelligenceSyncBundleLiveSelfTest
           java -ea -cp "$classpath" io.rbvm.postgres.PostgresV31PublicIntelligenceSyncJobLiveSelfTest
+          java -ea -cp "$classpath" io.rbvm.postgres.PostgresPublicIntelligenceSyncOrchestratorLiveSelfTest
