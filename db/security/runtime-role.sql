@@ -19,7 +19,8 @@ GRANT SELECT, INSERT, UPDATE ON
     rbvm.vulnerability_case,
     rbvm.exposure,
     rbvm.catalog_state,
-    rbvm.public_intelligence_sync_run
+    rbvm.public_intelligence_sync_run,
+    rbvm.public_intelligence_sync_job
 TO rbvm_runtime;
 
 GRANT SELECT, INSERT ON
@@ -105,7 +106,8 @@ GRANT SELECT ON
     rbvm.active_risk_method_selection_policy,
     rbvm.latest_public_intelligence_record,
     rbvm.current_public_intelligence_record,
-    rbvm.public_intelligence_source_status
+    rbvm.public_intelligence_source_status,
+    rbvm.public_intelligence_provider_status_v1
 TO rbvm_runtime;
 
 GRANT USAGE, SELECT ON SEQUENCE rbvm.case_audit_event_database_sequence TO rbvm_runtime;
@@ -142,3 +144,4 @@ REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.active_risk_method_execution_binding FRO
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.finding_mvp_priority_result FROM rbvm_runtime;
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.public_intelligence_record FROM rbvm_runtime;
 REVOKE DELETE, TRUNCATE ON rbvm.public_intelligence_sync_run FROM rbvm_runtime;
+REVOKE DELETE, TRUNCATE ON rbvm.public_intelligence_sync_job FROM rbvm_runtime;
