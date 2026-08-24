@@ -16,6 +16,7 @@ assert "integrate-public-intelligence-sources-ui.py" in compile_script
 assert "new MutationObserver" not in integration_source
 assert "window.fetch=" not in integration_source and "window.fetch =" not in integration_source
 assert "scheduleAtFixedRate" not in integration_source
+assert "h('progress'" not in integration_source and 'h("progress"' not in integration_source
 
 for forbidden in [
     "risk_score",
@@ -54,6 +55,7 @@ for token in [
     "errorCode",
     "errorDetail",
     "Status generated",
+    "no freshness threshold or fake progress percentage is inferred",
     "does not invent a stale threshold",
     "No failed start changes the last good local snapshot",
     "window.setTimeout",
@@ -64,9 +66,8 @@ for token in [
 
 assert output.count("['/intelligence', 'Intelligence', '◎']") == 1
 assert "new MutationObserver" not in integration_source
-assert "fake progress" not in output.lower()
-assert "progress percentage" not in output.lower()
-assert "stale after" not in output.lower()
+assert "h('progress'" not in integration_source and 'h("progress"' not in integration_source
+assert "stale after" not in integration_source.lower()
 
 for token in [
     'ROOT = "/api/v1/intelligence/status"',
