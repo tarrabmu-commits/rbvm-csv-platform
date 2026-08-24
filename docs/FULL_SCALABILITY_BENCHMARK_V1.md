@@ -97,7 +97,7 @@ For the V30 lookup/export stage, process resource metrics are captured from the 
 
 The summary records host identity: Git commit, Python version, Java version, platform, machine architecture, CPU count, visible memory, and sanitized local JDBC database endpoint.
 
-## Correctness gates
+## Correctness and failure classification
 
 A tier is not considered a valid performance result unless it preserves correctness:
 
@@ -109,7 +109,23 @@ A tier is not considered a valid performance result unless it preserves correctn
 - representative materialized priority reads resolve successfully;
 - CISA negative semantics pass the V31/V30 validation boundary.
 
-A subprocess exit failure is treated as a correctness regression and fails the benchmark run. A stage timeout is recorded as a measured bottleneck for that environment.
+A normal non-zero subprocess failure is `FAILED` and is treated as a correctness regression. A stage timeout is `TIMEOUT` and is recorded as a measured bottleneck for that environment. A process killed with resource-style exit status (`137`/`-9`) or a PostgreSQL SQLSTATE in class `53` (insufficient resources, including `53200 out_of_memory`) is classified as `RESOURCE_EXHAUSTION` and is also a measured environment/resource bottleneck rather than a product correctness failure.
+
+The benchmark verifier compiles both Python benchmark entry points without executing them and verifies the resource-classification markers structurally, so malformed promotion edits fail the normal verification gate.
+
+## Reference capacity evidence
+
+The production-source capacity investigation that motivated this increment used the standard 5% unique-CVE profile, PostgreSQL 16.14 on GitHub-hosted Ubuntu runners, isolated database tiers, and a real per-stage timeout of 900 seconds.
+
+Measured checkpoints after the canonical-projection and manifest optimizations were:
+
+- **50K Findings: PASS** — hot path approximately **193.5 s**, approximately **258 rows/s**;
+- **100K Findings: PASS** — hot path approximately **344.8 s**, approximately **290 rows/s**, with all 100,000 canonical Findings, manifest rows, and priority mappings preserved;
+- **200K Findings: measured resource bottleneck** during `canonicalProjectionManifest` after approximately **379.1 s**, with PostgreSQL reporting SQLSTATE **`53200` (`out of shared memory`)** and recommending a higher `max_pred_locks_per_transaction`; observed process peak RSS was approximately **3.24 GiB**.
+
+The 200K result is **not a platform limit**. It identifies the first measured configuration/resource bottleneck on that runner and PostgreSQL configuration. Any claim beyond 100K must be tied to the exact run environment and PostgreSQL settings, and the next investigation should change the measured resource cause rather than silently raising the stage timeout.
+
+The optimizations present for these measurements include import-transaction-scoped `force_custom_plan`, parent mutation coalescing, the V32 reverse `exposure_observation` lineage index, and a fully parameterized exact import-to-Finding manifest path.
 
 ## Standard versus stress runs
 
