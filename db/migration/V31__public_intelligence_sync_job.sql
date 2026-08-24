@@ -75,9 +75,6 @@ CREATE FUNCTION rbvm.guard_public_intelligence_sync_job_mutation()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
-DECLARE
-    old_rank integer;
-    new_rank integer;
 BEGIN
     IF TG_OP = 'DELETE' THEN
         RAISE EXCEPTION 'public_intelligence_sync_job history cannot be deleted';
@@ -110,30 +107,22 @@ BEGIN
         RAISE EXCEPTION 'public_intelligence_sync_job sync_run_id is immutable once linked';
     END IF;
 
-    old_rank := CASE OLD.stage
-        WHEN 'ACQUIRING' THEN 1
-        WHEN 'BUILDING' THEN 2
-        WHEN 'ADMITTING' THEN 3
-        ELSE 4
-    END;
-    new_rank := CASE NEW.stage
-        WHEN 'ACQUIRING' THEN 1
-        WHEN 'BUILDING' THEN 2
-        WHEN 'ADMITTING' THEN 3
-        WHEN 'COMPLETE' THEN 4
-        WHEN 'FAILED' THEN 4
-        ELSE 0
-    END;
-
-    IF NEW.stage <> 'FAILED' AND new_rank < old_rank THEN
-        RAISE EXCEPTION 'public_intelligence_sync_job stage cannot move backwards';
+    IF NEW.stage <> 'FAILED' THEN
+        IF OLD.stage = 'ACQUIRING' AND NEW.stage <> 'BUILDING' THEN
+            RAISE EXCEPTION 'public_intelligence_sync_job ACQUIRING may only advance to BUILDING';
+        ELSIF OLD.stage = 'BUILDING' AND NEW.stage <> 'ADMITTING' THEN
+            RAISE EXCEPTION 'public_intelligence_sync_job BUILDING may only advance to ADMITTING';
+        ELSIF OLD.stage = 'ADMITTING' AND NEW.stage NOT IN ('ADMITTING', 'COMPLETE') THEN
+            RAISE EXCEPTION 'public_intelligence_sync_job ADMITTING may only link a run or complete';
+        END IF;
     END IF;
 
-    IF NEW.status = 'RUNNING' AND NEW.stage = OLD.stage
-       AND NEW.source_uri IS NOT DISTINCT FROM OLD.source_uri
-       AND NEW.sync_run_id IS NOT DISTINCT FROM OLD.sync_run_id
-       AND NEW.updated_at = OLD.updated_at THEN
-        RAISE EXCEPTION 'public_intelligence_sync_job no-op update is not allowed';
+    IF OLD.stage = 'ADMITTING' AND NEW.stage = 'ADMITTING' AND NOT (
+        OLD.sync_run_id IS NULL
+        AND NEW.sync_run_id IS NOT NULL
+        AND NEW.updated_at > OLD.updated_at
+    ) THEN
+        RAISE EXCEPTION 'public_intelligence_sync_job ADMITTING same-stage update must link one sync run';
     END IF;
 
     RETURN NEW;
