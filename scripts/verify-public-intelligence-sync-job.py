@@ -127,7 +127,7 @@ for token in [
     "ACQUIRING",
     "BUILDING",
     "ADMITTING",
-    "latest end-to-end job",
+    "end-to-end operational job",
     "last successful V30 source",
     "GET /api/v1/intelligence/status",
     "10K remains a regression checkpoint",
