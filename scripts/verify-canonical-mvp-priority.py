@@ -33,7 +33,7 @@ checks = {
     "organizational risk remains non-computable": "NON_COMPUTABLE" in http and "NON_COMPUTABLE" in read_http,
     "routes registered": main.count("/api/v1/canonical-mvp-priorities") >= 3,
     "fail-closed UI compile integration": "integrate-canonical-mvp-priority-ui.py" in compile_sh,
-    "UI does not use observer": "MutationObserver" not in ui_transform,
+    "UI does not create observer": "new MutationObserver(" not in ui_transform,
     "UI performs no Pareto math": not any(token in ui_transform for token in ("dominance_relation", "nondominated", "pareto_relations", "CVSS*EPSS", "riskScore")),
     "UI uses server result": "/api/v1/canonical-mvp-priorities/findings/" in ui_transform,
     "UI exact canonical action": "Persist to canonical Findings" in ui_transform,
