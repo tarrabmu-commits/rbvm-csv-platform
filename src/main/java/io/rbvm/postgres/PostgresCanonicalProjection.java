@@ -409,17 +409,6 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
             WazuhObservation observation
     ) throws SQLException {
         accumulator.acceptedObservations++;
-        UUID existingObservation = selectUuid(connection, """
-                SELECT id FROM rbvm.observation
-                WHERE tenant_id = ? AND source_profile_id = ? AND fingerprint = ?
-                """, accumulator.tenantId, accumulator.sourceProfileId,
-                observation.observationFingerprint());
-        if (existingObservation != null) {
-            accumulator.duplicateObservations++;
-            linkImportObservation(connection, accumulator, observation, existingObservation);
-            return;
-        }
-
         EntityRef asset = ensureAsset(connection, accumulator, observation);
         EntityRef vulnerability = ensureVulnerability(connection, accumulator, observation);
         EntityRef component = ensureComponent(connection, accumulator, asset, observation);
@@ -871,12 +860,13 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                 accumulator.newCases++;
             } else {
                 accumulator.updatedCaseIds.add(cached.id());
+                executeUpdate(connection, """
+                        UPDATE rbvm.vulnerability_case SET public_id = ?, updated_at = ?
+                        WHERE tenant_id = ? AND id = ?
+                        """, cached.publicId(), accumulator.now,
+                        accumulator.tenantId, cached.id());
             }
         }
-        executeUpdate(connection, """
-                UPDATE rbvm.vulnerability_case SET public_id = ?, updated_at = ?
-                WHERE tenant_id = ? AND id = ?
-                """, cached.publicId(), accumulator.now, accumulator.tenantId, cached.id());
         return cached;
     }
 
@@ -953,11 +943,6 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
         }
         if (!createdThisCall) {
             updateExistingExposure(connection, accumulator, cached, observation);
-        } else {
-            executeUpdate(connection, """
-                    UPDATE rbvm.exposure SET public_id = ?
-                    WHERE tenant_id = ? AND id = ?
-                    """, cached.publicId(), accumulator.tenantId, cached.id());
         }
         return cached;
     }
