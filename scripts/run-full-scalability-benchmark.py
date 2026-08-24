@@ -244,16 +244,16 @@ def run_stage(name, command, tier_dir, timeout, env=None):
             )
         wall = time.perf_counter() - started
         stderr_tail = tail(stderr_file) if completed.returncode != 0 else ""
-status = "PASS"
-if completed.returncode != 0:
-    resource_failure = completed.returncode in {137, -9}
-    marker = "SQLState="
-    if marker in stderr_tail:
-        sqlstate = stderr_tail.split(marker, 1)[1][:5]
-        resource_failure = resource_failure or sqlstate.startswith("53")
-    status = "RESOURCE_EXHAUSTION" if resource_failure else "FAILED"
-metrics = {
-    "status": status,
+        status = "PASS"
+        if completed.returncode != 0:
+            resource_failure = completed.returncode in {137, -9}
+            marker = "SQLState="
+            if marker in stderr_tail:
+                sqlstate = stderr_tail.split(marker, 1)[1][:5]
+                resource_failure = resource_failure or sqlstate.startswith("53")
+            status = "RESOURCE_EXHAUSTION" if resource_failure else "FAILED"
+        metrics = {
+            "status": status,
             "returnCode": completed.returncode,
             "wallSeconds": round(wall, 3),
             **parse_time_v(time_file),
