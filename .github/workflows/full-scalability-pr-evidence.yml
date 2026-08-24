@@ -1,0 +1,73 @@
+name: full-scalability-pr-evidence
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  progressive-evidence:
+    if: github.head_ref == 'full-scalability-benchmark-v1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    services:
+      postgres:
+        image: postgres:16.14-bookworm@sha256:92620daddcd947f8d5ab5ba66e848702fe443d87fed30c4cea8e389fd78dfc55
+        env:
+          POSTGRES_DB: rbvm
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres-scalability-owner
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rbvm"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Fetch pinned pgJDBC
+        env:
+          PGJDBC_VERSION: '42.7.13'
+          PGJDBC_SHA256: '6e0e4cc2d8cae902084f8a2b18728b073a6fd9d1f87c9d8bff8f298c18185b93'
+        run: |
+          set -euo pipefail
+          driver="$RUNNER_TEMP/postgresql-$PGJDBC_VERSION.jar"
+          curl --fail --location --silent --show-error \
+            "https://repo1.maven.org/maven2/org/postgresql/postgresql/$PGJDBC_VERSION/postgresql-$PGJDBC_VERSION.jar" \
+            --output "$driver"
+          printf '%s  %s\n' "$PGJDBC_SHA256" "$driver" | sha256sum --check
+          printf 'RBVM_POSTGRES_DRIVER_JAR=%s\n' "$driver" >> "$GITHUB_ENV"
+      - name: Compile benchmark runtime
+        run: ./scripts/compile.sh --tests
+      - name: Run standard 1K through 100K progression
+        env:
+          RBVM_PROJECTION_BACKEND: POSTGRESQL
+          RBVM_JDBC_URL: jdbc:postgresql://127.0.0.1:5432/rbvm?sslmode=disable
+          RBVM_DB_USER: postgres
+          RBVM_DB_PASSWORD: postgres-scalability-owner
+          RBVM_DB_MIGRATE: 'true'
+          RBVM_SCALABILITY_BENCHMARK_MODE: 'true'
+        run: |
+          set -euo pipefail
+          python3 scripts/run-full-scalability-benchmark-isolated.py \
+            --sizes 1000,5000,10000,25000,50000,100000 \
+            --stress-max-rows 100000 \
+            --tier-timeout-seconds 900 \
+            --output-directory build/full-scalability-pr-evidence
+      - name: Upload progressive evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: rbvm-full-scalability-pr-evidence-${{ github.sha }}
+          path: build/full-scalability-pr-evidence/
+          if-no-files-found: warn
+          retention-days: 30
