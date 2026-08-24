@@ -114,11 +114,21 @@ for token in (
     "publiclyExposed: publiclyExposed.value",
     "version === 4 ? asset.publiclyExposed || 'UNKNOWN' : 'UNKNOWN'",
     "rbvm-customer-assets-v4.json",
-    "publiclyExposed=UNKNOWN",
     "cisa:PE:1.0.0",
 ):
     if token not in ui:
         raise AssertionError(f"customer-flow V4 missing required token: {token}")
+
+# The actual V2/V3 conversion above is authoritative. UI wording may change, but the editor
+# must continue to advertise bounded complete-bundle handling without inventing missing data.
+for token in (
+    "Legacy V1–V3 bundles preserve missing semantics during upgrade.",
+    "EDITOR_PAGE_SIZE = 50",
+    "panel.rbvmReadCustomerAssets",
+    "panel.rbvmLoadCustomerBundle",
+):
+    if token not in ui:
+        raise AssertionError(f"customer-flow V4 missing bounded/missing-evidence behavior: {token}")
 
 for forbidden in (
     "publiclyExposed: internetFacing",
