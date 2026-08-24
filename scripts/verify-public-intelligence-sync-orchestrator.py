@@ -12,6 +12,9 @@ main = (ROOT / "src/main/java/io/rbvm/csv/RbvmPlatformMain.java").read_text(enco
 compile_script = (ROOT / "scripts/compile.sh").read_text(encoding="utf-8")
 platform_test = (ROOT / "src/test/java/io/rbvm/csv/PlatformSelfTest.java").read_text(encoding="utf-8")
 http_test = (ROOT / "src/test/java/io/rbvm/csv/PublicIntelligenceSyncHttpSelfTest.java").read_text(encoding="utf-8")
+live_test = (ROOT / "src/test/java/io/rbvm/postgres/PostgresPublicIntelligenceSyncOrchestratorLiveSelfTest.java").read_text(encoding="utf-8")
+workflow = (ROOT / ".github/workflows/postgres-integration.yml").read_text(encoding="utf-8")
+v30 = (ROOT / "db/migration/V30__local_public_intelligence_store.sql").read_text(encoding="utf-8")
 doc = (ROOT / "docs/PUBLIC_INTELLIGENCE_SYNC_ORCHESTRATOR_V1.md").read_text(encoding="utf-8")
 openapi = yaml.safe_load((ROOT / "api/public-intelligence-sync-v1.openapi.yaml").read_text(encoding="utf-8"))
 
@@ -65,10 +68,14 @@ assert "bash -c" not in pipeline and "sh -c" not in pipeline
 
 for token in [
     "rbvm.current_public_intelligence_record",
-    "record_state = 'ACTIVE'",
     "ORDER BY cve_id",
 ]:
     assert token in reader, f"current-CVE reader missing {token!r}"
+for token in [
+    "CREATE VIEW rbvm.current_public_intelligence_record AS",
+    "WHERE record_state = 'ACTIVE'",
+]:
+    assert token in v30, f"V30 current-public-intelligence semantics missing {token!r}"
 
 for token in [
     "PostgresPublicIntelligenceSyncJobStore(connections, false)",
@@ -118,6 +125,17 @@ for token in [
     "overlapping provider synchronization must return 409",
 ]:
     assert token in http_test, f"HTTP self-test missing {token!r}"
+
+for token in [
+    "complete-snapshot provider must receive exact previous current CVE set",
+    "explicit tombstone must suppress the removed CISA CVE",
+    "NVD partial/year feeds must never receive previous CVEs for tombstone inference",
+    "NVD modified absence must not tombstone an older current CVE",
+    "pre-admission source failure must not invent a V30 run identity",
+    "SOURCE_ACQUISITION_FAILED",
+]:
+    assert token in live_test, f"live orchestrator proof missing {token!r}"
+assert "PostgresPublicIntelligenceSyncOrchestratorLiveSelfTest" in workflow
 
 assert openapi.get("openapi") == "3.1.2"
 path = openapi["paths"]["/api/v1/intelligence/sync/{provider}"]
