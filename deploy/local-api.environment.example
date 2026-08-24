@@ -1,0 +1,21 @@
+# Copy this file to .env.local and edit the PostgreSQL values for your machine.
+# Then start the real PostgreSQL-backed local API with:
+#   ./scripts/run-server.sh --local-api
+#
+# The launcher reads values literally (it does not execute this file as shell),
+# so JDBC query strings may contain '&' without quoting.
+
+RBVM_PROJECTION_BACKEND=POSTGRESQL
+RBVM_POSTGRES_DRIVER_JAR=/usr/share/java/postgresql.jar
+RBVM_JDBC_URL=jdbc:postgresql://127.0.0.1:5432/rbvm
+RBVM_DB_USER=rbvm_runtime
+RBVM_DB_PASSWORD=
+RBVM_DB_MIGRATE=true
+
+RBVM_HOST=127.0.0.1
+RBVM_PORT=8080
+RBVM_DATA_DIR=runtime-data/local-api
+
+# Browser/local launcher authentication is forced to DISABLED unless
+# --auth-from-env is explicitly supplied.
+RBVM_AUTH_MODE=DISABLED
