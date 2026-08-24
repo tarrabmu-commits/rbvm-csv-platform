@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+runner = (ROOT / "scripts/run-full-scalability-benchmark.py").read_text(encoding="utf-8")
+bridge = (ROOT / "src/test/java/io/rbvm/postgres/PostgresFullScalabilityBenchmarkBridge.java").read_text(encoding="utf-8")
+doc = (ROOT / "docs/FULL_SCALABILITY_BENCHMARK_V1.md").read_text(encoding="utf-8")
+
+for token in [
+    "RBVM_FULL_SCALABILITY_BENCHMARK_V1",
+    "DEFAULT_SIZES = (1_000, 5_000, 10_000, 25_000, 50_000, 100_000)",
+    '"tenThousandIsPlatformLimit": False',
+    '"CAPACITY_NOT_REACHED_AT_RUN_SAFETY_CEILING"',
+    '"MEASURED_BOTTLENECK_OR_FAILURE"',
+    '"--stress"',
+    '"--stress-max-rows"',
+    '"--unique-cve-ratio"',
+    'default=0.05',
+    'default=1_600_000',
+    '"localLookupExportSeconds"',
+    '"setupSeedSeconds"',
+    '"canonicalProjectionManifest"',
+    '"canonicalPriorityPersistenceRead"',
+    '"postgres"',
+    '"peakRssMiB"',
+    '"rowsPerSecond"',
+]:
+    if token not in runner:
+        raise AssertionError(f"full scalability runner missing {token!r}")
+
+for token in [
+    'RBVM_SCALABILITY_BENCHMARK_MODE',
+    'jdbc.startsWith("jdbc:postgresql://127.0.0.1:")',
+    'jdbc.startsWith("jdbc:postgresql://localhost:")',
+    'DROP SCHEMA IF EXISTS rbvm CASCADE',
+    'PostgresPublicIntelligenceStore',
+    'PostgresPublicIntelligenceSyncJobStore',
+    'PostgresCisaKevCatalogValidationReader',
+    'PostgresCsvFirstLocalIntelligenceSnapshotExporter',
+    'PostgresCanonicalProjection',
+    'PostgresCanonicalImportFindingExporter',
+    'PostgresCanonicalMvpPriorityAccess',
+    'RBVM_FULL_SCALABILITY_POSTGRES_BRIDGE_V1',
+    'APPEND_BATCH = 1_000',
+    'READ_SAMPLE_LIMIT = 100',
+]:
+    if token not in bridge:
+        raise AssertionError(f"PostgreSQL scalability bridge missing {token!r}")
+
+for forbidden in [
+    "urlopen(",
+    "HttpClient.newHttpClient",
+    "collect-public-vulnerability-intel.py",
+    "NVD_API_KEY",
+]:
+    if forbidden in bridge:
+        raise AssertionError(f"benchmark bridge must remain local-only: {forbidden}")
+
+# Synthetic seed generation is intentionally excluded from upload hot-path time.
+if 'hot_path_seconds = seed["localLookupExportSeconds"]' not in runner:
+    raise AssertionError("benchmark hot path must start at local PostgreSQL lookup/export")
+if '"syntheticPublicIntelligenceSeedSeconds": seed["setupSeedSeconds"]' not in runner:
+    raise AssertionError("synthetic provider seeding must be reported separately as setup")
+
+# Product decisions must not drift inside a performance harness.
+for token in [
+    "88d5cdb8702c6c0ed2c033c3df6b8abbe1aa392f44f4507685b54082a16dc388",
+    'report.get("organizationalRiskComputed") is not False',
+    'report.get("riskStatus") != "NON_COMPUTABLE"',
+]:
+    if token not in runner:
+        raise AssertionError(f"benchmark correctness guard missing {token!r}")
+
+for token in [
+    "1K -> 5K -> 10K -> 25K -> 50K -> 100K Findings",
+    "10K is a regression checkpoint, not a platform limit",
+    "CAPACITY_NOT_REACHED_AT_RUN_SAFETY_CEILING",
+    "unique-CVE ratio",
+    "--unique-cve-ratio 1.0",
+    "setupSeedSeconds",
+    "localLookupExportSeconds",
+    "manual workflow",
+    "Never run this harness against an operational RBVM database",
+]:
+    if token.lower() not in doc.lower():
+        raise AssertionError(f"full scalability benchmark documentation missing {token!r}")
+
+print("Full scalability benchmark structural checks: PASS")
