@@ -16,8 +16,11 @@ import io.rbvm.postgres.DerivedRiskResultRuntimeFactory;
 import io.rbvm.postgres.EpssImporter;
 import io.rbvm.postgres.FormulaResultRuntimeFactory;
 import io.rbvm.postgres.PostgresPublicIntelligenceSyncJobStore;
+import io.rbvm.postgres.PublicIntelligenceOrchestrationRuntimeFactory;
 import io.rbvm.postgres.PublicIntelligenceStatusReader;
+import io.rbvm.postgres.PublicIntelligenceSyncCoordinator;
 import io.rbvm.postgres.PublicIntelligenceSyncRuntimeFactory;
+import io.rbvm.postgres.PublicIntelligenceSyncTrigger;
 import io.rbvm.postgres.RiskMethodSelectionPolicyRuntimeFactory;
 import io.rbvm.security.ApiKeyAuthenticator;
 import io.rbvm.security.RequestRateLimiter;
@@ -64,8 +67,11 @@ public final class RbvmPlatformMain {
                 RiskMethodSelectionPolicyRuntimeFactory.fromEnvironment(environment);
         Optional<ActiveRiskMethodExecutionRuntimeFactory.Runtime> activeRiskMethodExecutionRuntime =
                 ActiveRiskMethodExecutionRuntimeFactory.fromEnvironment(environment);
-        Optional<PostgresPublicIntelligenceSyncJobStore> publicIntelligenceSyncRuntime =
+        Optional<PostgresPublicIntelligenceSyncJobStore> publicIntelligenceStatusRuntime =
                 PublicIntelligenceSyncRuntimeFactory.fromEnvironment(environment);
+        Optional<PublicIntelligenceSyncCoordinator> publicIntelligenceOrchestration =
+                PublicIntelligenceOrchestrationRuntimeFactory.fromEnvironment(
+                        environment, dataDirectory);
         ApiKeyAuthenticator authenticator = ApiKeyAuthenticator.fromEnvironment(environment);
         RequestRateLimiter rateLimiter = RequestRateLimiter.fromEnvironment(environment);
         CanonicalProjection canonicalProjection = runtime.canonicalProjection();
@@ -105,7 +111,8 @@ public final class RbvmPlatformMain {
                 canonicalMvpPriority,
                 runtime.epssImporter(),
                 runtime.cisaKevImporter(),
-                publicIntelligenceSyncRuntime,
+                publicIntelligenceStatusRuntime,
+                publicIntelligenceOrchestration,
                 authenticator
         );
 
@@ -132,7 +139,10 @@ public final class RbvmPlatformMain {
                 )
         );
 
-        Runtime.getRuntime().addShutdownHook(new Thread(application::close, "rbvm-shutdown"));
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            publicIntelligenceOrchestration.ifPresent(PublicIntelligenceSyncCoordinator::close);
+            application.close();
+        }, "rbvm-shutdown"));
         application.start();
         System.out.println("RBVM CSV Platform is running at " + application.baseUri());
         System.out.println("CSV-first enrichment API: "
@@ -151,6 +161,8 @@ public final class RbvmPlatformMain {
                 + application.baseUri().resolve("/api/v1/canonical-imports/{importId}/findings.csv"));
         System.out.println("Public intelligence status API: "
                 + application.baseUri().resolve("/api/v1/intelligence/status"));
+        System.out.println("Public intelligence sync API: "
+                + application.baseUri().resolve("/api/v1/intelligence/sync/{provider}"));
         System.out.println("Managed Assets operator UI: " + application.baseUri().resolve("/assets"));
         System.out.println("Data directory: " + dataDirectory.toAbsolutePath().normalize());
         System.out.println("Canonical projection: " + canonicalProjection.health().get("backend"));
@@ -167,6 +179,7 @@ public final class RbvmPlatformMain {
             Optional<EpssImporter> epssImporter,
             Optional<CisaKevImporter> cisaKevImporter,
             Optional<? extends PublicIntelligenceStatusReader> publicIntelligenceStatus,
+            Optional<? extends PublicIntelligenceSyncTrigger> publicIntelligenceSync,
             ApiKeyAuthenticator authenticator
     ) throws ReflectiveOperationException {
         // Transitional registration seam: CsvPlatformServer predates extension
@@ -212,6 +225,10 @@ public final class RbvmPlatformMain {
         server.createContext(
                 PublicIntelligenceStatusHttpHandler.ROOT,
                 new PublicIntelligenceStatusHttpHandler(publicIntelligenceStatus, authenticator)
+        );
+        server.createContext(
+                PublicIntelligenceSyncHttpHandler.ROOT,
+                new PublicIntelligenceSyncHttpHandler(publicIntelligenceSync, authenticator)
         );
     }
 
