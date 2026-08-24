@@ -4,7 +4,7 @@ Contract: `LOCAL_PUBLIC_INTELLIGENCE_STORE_V1`
 
 ## Purpose
 
-V30 creates a global, non-tenant operational mirror for public vulnerability intelligence so RBVM can stop depending on thousands of provider HTTP requests during a future CSV upload. The mirror is source infrastructure only. It is not a risk score, priority method, customer evidence store, SLA policy, or applicability decision.
+V30 creates a global, non-tenant operational mirror for public vulnerability intelligence so RBVM does not depend on thousands of provider HTTP requests during a CSV upload. The mirror is source infrastructure only. It is not a risk score, priority method, customer evidence store, SLA policy, or applicability decision.
 
 Supported provider identities are:
 
@@ -17,7 +17,7 @@ Public source data is shared once for the platform. Customer context such as Ass
 
 ## V30 boundary
 
-V30 establishes the persistence and local-lookup contract. CSV enrichment is not switched to the local store by V30. Official-source acquisition, end-to-end synchronization lifecycle/status, operator-triggered refresh, scheduled refresh, UI, and CSV local-lookup cutover are layered on top without changing V30 provider-record semantics.
+V30 establishes the persistence and local-lookup contract. Official-source acquisition, end-to-end synchronization lifecycle/status, operator-triggered refresh, scheduled refresh, UI, and CSV local-lookup cutover are layered on top without changing V30 provider-record semantics.
 
 This separation makes persistence, acquisition, orchestration, and product transport independently testable.
 
@@ -81,7 +81,34 @@ A product status page can therefore distinguish:
 
 One CVE may therefore have, for example, current NVD and FIRST EPSS records while having no current CISA KEV or CVE Program record. Missing provider data remains absent.
 
-Provider-specific evidence semantics are intentionally deferred to provider adapters/materializers. In particular, absence from a partial local mirror must never be interpreted as CISA KEV `NOT_LISTED`. That status is valid only when a complete validated KEV catalog observation establishes non-membership.
+Provider-specific evidence semantics remain explicit. In particular, absence from a partial local mirror must never be interpreted as CISA KEV `NOT_LISTED`. That status is valid only when a complete validated KEV catalog observation establishes non-membership.
+
+## CSV-first local-intelligence cutover
+
+Product CSV enrichment uses `CSV_FIRST_LOCAL_PUBLIC_INTELLIGENCE_EXPORT_V1` to resolve only CVEs present in the uploaded CSV against the V30 current-state view. Lookups are bounded in batches rather than issuing provider requests per Finding or loading an arbitrary fixed maximum CVE count.
+
+The local export contains:
+
+- the exact requested CVE set;
+- independent current provider records with record/source/run provenance;
+- the last successful provider source state for all four providers;
+- no customer or tenant context.
+
+`build-local-public-intelligence-snapshot.py` converts that export into the established `PUBLIC_CVE_INTEL_SNAPSHOT_V1` shape. Existing NVD and CVE Program normalization functions are reused, so the acquisition cutover does not fork CVSS/CNA/ADP normalization semantics.
+
+The product upload path then runs the established CSV enricher with `--intel-snapshot`. It does not invoke the live per-upload public-intelligence collector and does not silently fall back to provider Internet access.
+
+The CISA KEV negative boundary is explicit:
+
+- a current CISA KEV record means `listed=true`;
+- absence after a successful complete validated CISA catalog permits `listed=false`;
+- absence when no successful complete CISA catalog is available remains missing/unknown.
+
+CSV enrichment subprocesses receive only generated local artifacts and a restricted environment allowlist. PostgreSQL credentials and provider API credentials are not inherited by the Python enrichment process.
+
+If the V30/V31 PostgreSQL local-intelligence runtime is unavailable, the product CSV upload endpoint fails closed rather than reverting to live provider network calls.
+
+The use of the global PostgreSQL mirror is reported as `databaseStateUsed=true` with `databaseStateScope=GLOBAL_PUBLIC_INTELLIGENCE_ONLY`; tenant database state remains explicitly unused by this acquisition stage.
 
 ## Relationship to existing tenant evidence
 
@@ -109,6 +136,8 @@ The combined V31/V30 pipeline is fail-closed:
 
 If acquisition or bundle construction fails before V30 admission, the V31 job becomes FAILED without inventing a V30 run. If V30 admission fails after a source run exists, V30 remains STAGING/FAILED according to its contract and the V31 job becomes FAILED. In every case, the last successful COMPLETE provider state stays usable.
 
+CSV upload consumes only the last admitted current local state. A provider refresh failure therefore does not turn the upload path back into an Internet acquisition path and does not displace the last good source.
+
 ## Implemented layers above V30
 
 `PUBLIC_INTELLIGENCE_SYNC_BUNDLE_V1` provides the deterministic provider-format-to-V30 admission boundary.
@@ -117,13 +146,16 @@ If acquisition or bundle construction fails before V30 admission, the V31 job be
 
 `PUBLIC_INTELLIGENCE_SYNC_JOB_V1` (V31) provides the durable end-to-end job lifecycle plus `GET /api/v1/intelligence/status`, including failures that occur before V30 admission.
 
-## Remaining implementation layers
+Background/manual orchestration executes acquisition → bundle → V30 admission while advancing/failing V31 jobs. Operator manual synchronization is exposed through the intelligence sync API.
 
-1. background/manual orchestration that automatically executes acquisition → bundle → V30 admission while advancing/failing the V31 job;
-2. Operator `POST /api/v1/intelligence/sync` with explicit provider/mode semantics;
-3. Intelligence Sources UI with manual **Update Intelligence Now**;
-4. daily server-side scheduling, stale-source policy, recovery, and observability;
-5. CSV enrichment cutover from live per-upload provider calls to `lookupCurrent(...)`;
-6. full scalability/capacity benchmarking at 1K, 5K, 10K, 25K, 50K, 100K+ Findings plus progressive stress testing to the measured bottleneck. 10K is a regression checkpoint, not a platform limit.
+The native Frontend System V2 Intelligence Sources page exposes provider state and **Update Intelligence Now** without inventing progress percentages or stale thresholds.
+
+Server-side automation provides scheduled refresh and resumable NVD annual bootstrap. The documented deployment boundary remains one automation node unless a future leader-election/lease contract is added.
+
+CSV-first product enrichment is cut over to bounded V30 local lookup and the established `PUBLIC_CVE_INTEL_SNAPSHOT_V1` enrichment contract, with no silent per-upload provider-network fallback.
+
+## Remaining implementation layer
+
+Full scalability/capacity benchmarking remains progressive: 1K, 5K, 10K, 25K, 50K, 100K+ Findings and continued stress testing to the measured bottleneck. **10K is a regression checkpoint, not a platform limit.** The implementation itself does not impose a 10K Finding/CVE cap; local lookup proceeds in bounded batches across the complete uploaded scope.
 
 No change in this contract alters `RBVM_MVP_PRIORITY_POLICY_V1`, its frozen SHA, CVSS/EPSS/KEV semantics, or the intentionally `NON_COMPUTABLE` Organizational Risk state.
