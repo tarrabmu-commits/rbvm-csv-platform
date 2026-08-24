@@ -127,8 +127,8 @@ for token in [
     assert token in http_test, f"HTTP self-test missing {token!r}"
 
 for token in [
-    "complete-snapshot provider must receive exact previous current CVE set",
-    "explicit tombstone must suppress the removed CISA CVE",
+    "complete-snapshot provider must receive its previous current test CVE",
+    "explicit tombstone must suppress the removed CISA test CVE",
     "NVD partial/year feeds must never receive previous CVEs for tombstone inference",
     "NVD modified absence must not tombstone an older current CVE",
     "pre-admission source failure must not invent a V30 run identity",
