@@ -6,7 +6,8 @@ info:
     Run-scoped local persistence transport for the exact customer-declared
     RBVM_CUSTOMER_ASSET_BUNDLE_V4 JSON artifact. The transport does not infer,
     normalize, score, or translate customer evidence. It persists the supplied
-    artifact beside the corresponding CSV-first enrichment run.
+    artifact beside the corresponding CSV-first enrichment run and can feed that
+    exact saved artifact into the established immutable contextual-analysis flow.
 servers:
   - url: /
 security:
@@ -68,6 +69,44 @@ paths:
         '413':
           $ref: '#/components/responses/Problem'
         '415':
+          $ref: '#/components/responses/Problem'
+  /api/v1/csv-first-customer-assets/{runId}/analyses:
+    parameters:
+      - name: runId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: createAnalysisFromSavedCustomerAssetBundle
+      summary: Create immutable contextual analysis from the saved customer bundle
+      description: >-
+        Reuses the exact saved bundle for the run, so the client does not need to
+        upload the same customer evidence again. The established contextual
+        analyzer validates/consumes the bundle and creates a new immutable
+        analysisId. The resulting analysis can be submitted to the existing MVP
+        priority endpoint without changing Organizational Risk semantics.
+      responses:
+        '201':
+          description: Contextual analysis created from the saved bundle
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisResponse'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+        '504':
           $ref: '#/components/responses/Problem'
 components:
   securitySchemes:
@@ -137,7 +176,7 @@ components:
     SaveResponse:
       type: object
       additionalProperties: false
-      required: [status, runId, artifact, fileName, bytes, semantics]
+      required: [status, runId, artifact, analysis, fileName, bytes, semantics]
       properties:
         status:
           type: string
@@ -146,6 +185,8 @@ components:
           type: string
           format: uuid
         artifact:
+          type: string
+        analysis:
           type: string
         fileName:
           type: string
@@ -156,6 +197,67 @@ components:
         semantics:
           type: string
           const: EXACT_CUSTOMER_DECLARED_BUNDLE_NO_INFERENCE
+    AnalysisResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - contractId
+        - status
+        - scope
+        - databaseStateUsed
+        - runId
+        - analysisId
+        - customerBundleSource
+        - immutable
+        - customerBundle
+        - analysisCsv
+        - analysisSummary
+        - methodAdmission
+        - priority
+        - outputSemantics
+        - organizationalRisk
+      properties:
+        contractId:
+          type: string
+          const: CSV_FIRST_CONTEXTUAL_ANALYSIS_HTTP_V1
+        status:
+          type: string
+          const: COMPLETE
+        scope:
+          type: string
+          const: INPUT_CSV_PLUS_SAVED_CUSTOMER_DECLARED_CONTEXT
+        databaseStateUsed:
+          type: boolean
+          const: false
+        runId:
+          type: string
+          format: uuid
+        analysisId:
+          type: string
+          format: uuid
+        customerBundleSource:
+          type: string
+          const: SAVED_RUN_BUNDLE
+        immutable:
+          type: boolean
+          const: true
+        customerBundle:
+          type: string
+        analysisCsv:
+          type: string
+        analysisSummary:
+          type: string
+        methodAdmission:
+          type: string
+        priority:
+          type: string
+          description: Existing POST endpoint for RBVM_MVP_PRIORITY_POLICY_V1 on this analysis.
+        outputSemantics:
+          type: string
+          const: CONTEXTUAL_TECHNICAL_SEVERITY_PLUS_INDEPENDENT_EVIDENCE
+        organizationalRisk:
+          type: string
+          const: NON_COMPUTABLE
   responses:
     Problem:
       description: API problem response
