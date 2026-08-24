@@ -109,15 +109,19 @@ jobs:
                     ORDER BY MIN(io.source_row_number), e.id
                     """)) {'''
           source = source[:start] + replacement + source[sql_end:]
-          old_params = '''                statement.setObject(1, importId);
-                statement.setString(2, TENANT_KEY);'''
-          new_params = '''                statement.setObject(1, importId);
-                statement.setObject(2, importId);
-                statement.setString(3, TENANT_KEY);'''
-          assert source.count(old_params) >= 1, 'manifest parameter marker drifted'
-          source = source.replace(old_params, new_params, 1)
+          params_start = source.index('                statement.setObject(1, importId);', start)
+          params_end = source.index('                try (ResultSet rows = statement.executeQuery()) {', params_start)
+          source = source[:params_start] + (
+              '                statement.setObject(1, importId);\n'
+              '                statement.setObject(2, importId);\n'
+              '                statement.setString(3, TENANT_KEY);\n'
+          ) + source[params_end:]
           exporter.write_text(source)
           PY
+          git diff --check -- \
+            src/main/java/io/rbvm/postgres/PostgresMigrator.java \
+            src/main/java/io/rbvm/postgres/PostgresCanonicalImportFindingExporter.java \
+            db/migration/V32__exposure_observation_reverse_lookup.sql
       - name: Compile benchmark runtime
         run: ./scripts/compile.sh --tests
       - name: Run 10K anchored-manifest A/B
