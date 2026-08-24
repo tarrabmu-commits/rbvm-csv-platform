@@ -3,7 +3,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 runner = (ROOT / "scripts/run-full-scalability-benchmark.py").read_text(encoding="utf-8")
+isolated_runner = (ROOT / "scripts/run-full-scalability-benchmark-isolated.py").read_text(encoding="utf-8")
 bridge = (ROOT / "src/test/java/io/rbvm/postgres/PostgresFullScalabilityBenchmarkBridge.java").read_text(encoding="utf-8")
+probe = (ROOT / "src/test/java/io/rbvm/postgres/PostgresFullScalabilityLocalExportProbe.java").read_text(encoding="utf-8")
 doc = (ROOT / "docs/FULL_SCALABILITY_BENCHMARK_V1.md").read_text(encoding="utf-8")
 full_workflow = (ROOT / ".github/workflows/full-scalability-benchmark.yml").read_text(encoding="utf-8")
 postgres_workflow = (ROOT / ".github/workflows/postgres-integration.yml").read_text(encoding="utf-8")
@@ -31,6 +33,19 @@ for token in [
         raise AssertionError(f"full scalability runner missing {token!r}")
 
 for token in [
+    "LOCAL_EXPORT_CLASS",
+    'name != "public-intelligence-seed-export"',
+    '"synthetic-public-intelligence-setup"',
+    '"isolated-local-lookup-export"',
+    '"ISOLATED_LOCAL_LOOKUP_EXPORT_PROCESS"',
+    'seed_metrics["localLookupExportSeconds"] = probe_metrics["localLookupExportSeconds"]',
+    'seed_metrics["dbLookupExportDelta"] = probe_metrics["dbLookupExportDelta"]',
+    'lookup_process["setupPeakRssMiB"] = setup_process.get("peakRssMiB")',
+]:
+    if token not in isolated_runner:
+        raise AssertionError(f"isolated scalability runner missing {token!r}")
+
+for token in [
     'RBVM_SCALABILITY_BENCHMARK_MODE',
     'jdbc.startsWith("jdbc:postgresql://127.0.0.1:")',
     'jdbc.startsWith("jdbc:postgresql://localhost:")',
@@ -49,14 +64,26 @@ for token in [
     if token not in bridge:
         raise AssertionError(f"PostgreSQL scalability bridge missing {token!r}")
 
+for token in [
+    'RBVM_SCALABILITY_BENCHMARK_MODE',
+    'benchmark probe refuses non-local PostgreSQL targets',
+    'PostgresCsvFirstLocalIntelligenceSnapshotExporter',
+    'RBVM_FULL_SCALABILITY_LOCAL_EXPORT_PROBE_V1',
+    '"localLookupExportSeconds"',
+    '"localLookupCvesPerSecond"',
+    '"dbLookupExportDelta"',
+]:
+    if token not in probe:
+        raise AssertionError(f"isolated local-export probe missing {token!r}")
+
 for forbidden in [
     "urlopen(",
     "HttpClient.newHttpClient",
     "collect-public-vulnerability-intel.py",
     "NVD_API_KEY",
 ]:
-    if forbidden in bridge:
-        raise AssertionError(f"benchmark bridge must remain local-only: {forbidden}")
+    if forbidden in bridge or forbidden in probe:
+        raise AssertionError(f"benchmark path must remain local-only: {forbidden}")
 
 # Synthetic seed generation is intentionally excluded from upload hot-path time.
 if 'hot_path_seconds = seed["localLookupExportSeconds"]' not in runner:
@@ -80,6 +107,7 @@ for token in [
     'default: "1600000"',
     "--stress-max-rows",
     "RBVM_SCALABILITY_BENCHMARK_MODE: 'true'",
+    "scripts/run-full-scalability-benchmark-isolated.py",
     "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
 ]:
     if token not in full_workflow:
@@ -88,9 +116,12 @@ if "pull_request:" in full_workflow or "push:" in full_workflow:
     raise AssertionError("full 100K+ scalability workflow must remain manual, not PR/push triggered")
 for token in [
     "Run 1K full-scalability correctness smoke",
+    "scripts/run-full-scalability-benchmark-isolated.py",
     "--sizes 1000",
     "--stress-max-rows 1000",
     "priorityMappedSourceRows'] == 1000",
+    "ISOLATED_LOCAL_LOOKUP_EXPORT_PROCESS",
+    "Upload 1K scalability smoke evidence",
 ]:
     if token not in postgres_workflow:
         raise AssertionError(f"PostgreSQL integration smoke gate missing {token!r}")
@@ -105,6 +136,7 @@ for token in [
     "--unique-cve-ratio 1.0",
     "setupSeedSeconds",
     "localLookupExportSeconds",
+    "isolated process",
     "manual workflow",
     "Never run this harness against an operational RBVM database",
 ]:
