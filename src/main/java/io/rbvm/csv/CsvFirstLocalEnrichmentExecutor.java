@@ -67,7 +67,7 @@ final class CsvFirstLocalEnrichmentExecutor {
         this.exporter = Objects.requireNonNull(exporter, "exporter");
         String configuredRoot = System.getenv().getOrDefault("RBVM_REPOSITORY_ROOT", ".");
         this.repositoryRoot = Path.of(configuredRoot).toAbsolutePath().normalize();
-        this.enrichmentScript = repositoryRoot.resolve("scripts/enrich-uploaded-csv.py").normalize();
+        this.enrichmentScript = repositoryRoot.resolve("scripts/enrich-uploaded-csv-local.py").normalize();
         this.snapshotBuilderScript = repositoryRoot
                 .resolve("scripts/build-local-public-intelligence-snapshot.py").normalize();
         this.python = System.getenv().getOrDefault("RBVM_PYTHON", "python3");
