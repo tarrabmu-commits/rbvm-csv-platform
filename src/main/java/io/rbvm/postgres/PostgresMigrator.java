@@ -50,7 +50,8 @@ public final class PostgresMigrator {
             new Migration(28, "V28__findings_read_hotpath_indexes.sql"),
             new Migration(29, "V29__canonical_mvp_priority_persistence.sql"),
             new Migration(30, "V30__local_public_intelligence_store.sql"),
-            new Migration(31, "V31__public_intelligence_sync_job.sql")
+            new Migration(31, "V31__public_intelligence_sync_job.sql"),
+            new Migration(32, "V32__canonical_projection_fk_indexes.sql")
     );
 
     private final JdbcConnectionFactory connections;
