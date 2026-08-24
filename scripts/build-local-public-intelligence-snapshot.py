@@ -110,7 +110,7 @@ def load_provider_status(path):
     with path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
         expected = [
-            "Provider", "Has_Success", "Success_ID", "Sync_Mode", "Source_URI",
+            "Provider", "Has_Success", "Safe_Negative_Absence", "Success_ID", "Sync_Mode", "Source_URI",
             "Source_Version", "Source_SHA256", "Source_Published_At", "Observed_At",
             "Completed_At", "Record_Count",
         ]
@@ -121,14 +121,23 @@ def load_provider_status(path):
             if provider not in PROVIDERS or provider in result:
                 raise RuntimeError(f"invalid/duplicate provider status: {provider!r}")
             has_success = row["Has_Success"].lower()
+            safe_negative = row["Safe_Negative_Absence"].lower()
             if has_success not in {"true", "false"}:
                 raise RuntimeError(f"invalid Has_Success for {provider}")
+            if safe_negative not in {"true", "false"}:
+                raise RuntimeError(f"invalid Safe_Negative_Absence for {provider}")
+            if safe_negative == "true" and (provider != "CISA_KEV" or has_success != "true"):
+                raise RuntimeError("safe negative absence is valid only for a successful validated CISA KEV catalog")
             if has_success == "true":
                 if not row["Success_ID"] or not row["Source_URI"] or not row["Source_Version"]:
                     raise RuntimeError(f"successful provider {provider} is missing source identity")
                 if not SHA256_RE.fullmatch(row["Source_SHA256"]):
                     raise RuntimeError(f"successful provider {provider} has invalid source SHA-256")
-            result[provider] = {**row, "hasSuccess": has_success == "true"}
+            result[provider] = {
+                **row,
+                "hasSuccess": has_success == "true",
+                "safeNegativeAbsence": safe_negative == "true",
+            }
     if set(result) != set(PROVIDERS):
         raise RuntimeError("provider-status.tsv must contain all four public-intelligence providers")
     return result
@@ -249,7 +258,7 @@ def main():
     snapshot_records = []
     source_hashes = {provider: set() for provider in PROVIDERS}
 
-    cisa_complete = status["CISA_KEV"]["hasSuccess"]
+    cisa_complete = status["CISA_KEV"]["safeNegativeAbsence"]
     for cve in cves:
         local = records[cve]
         for provider, entry in local.items():
@@ -304,6 +313,7 @@ def main():
         row = status[provider]
         provider_status[provider] = {
             "hasSuccessfulSnapshot": row["hasSuccess"],
+            "safeNegativeAbsence": row["safeNegativeAbsence"],
             "successId": row["Success_ID"] or None,
             "syncMode": row["Sync_Mode"] or None,
             "sourceUri": row["Source_URI"] or None,
