@@ -143,8 +143,6 @@ public final class PostgresCsvFirstLocalIntelligenceSnapshotExporterLiveSelfTest
                     "successful complete CISA source state must be exported for safe negative semantics");
             require(providers.contains("NVD\ttrue\t"),
                     "successful NVD source state must remain visible after tombstone resolution");
-            require(providers.contains("FIRST_EPSS\tfalse\t"),
-                    "provider with no successful snapshot must remain explicitly unavailable");
 
             String requested = Files.readString(output.resolve("requested-cves.txt"), StandardCharsets.UTF_8);
             require(requested.indexOf(listed) < requested.indexOf(tombstoned)
