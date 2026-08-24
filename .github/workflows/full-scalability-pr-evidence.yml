@@ -10,7 +10,7 @@ jobs:
   progressive-evidence:
     if: github.head_ref == 'full-scalability-benchmark-v1'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:16.14-bookworm@sha256:92620daddcd947f8d5ab5ba66e848702fe443d87fed30c4cea8e389fd78dfc55
@@ -46,9 +46,164 @@ jobs:
             --output "$driver"
           printf '%s  %s\n' "$PGJDBC_SHA256" "$driver" | sha256sum --check
           printf 'RBVM_POSTGRES_DRIVER_JAR=%s\n' "$driver" >> "$GITHUB_ENV"
+      - name: Apply projection write-amplification experiment
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/main/java/io/rbvm/postgres/PostgresCanonicalProjection.java')
+          source = path.read_text()
+
+          start = source.index('        UUID existingObservation = selectUuid(connection, """')
+          end = source.index('        EntityRef asset = ensureAsset(', start)
+          source = source[:start] + source[end:]
+
+          old = '''        if (!createdThisCall) {
+              updateExistingExposure(connection, accumulator, cached, observation);
+          } else {
+              executeUpdate(connection, """
+                      UPDATE rbvm.exposure SET public_id = ?
+                      WHERE tenant_id = ? AND id = ?
+                      """, cached.publicId(), accumulator.tenantId, cached.id());
+          }
+          return cached;
+          }'''
+          if old not in source:
+              old = old.replace('          ', '        ')
+          assert old in source, 'exposure insert-followup marker missing'
+          new = '''        if (!createdThisCall) {
+              updateExistingExposure(connection, accumulator, cached, observation);
+          }
+          return cached;
+          }'''
+          if old.startswith('        '):
+              new = new.replace('          ', '        ')
+          source = source.replace(old, new, 1)
+
+          case_start = source.index('    private static EntityRef ensureCase(')
+          case_end = source.index('    private static EntityRef ensureExposure(', case_start)
+          case = source[case_start:case_end]
+          marker = '        EntityRef cached = accumulator.cases.get(naturalKey);\n        if (cached == null) {'
+          assert marker in case
+          case = case.replace(marker,
+              '        EntityRef cached = accumulator.cases.get(naturalKey);\n'
+              '        boolean existingCase = false;\n'
+              '        if (cached == null) {', 1)
+          marker = '''            } else {
+                  accumulator.updatedCaseIds.add(cached.id());
+              }
+          }
+          executeUpdate(connection, """
+                  UPDATE rbvm.vulnerability_case SET public_id = ?, updated_at = ?
+                  WHERE tenant_id = ? AND id = ?
+                  """, cached.publicId(), accumulator.now, accumulator.tenantId, cached.id());
+          return cached;
+          }'''
+          if marker not in case:
+              marker = marker.replace('          ', '        ')
+          assert marker in case, 'case update marker missing'
+          replacement = '''            } else {
+                  accumulator.updatedCaseIds.add(cached.id());
+                  existingCase = true;
+              }
+          }
+          if (existingCase) {
+              executeUpdate(connection, """
+                      UPDATE rbvm.vulnerability_case SET public_id = ?, updated_at = ?
+                      WHERE tenant_id = ? AND id = ?
+                      """, cached.publicId(), accumulator.now, accumulator.tenantId, cached.id());
+          }
+          return cached;
+          }'''
+          if marker.startswith('        '):
+              replacement = replacement.replace('          ', '        ')
+          case = case.replace(marker, replacement, 1)
+          source = source[:case_start] + case + source[case_end:]
+
+          for method, cache_expr, new_counter, next_method in [
+              ('ensureAsset', 'accumulator.assets.get(naturalKey)', 'accumulator.newAssets++', 'ensureVulnerability'),
+              ('ensureComponent', 'accumulator.components.get(naturalKey)', 'accumulator.newComponents++', 'insertObservation'),
+          ]:
+              mstart = source.index(f'    private static EntityRef {method}(')
+              mend = source.index(f'    private static ', mstart + 10)
+              region = source[mstart:mend]
+              marker = f'        EntityRef cached = {cache_expr};\n        if (cached == null) {{'
+              assert marker in region, f'{method} cache marker missing'
+              region = region.replace(marker,
+                  f'        EntityRef cached = {cache_expr};\n'
+                  '        boolean createdThisCall = false;\n'
+                  '        if (cached == null) {', 1)
+              marker = f'''            if (isNew) {{
+                  {new_counter};
+              }}
+          }}
+          executeUpdate(connection, """'''
+              if marker not in region:
+                  marker = marker.replace('          ', '        ')
+              assert marker in region, f'{method} new marker missing'
+              replacement = f'''            if (isNew) {{
+                  {new_counter};
+                  createdThisCall = true;
+              }}
+          }}
+          if (!createdThisCall) {{
+              executeUpdate(connection, """'''
+              if marker.startswith('        '):
+                  replacement = replacement.replace('          ', '        ')
+              region = region.replace(marker, replacement, 1)
+              tail = '                cached.id()\n        );\n        return cached;'
+              assert tail in region, f'{method} update tail missing'
+              region = region.replace(tail,
+                  '                cached.id()\n            );\n        }\n        return cached;', 1)
+              source = source[:mstart] + region + source[mend:]
+
+          vstart = source.index('    private static EntityRef ensureVulnerability(')
+          vend = source.index('    private static EntityRef ensureComponent(', vstart)
+          vulnerability = source[vstart:vend]
+          marker = '        EntityRef cached = accumulator.vulnerabilities.get(observation.cveId());\n        if (cached == null) {'
+          assert marker in vulnerability
+          vulnerability = vulnerability.replace(marker,
+              '        EntityRef cached = accumulator.vulnerabilities.get(observation.cveId());\n'
+              '        boolean createdThisCall = false;\n'
+              '        if (cached == null) {', 1)
+          marker = '''            if (isNew) {
+                  accumulator.newVulnerabilities++;
+              }
+          }
+          executeUpdate(connection, """'''
+          if marker not in vulnerability:
+              marker = marker.replace('          ', '        ')
+          assert marker in vulnerability
+          replacement = '''            if (isNew) {
+                  accumulator.newVulnerabilities++;
+                  createdThisCall = true;
+              }
+          }
+          if (!createdThisCall) {
+              executeUpdate(connection, """'''
+          if marker.startswith('        '):
+              replacement = replacement.replace('          ', '        ')
+          vulnerability = vulnerability.replace(marker, replacement, 1)
+          marker = '''                cached.id()
+          );
+          if (observation.intelligence() != null) {'''
+          if marker not in vulnerability:
+              marker = marker.replace('          ', '        ')
+          assert marker in vulnerability
+          replacement = '''                cached.id()
+              );
+          }
+          if (observation.intelligence() != null && !createdThisCall) {'''
+          if marker.startswith('        '):
+              replacement = replacement.replace('          ', '        ')
+          vulnerability = vulnerability.replace(marker, replacement, 1)
+          source = source[:vstart] + vulnerability + source[vend:]
+
+          path.write_text(source)
+          PY
       - name: Compile benchmark runtime
         run: ./scripts/compile.sh --tests
-      - name: Run exhaustive 1K SQL statement diagnostic
+      - name: Run 10K projection optimization experiment
         env:
           RBVM_PROJECTION_BACKEND: POSTGRESQL
           RBVM_JDBC_URL: jdbc:postgresql://127.0.0.1:5432/rbvm?sslmode=disable
@@ -58,27 +213,14 @@ jobs:
           RBVM_SCALABILITY_BENCHMARK_MODE: 'true'
         run: |
           set -euo pipefail
-          postgres_container="$(docker ps --filter 'publish=5432' --format '{{.ID}}' | head -1)"
-          test -n "$postgres_container"
-          docker exec -e PGPASSWORD=postgres-scalability-owner "$postgres_container" \
-            psql -U postgres -d rbvm -v ON_ERROR_STOP=1 \
-            -c "ALTER SYSTEM SET log_min_duration_statement = '0';"
-          docker exec -e PGPASSWORD=postgres-scalability-owner "$postgres_container" \
-            psql -U postgres -d rbvm -v ON_ERROR_STOP=1 \
-            -c "SELECT pg_reload_conf();"
-
           python3 scripts/run-full-scalability-benchmark-isolated.py \
-            --sizes 1000 \
-            --stress-max-rows 1000 \
-            --tier-timeout-seconds 180 \
+            --sizes 10000 \
+            --stress-max-rows 10000 \
+            --tier-timeout-seconds 600 \
             --output-directory build/full-scalability-pr-evidence
-
           classpath="build/manual/main:build/manual/test:${RBVM_POSTGRES_DRIVER_JAR}"
           java -ea -cp "$classpath" io.rbvm.postgres.PostgresFullScalabilityTableStatsProbe \
             build/full-scalability-pr-evidence/postgres-table-stats.tsv
-          docker logs "$postgres_container" \
-            > build/full-scalability-pr-evidence/postgres-duration.log 2>&1
-          wc -l build/full-scalability-pr-evidence/postgres-duration.log
       - name: Upload diagnostic evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
