@@ -44,15 +44,17 @@ def parse_args():
     return parser.parse_args()
 
 
-def iso8601(value, field):
+def iso8601(value, field, *, assume_utc=False):
     if value is None or value == "":
         return ""
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     except ValueError as exc:
         raise RuntimeError(f"{field} must be ISO-8601") from exc
     if parsed.tzinfo is None:
-        raise RuntimeError(f"{field} must include timezone")
+        if not assume_utc:
+            raise RuntimeError(f"{field} must include timezone")
+        parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
@@ -113,8 +115,11 @@ def nvd_records(raw, source_name, observed_at):
         if cve_id in seen:
             raise RuntimeError(f"NVD source contains duplicate CVE: {cve_id}")
         seen.add(cve_id)
-        modified = iso8601(payload.get("lastModified"), "NVD lastModified")
-        published = iso8601(payload.get("published"), "NVD published")
+        # NVD CVE API 2.0 response timestamps are UTC but are serialized without an offset.
+        modified = iso8601(
+            payload.get("lastModified"), "NVD lastModified", assume_utc=True
+        )
+        published = iso8601(payload.get("published"), "NVD published", assume_utc=True)
         yield record_line(
             cve_id, "ACTIVE", modified, published, observed_at, canonical_json(payload)
         )
@@ -219,8 +224,12 @@ def cve_program_records(path, observed_at):
         if cve_id in seen:
             raise RuntimeError(f"CVE Program source contains duplicate CVE: {cve_id}")
         seen.add(cve_id)
-        modified = iso8601(metadata.get("dateUpdated"), "CVE Program dateUpdated")
-        published = iso8601(metadata.get("datePublished"), "CVE Program datePublished")
+        modified = iso8601(
+            metadata.get("dateUpdated"), "CVE Program dateUpdated", assume_utc=True
+        )
+        published = iso8601(
+            metadata.get("datePublished"), "CVE Program datePublished", assume_utc=True
+        )
         yield record_line(
             cve_id, "ACTIVE", modified, published, observed_at, canonical_json(payload)
         )
