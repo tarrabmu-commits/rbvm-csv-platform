@@ -46,7 +46,7 @@ jobs:
             --output "$driver"
           printf '%s  %s\n' "$PGJDBC_SHA256" "$driver" | sha256sum --check
           printf 'RBVM_POSTGRES_DRIVER_JAR=%s\n' "$driver" >> "$GITHUB_ENV"
-      - name: Apply single reverse-lookup index experiment
+      - name: Apply reverse index and anchored manifest join experiment
         run: |
           set -euo pipefail
           cat > db/migration/V32__exposure_observation_reverse_lookup.sql <<'SQL'
@@ -57,18 +57,70 @@ jobs:
           SQL
           python3 - <<'PY'
           from pathlib import Path
-          path = Path('src/main/java/io/rbvm/postgres/PostgresMigrator.java')
-          source = path.read_text()
+
+          migrator = Path('src/main/java/io/rbvm/postgres/PostgresMigrator.java')
+          source = migrator.read_text()
           old = '            new Migration(31, "V31__public_intelligence_sync_job.sql")\n    );'
           new = ('            new Migration(31, "V31__public_intelligence_sync_job.sql"),\n'
                  '            new Migration(32, "V32__exposure_observation_reverse_lookup.sql")\n'
                  '    );')
           assert source.count(old) == 1, 'migration tail marker drifted'
-          path.write_text(source.replace(old, new, 1))
+          migrator.write_text(source.replace(old, new, 1))
+
+          exporter = Path('src/main/java/io/rbvm/postgres/PostgresCanonicalImportFindingExporter.java')
+          source = exporter.read_text()
+          start_marker = '            try (PreparedStatement statement = connection.prepareStatement("""\n                    SELECT e.id AS finding_id,'
+          start = source.index(start_marker)
+          sql_end = source.index('                    """)) {', start) + len('                    """)) {')
+          replacement = '''            try (PreparedStatement statement = connection.prepareStatement("""
+                    WITH import_rows AS MATERIALIZED (
+                        SELECT tenant_id, observation_id, source_row_number
+                        FROM rbvm.import_observation
+                        WHERE import_id = ?
+                    )
+                    SELECT e.id AS finding_id,
+                           MIN(io.source_row_number) AS source_row_number,
+                           sp.external_key AS source_profile_key,
+                           a.observed_name AS asset_name,
+                           v.cve_id,
+                           ac.observed_product_name AS product_name,
+                           e.status AS finding_status,
+                           e.current_severity
+                    FROM import_rows io
+                    JOIN rbvm.import_run ir
+                      ON ir.tenant_id = io.tenant_id AND ir.id = ?
+                    JOIN rbvm.source_profile sp
+                      ON sp.tenant_id = ir.tenant_id AND sp.id = ir.source_profile_id
+                    JOIN rbvm.tenant t
+                      ON t.id = ir.tenant_id
+                    JOIN rbvm.exposure_observation eo
+                      ON eo.tenant_id = io.tenant_id AND eo.observation_id = io.observation_id
+                    JOIN rbvm.exposure e
+                      ON e.tenant_id = eo.tenant_id AND e.id = eo.exposure_id
+                    JOIN rbvm.asset a
+                      ON a.tenant_id = e.tenant_id AND a.id = e.asset_id
+                    JOIN rbvm.vulnerability v
+                      ON v.id = e.vulnerability_id
+                    JOIN rbvm.asset_component ac
+                      ON ac.tenant_id = e.tenant_id AND ac.id = e.component_id
+                    WHERE t.tenant_key = ?
+                    GROUP BY e.id, sp.external_key, a.observed_name, v.cve_id,
+                             ac.observed_product_name, e.status, e.current_severity
+                    ORDER BY MIN(io.source_row_number), e.id
+                    """)) {'''
+          source = source[:start] + replacement + source[sql_end:]
+          old_params = '''                statement.setObject(1, importId);
+                statement.setString(2, TENANT_KEY);'''
+          new_params = '''                statement.setObject(1, importId);
+                statement.setObject(2, importId);
+                statement.setString(3, TENANT_KEY);'''
+          assert source.count(old_params) >= 1, 'manifest parameter marker drifted'
+          source = source.replace(old_params, new_params, 1)
+          exporter.write_text(source)
           PY
       - name: Compile benchmark runtime
         run: ./scripts/compile.sh --tests
-      - name: Run 10K reverse-index A/B
+      - name: Run 10K anchored-manifest A/B
         env:
           RBVM_PROJECTION_BACKEND: POSTGRESQL
           RBVM_JDBC_URL: jdbc:postgresql://127.0.0.1:5432/rbvm?sslmode=disable
