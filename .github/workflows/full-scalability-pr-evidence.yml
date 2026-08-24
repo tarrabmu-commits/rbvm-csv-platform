@@ -46,9 +46,352 @@ jobs:
             --output "$driver"
           printf '%s  %s\n' "$PGJDBC_SHA256" "$driver" | sha256sum --check
           printf 'RBVM_POSTGRES_DRIVER_JAR=%s\n' "$driver" >> "$GITHUB_ENV"
+      - name: Apply parent-mutation coalescing experiment
+        run: |
+          set -euo pipefail
+          cat > src/main/java/io/rbvm/postgres/PostgresCanonicalProjectionMutationBuffer.java <<'JAVA'
+          package io.rbvm.postgres;
+
+          import io.rbvm.csv.VulnerabilityIntelligenceEvidence;
+          import io.rbvm.csv.WazuhObservation;
+
+          import java.sql.Connection;
+          import java.sql.PreparedStatement;
+          import java.sql.SQLException;
+          import java.sql.Timestamp;
+          import java.time.Instant;
+          import java.util.LinkedHashMap;
+          import java.util.Map;
+          import java.util.UUID;
+
+          final class PostgresCanonicalProjectionMutationBuffer {
+              private final UUID tenantId;
+              private final Instant now;
+              private final Map<UUID, AssetMutation> assets = new LinkedHashMap<>();
+              private final Map<UUID, VulnerabilityMutation> vulnerabilities = new LinkedHashMap<>();
+
+              PostgresCanonicalProjectionMutationBuffer(UUID tenantId, Instant now) {
+                  this.tenantId = tenantId;
+                  this.now = now;
+              }
+
+              void observeAsset(
+                      UUID id,
+                      String publicId,
+                      boolean createdThisCall,
+                      WazuhObservation observation
+              ) {
+                  AssetMutation current = assets.get(id);
+                  if (current == null) {
+                      assets.put(id, new AssetMutation(
+                              id,
+                              publicId,
+                              observation.detectedAt(),
+                              observation.detectedAt(),
+                              observation.agentObservedName(),
+                              observation.osNameRaw(),
+                              !createdThisCall
+                      ));
+                      return;
+                  }
+                  Instant first = observation.detectedAt().isBefore(current.firstObservedAt())
+                          ? observation.detectedAt() : current.firstObservedAt();
+                  Instant latest = current.latestObservedAt();
+                  String observedName = current.observedName();
+                  String osNameRaw = current.osNameRaw();
+                  if (observation.detectedAt().isAfter(latest)) {
+                      latest = observation.detectedAt();
+                      observedName = observation.agentObservedName();
+                      osNameRaw = observation.osNameRaw();
+                  }
+                  assets.put(id, new AssetMutation(
+                          id, publicId, first, latest, observedName, osNameRaw, true));
+              }
+
+              void observeVulnerability(
+                      UUID id,
+                      boolean createdThisCall,
+                      WazuhObservation observation
+              ) {
+                  VulnerabilityMutation current = vulnerabilities.get(id);
+                  String description = null;
+                  Instant descriptionAt = null;
+                  VulnerabilityIntelligenceEvidence intelligence = null;
+                  boolean dirty = !createdThisCall;
+                  if (current != null) {
+                      description = current.description();
+                      descriptionAt = current.descriptionAt();
+                      intelligence = current.intelligence();
+                      dirty = true;
+                  }
+                  if (!observation.descriptionSnapshot().isBlank()
+                          && (descriptionAt == null
+                          || observation.detectedAt().isAfter(descriptionAt))) {
+                      description = observation.descriptionSnapshot();
+                      descriptionAt = observation.detectedAt();
+                  }
+                  VulnerabilityIntelligenceEvidence observedIntelligence = observation.intelligence();
+                  if (observedIntelligence != null
+                          && (intelligence == null
+                          || observedIntelligence.observedAt().isAfter(intelligence.observedAt()))) {
+                      intelligence = observedIntelligence;
+                  }
+                  vulnerabilities.put(id, new VulnerabilityMutation(
+                          id, description, descriptionAt, intelligence, dirty));
+              }
+
+              void flush(Connection connection) throws SQLException {
+                  flushAssets(connection);
+                  flushVulnerabilities(connection);
+              }
+
+              private void flushAssets(Connection connection) throws SQLException {
+                  try (PreparedStatement statement = connection.prepareStatement("""
+                          UPDATE rbvm.asset SET
+                              public_id = ?,
+                              first_observed_at = LEAST(first_observed_at, ?),
+                              observed_name = CASE WHEN ? > last_observed_at THEN ? ELSE observed_name END,
+                              os_name_raw = CASE WHEN ? > last_observed_at THEN ? ELSE os_name_raw END,
+                              last_observed_at = GREATEST(last_observed_at, ?),
+                              updated_at = ?
+                          WHERE tenant_id = ? AND id = ?
+                          """)) {
+                      for (AssetMutation mutation : assets.values()) {
+                          if (!mutation.dirty()) continue;
+                          statement.setString(1, mutation.publicId());
+                          setInstant(statement, 2, mutation.firstObservedAt());
+                          setInstant(statement, 3, mutation.latestObservedAt());
+                          statement.setString(4, mutation.observedName());
+                          setInstant(statement, 5, mutation.latestObservedAt());
+                          statement.setString(6, mutation.osNameRaw());
+                          setInstant(statement, 7, mutation.latestObservedAt());
+                          setInstant(statement, 8, now);
+                          statement.setObject(9, tenantId);
+                          statement.setObject(10, mutation.id());
+                          statement.addBatch();
+                      }
+                      statement.executeBatch();
+                  }
+              }
+
+              private void flushVulnerabilities(Connection connection) throws SQLException {
+                  try (PreparedStatement description = connection.prepareStatement("""
+                          UPDATE rbvm.vulnerability SET
+                              description_current = CASE
+                                  WHEN length(?) > 0 AND
+                                       (description_observed_at IS NULL OR ? > description_observed_at)
+                                  THEN ? ELSE description_current END,
+                              description_observed_at = CASE
+                                  WHEN length(?) > 0 AND
+                                       (description_observed_at IS NULL OR ? > description_observed_at)
+                                  THEN ? ELSE description_observed_at END
+                          WHERE id = ?
+                          """);
+                       PreparedStatement intelligence = connection.prepareStatement("""
+                          UPDATE rbvm.vulnerability SET
+                              cvss_version = ?, cvss_base_score = ?, cvss_vector = ?,
+                              epss_probability = ?, epss_percentile = ?, known_exploited = ?,
+                              kev_date_added = ?, kev_due_date = ?, intelligence_observed_at = ?,
+                              intelligence_source_references = ?, priority_tier = ?
+                          WHERE id = ? AND (intelligence_observed_at IS NULL
+                              OR ? > intelligence_observed_at)
+                          """)) {
+                      boolean hasDescriptions = false;
+                      boolean hasIntelligence = false;
+                      for (VulnerabilityMutation mutation : vulnerabilities.values()) {
+                          if (!mutation.dirty()) continue;
+                          if (mutation.descriptionAt() != null) {
+                              description.setString(1, mutation.description());
+                              setInstant(description, 2, mutation.descriptionAt());
+                              description.setString(3, mutation.description());
+                              description.setString(4, mutation.description());
+                              setInstant(description, 5, mutation.descriptionAt());
+                              setInstant(description, 6, mutation.descriptionAt());
+                              description.setObject(7, mutation.id());
+                              description.addBatch();
+                              hasDescriptions = true;
+                          }
+                          VulnerabilityIntelligenceEvidence value = mutation.intelligence();
+                          if (value != null) {
+                              intelligence.setObject(1, value.cvssVersion());
+                              intelligence.setObject(2, value.cvssBaseScore());
+                              intelligence.setObject(3, value.cvssVector());
+                              intelligence.setObject(4, value.epssProbability());
+                              intelligence.setObject(5, value.epssPercentile());
+                              intelligence.setObject(6, value.knownExploited());
+                              intelligence.setObject(7, value.kevDateAdded());
+                              intelligence.setObject(8, value.kevDueDate());
+                              setInstant(intelligence, 9, value.observedAt());
+                              intelligence.setObject(10, value.sourceReferences());
+                              intelligence.setObject(11, value.priorityTier());
+                              intelligence.setObject(12, mutation.id());
+                              setInstant(intelligence, 13, value.observedAt());
+                              intelligence.addBatch();
+                              hasIntelligence = true;
+                          }
+                      }
+                      if (hasDescriptions) description.executeBatch();
+                      if (hasIntelligence) intelligence.executeBatch();
+                  }
+              }
+
+              private static void setInstant(PreparedStatement statement, int index, Instant value)
+                      throws SQLException {
+                  statement.setTimestamp(index, Timestamp.from(value));
+              }
+
+              private record AssetMutation(
+                      UUID id,
+                      String publicId,
+                      Instant firstObservedAt,
+                      Instant latestObservedAt,
+                      String observedName,
+                      String osNameRaw,
+                      boolean dirty
+              ) {
+              }
+
+              private record VulnerabilityMutation(
+                      UUID id,
+                      String description,
+                      Instant descriptionAt,
+                      VulnerabilityIntelligenceEvidence intelligence,
+                      boolean dirty
+              ) {
+              }
+          }
+          JAVA
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/main/java/io/rbvm/postgres/PostgresCanonicalProjection.java')
+          source = path.read_text()
+
+          assert source.count('                verifyAnalysis(input.analysis(), projected, accumulator);') == 1
+          source = source.replace(
+              '                verifyAnalysis(input.analysis(), projected, accumulator);\n'
+              '                recomputeCases(connection, tenantId, sourceProfileId, now);',
+              '                verifyAnalysis(input.analysis(), projected, accumulator);\n'
+              '                accumulator.parentMutations.flush(connection);\n'
+              '                recomputeCases(connection, tenantId, sourceProfileId, now);',
+              1,
+          )
+
+          astart = source.index('    private static EntityRef ensureAsset(')
+          aend = source.index('    private static EntityRef ensureVulnerability(', astart)
+          asset = source[astart:aend]
+          asset = asset.replace(
+              '        EntityRef cached = accumulator.assets.get(naturalKey);\n'
+              '        if (cached == null) {',
+              '        EntityRef cached = accumulator.assets.get(naturalKey);\n'
+              '        boolean createdThisCall = false;\n'
+              '        if (cached == null) {',
+              1,
+          )
+          asset = asset.replace(
+              '            if (isNew) {\n'
+              '                accumulator.newAssets++;\n'
+              '            }',
+              '            if (isNew) {\n'
+              '                accumulator.newAssets++;\n'
+              '                createdThisCall = true;\n'
+              '            }',
+              1,
+          )
+          update_start = asset.index('        executeUpdate(connection, """\n                UPDATE rbvm.asset SET')
+          update_end = asset.index('        return cached;', update_start)
+          asset = (asset[:update_start]
+                   + '        accumulator.parentMutations.observeAsset(\n'
+                     '                cached.id(), cached.publicId(), createdThisCall, observation);\n'
+                   + asset[update_end:])
+          source = source[:astart] + asset + source[aend:]
+
+          vstart = source.index('    private static EntityRef ensureVulnerability(')
+          vend = source.index('    private static EntityRef ensureComponent(', vstart)
+          vulnerability = source[vstart:vend]
+          vulnerability = vulnerability.replace(
+              '        EntityRef cached = accumulator.vulnerabilities.get(observation.cveId());\n'
+              '        if (cached == null) {',
+              '        EntityRef cached = accumulator.vulnerabilities.get(observation.cveId());\n'
+              '        boolean createdThisCall = false;\n'
+              '        if (cached == null) {',
+              1,
+          )
+          vulnerability = vulnerability.replace(
+              '            if (isNew) {\n'
+              '                accumulator.newVulnerabilities++;\n'
+              '            }',
+              '            if (isNew) {\n'
+              '                accumulator.newVulnerabilities++;\n'
+              '                createdThisCall = true;\n'
+              '            }',
+              1,
+          )
+          update_start = vulnerability.index('        executeUpdate(connection, """\n                UPDATE rbvm.vulnerability SET')
+          update_end = vulnerability.index('        return cached;', update_start)
+          vulnerability = (vulnerability[:update_start]
+                           + '        accumulator.parentMutations.observeVulnerability(\n'
+                             '                cached.id(), createdThisCall, observation);\n'
+                           + vulnerability[update_end:])
+          source = source[:vstart] + vulnerability + source[vend:]
+
+          cstart = source.index('    private static EntityRef ensureComponent(')
+          cend = source.index('    private static UUID insertObservation(', cstart)
+          component = source[cstart:cend]
+          component = component.replace(
+              '        EntityRef cached = accumulator.components.get(naturalKey);\n'
+              '        if (cached == null) {',
+              '        EntityRef cached = accumulator.components.get(naturalKey);\n'
+              '        boolean createdThisCall = false;\n'
+              '        if (cached == null) {',
+              1,
+          )
+          component = component.replace(
+              '            if (isNew) {\n'
+              '                accumulator.newComponents++;\n'
+              '            }',
+              '            if (isNew) {\n'
+              '                accumulator.newComponents++;\n'
+              '                createdThisCall = true;\n'
+              '            }',
+              1,
+          )
+          update_start = component.index('        executeUpdate(connection, """\n                UPDATE rbvm.asset_component SET')
+          update_end = component.index('        return cached;', update_start)
+          update_block = component[update_start:update_end]
+          indented = ''.join('    ' + line if line.strip() else line for line in update_block.splitlines(True))
+          component = (component[:update_start]
+                       + '        if (!createdThisCall) {\n'
+                       + indented
+                       + '        }\n'
+                       + component[update_end:])
+          source = source[:cstart] + component + source[cend:]
+
+          source = source.replace(
+              '        private final Instant now;\n'
+              '        private final Map<String, EntityRef> assets = new HashMap<>();',
+              '        private final Instant now;\n'
+              '        private final PostgresCanonicalProjectionMutationBuffer parentMutations;\n'
+              '        private final Map<String, EntityRef> assets = new HashMap<>();',
+              1,
+          )
+          source = source.replace(
+              '            this.input = input;\n'
+              '            this.now = now;\n',
+              '            this.input = input;\n'
+              '            this.now = now;\n'
+              '            this.parentMutations = new PostgresCanonicalProjectionMutationBuffer(tenantId, now);\n',
+              1,
+          )
+
+          path.write_text(source)
+          PY
+          git diff --check
+          grep -n "parentMutations\|createdThisCall" src/main/java/io/rbvm/postgres/PostgresCanonicalProjection.java
       - name: Compile benchmark runtime
         run: ./scripts/compile.sh --tests
-      - name: Run promoted 10K benchmark
+      - name: Run 10K parent-mutation A/B
         env:
           RBVM_PROJECTION_BACKEND: POSTGRESQL
           RBVM_JDBC_URL: jdbc:postgresql://127.0.0.1:5432/rbvm?sslmode=disable
