@@ -22,7 +22,9 @@ public interface CanonicalMvpPriorityStore {
             Instant materializedAt
     ) throws IOException;
 
-    Optional<PriorityView> latestForFinding(String findingId) throws IOException;
+    default Optional<PriorityView> latestForFinding(String findingId) throws IOException {
+        return Optional.empty();
+    }
 
     record PriorityRow(
             long sourceRowNumber,
