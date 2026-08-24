@@ -2,8 +2,9 @@
 """Apply bounded/retention-safe transforms to the dependency-free frontend runtime.
 
 These are intentionally narrow, fail-closed build transforms while Frontend System V2 is
-being consolidated. The stabilized Dashboard must not crawl the full catalog, and temporary
-full-catalog case/asset/report arrays must not stay retained after SPA navigation.
+being consolidated. The stabilized Dashboard must not crawl the full catalog, large managed
+asset tables must render one bounded page, and temporary full-catalog arrays must not stay
+retained after SPA navigation.
 """
 from pathlib import Path
 import sys
@@ -44,5 +45,14 @@ replace_once(
     "history navigation cache release",
 )
 
+# The managed-asset registry may legitimately contain thousands of records. Keep the complete
+# list available to search while this route is open, but never instantiate thousands of table
+# rows/cells at once. Rendering remains bounded by the existing PAGE_SIZE (100).
+replace_once(
+    """const tableHolder=h('div');const paint=()=>{const q=search.value.trim().toLowerCase();const rows=assets.filter(a=>!q||[a.currentRevision?.displayName,a.customerAssetKey,a.currentRevision?.businessService,a.currentRevision?.businessOwner].some(v=>String(v||'').toLowerCase().includes(q)));tableHolder.replaceChildren(rows.length?table([{label:'Asset',render:r=>h('strong',{text:r.currentRevision?.displayName||r.id})},{label:'Service',render:r=>r.currentRevision?.businessService||'—'},{label:'Environment',render:r=>title(r.currentRevision?.environment)},{label:'Criticality',render:r=>title(r.currentRevision?.businessCriticality)},{label:'Owner',render:r=>r.currentRevision?.businessOwner||'—'},{label:'Revision',render:r=>r.currentRevision?.revision??'—'}],rows,'Managed assets',openAsset):empty('No assets match','Try a broader search.'));};search.addEventListener('input',paint);paint();""",
+    """const tableHolder=h('div');const previousPage=button('Previous',{kind:'ghost'});const nextPage=button('Next',{kind:'ghost'});const pageLabel=h('span');let assetPage=0;const paint=()=>{const q=search.value.trim().toLowerCase();const filtered=assets.filter(a=>!q||[a.currentRevision?.displayName,a.customerAssetKey,a.currentRevision?.businessService,a.currentRevision?.businessOwner].some(v=>String(v||'').toLowerCase().includes(q)));const pages=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));assetPage=Math.min(assetPage,pages-1);const rows=filtered.slice(assetPage*PAGE_SIZE,assetPage*PAGE_SIZE+PAGE_SIZE);previousPage.disabled=assetPage<=0;nextPage.disabled=assetPage+1>=pages;pageLabel.textContent=`${filtered.length} matching · page ${assetPage+1} of ${pages}`;tableHolder.replaceChildren(filtered.length?table([{label:'Asset',render:r=>h('strong',{text:r.currentRevision?.displayName||r.id})},{label:'Service',render:r=>r.currentRevision?.businessService||'—'},{label:'Environment',render:r=>title(r.currentRevision?.environment)},{label:'Criticality',render:r=>title(r.currentRevision?.businessCriticality)},{label:'Owner',render:r=>r.currentRevision?.businessOwner||'—'},{label:'Revision',render:r=>r.currentRevision?.revision??'—'}],rows,'Managed assets',openAsset):empty('No assets match','Try a broader search.'),h('div',{class:'pagination'},previousPage,pageLabel,nextPage));};search.addEventListener('input',()=>{assetPage=0;paint();});previousPage.addEventListener('click',()=>{if(assetPage>0){assetPage--;paint();}});nextPage.addEventListener('click',()=>{assetPage++;paint();});paint();""",
+    "managed asset table pagination",
+)
+
 path.write_text(text, encoding="utf-8")
-print("Frontend stabilization transform: PASS (bounded Overview + navigation cache release)")
+print("Frontend stabilization transform: PASS (bounded Overview/assets DOM + navigation cache release)")
