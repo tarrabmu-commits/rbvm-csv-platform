@@ -5,6 +5,8 @@ ROOT = Path(__file__).resolve().parents[1]
 runner = (ROOT / "scripts/run-full-scalability-benchmark.py").read_text(encoding="utf-8")
 bridge = (ROOT / "src/test/java/io/rbvm/postgres/PostgresFullScalabilityBenchmarkBridge.java").read_text(encoding="utf-8")
 doc = (ROOT / "docs/FULL_SCALABILITY_BENCHMARK_V1.md").read_text(encoding="utf-8")
+full_workflow = (ROOT / ".github/workflows/full-scalability-benchmark.yml").read_text(encoding="utf-8")
+postgres_workflow = (ROOT / ".github/workflows/postgres-integration.yml").read_text(encoding="utf-8")
 
 for token in [
     "RBVM_FULL_SCALABILITY_BENCHMARK_V1",
@@ -70,6 +72,30 @@ for token in [
 ]:
     if token not in runner:
         raise AssertionError(f"benchmark correctness guard missing {token!r}")
+
+# Full capacity work is manual; pull-request PostgreSQL integration proves only a bounded smoke tier.
+for token in [
+    "workflow_dispatch:",
+    'default: "1000,5000,10000,25000,50000,100000"',
+    'default: "1600000"',
+    "--stress-max-rows",
+    "RBVM_SCALABILITY_BENCHMARK_MODE: 'true'",
+    "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+]:
+    if token not in full_workflow:
+        raise AssertionError(f"manual full scalability workflow missing {token!r}")
+if "pull_request:" in full_workflow or "push:" in full_workflow:
+    raise AssertionError("full 100K+ scalability workflow must remain manual, not PR/push triggered")
+for token in [
+    "Run 1K full-scalability correctness smoke",
+    "--sizes 1000",
+    "--stress-max-rows 1000",
+    "priorityMappedSourceRows'] == 1000",
+]:
+    if token not in postgres_workflow:
+        raise AssertionError(f"PostgreSQL integration smoke gate missing {token!r}")
+if "--sizes 100000" in postgres_workflow:
+    raise AssertionError("normal PostgreSQL integration must not run the 100K capacity tier")
 
 for token in [
     "1K -> 5K -> 10K -> 25K -> 50K -> 100K Findings",
