@@ -45,19 +45,10 @@ jobs:
 
           runner = Path('scripts/run-full-scalability-benchmark.py')
           source = runner.read_text()
-          old = '''        metrics = {
+          status_anchor = '''        metrics = {
               "status": "PASS" if completed.returncode == 0 else "FAILED",
-              "returnCode": completed.returncode,
-              "wallSeconds": round(wall, 3),
-              **parse_time_v(time_file),
-          }
-          if completed.returncode != 0:
-              metrics["stderrTail"] = tail(stderr_file)
-          return metrics
-          '''
-          # Keep indentation exact to the source, while avoiding duplicated promotion.
-          old = old.replace('          ', '        ')
-          new = '''        stderr_tail = tail(stderr_file) if completed.returncode != 0 else ""
+          '''.replace('              ', '            ')
+          status_replacement = '''        stderr_tail = tail(stderr_file) if completed.returncode != 0 else ""
           status = "PASS"
           if completed.returncode != 0:
               resource_failure = completed.returncode in {137, -9}
@@ -68,17 +59,19 @@ jobs:
               status = "RESOURCE_EXHAUSTION" if resource_failure else "FAILED"
           metrics = {
               "status": status,
-              "returnCode": completed.returncode,
-              "wallSeconds": round(wall, 3),
-              **parse_time_v(time_file),
-          }
-          if stderr_tail:
-              metrics["stderrTail"] = stderr_tail
-          return metrics
           '''.replace('          ', '        ')
+          tail_anchor = '''        if completed.returncode != 0:
+              metrics["stderrTail"] = tail(stderr_file)
+          '''.replace('              ', '            ')
+          tail_replacement = '''        if stderr_tail:
+              metrics["stderrTail"] = stderr_tail
+          '''.replace('              ', '            ')
           if 'status = "RESOURCE_EXHAUSTION" if resource_failure else "FAILED"' not in source:
-              assert source.count(old) == 1, 'run_stage failure-classification marker drifted'
-              runner.write_text(source.replace(old, new, 1))
+              assert source.count(status_anchor) == 1, 'run_stage status marker drifted'
+              assert source.count(tail_anchor) == 1, 'run_stage stderr marker drifted'
+              source = source.replace(status_anchor, status_replacement, 1)
+              source = source.replace(tail_anchor, tail_replacement, 1)
+              runner.write_text(source)
 
           verifier = Path('scripts/verify-full-scalability-benchmark.py')
           source = verifier.read_text()
