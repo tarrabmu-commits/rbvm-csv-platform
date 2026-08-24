@@ -49,6 +49,8 @@ for token in [
     'REQUIRED_SCHEMA_VERSION = 30',
     'public final class PostgresPublicIntelligenceStore',
     'enum Provider',
+    'enum RecordState',
+    'TOMBSTONE',
     'NVD', 'FIRST_EPSS', 'CISA_KEV', 'CVE_PROGRAM',
     'beginOrReplay(',
     'appendRecords(',
@@ -59,7 +61,6 @@ for token in [
     'pg_advisory_xact_lock',
     'createArrayOf("text"',
     'array.free()',
-    'RecordState.TOMBSTONE',
 ]:
     assert token in store, f'local public-intelligence store missing {token!r}'
 
