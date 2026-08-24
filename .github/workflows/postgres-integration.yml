@@ -66,3 +66,4 @@ jobs:
           java -ea -cp "$classpath" io.rbvm.postgres.PostgresCanonicalImportFindingManifestLiveSelfTest
           java -ea -cp "$classpath" io.rbvm.postgres.PostgresV29CanonicalMvpPriorityLiveSelfTest
           java -ea -cp "$classpath" io.rbvm.postgres.PostgresV30PublicIntelligenceStoreLiveSelfTest
+          java -ea -cp "$classpath" io.rbvm.postgres.PostgresPublicIntelligenceSyncBundleLiveSelfTest
