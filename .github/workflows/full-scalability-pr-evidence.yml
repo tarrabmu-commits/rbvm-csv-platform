@@ -45,10 +45,8 @@ jobs:
 
           runner = Path('scripts/run-full-scalability-benchmark.py')
           source = runner.read_text()
-          status_anchor = '''        metrics = {
-              "status": "PASS" if completed.returncode == 0 else "FAILED",
-          '''.replace('              ', '            ')
-          status_replacement = '''        stderr_tail = tail(stderr_file) if completed.returncode != 0 else ""
+          intro_anchor = '        metrics = {\n            "status": "PASS" if completed.returncode == 0 else "FAILED",\n'
+          intro_replacement = '''        stderr_tail = tail(stderr_file) if completed.returncode != 0 else ""
           status = "PASS"
           if completed.returncode != 0:
               resource_failure = completed.returncode in {137, -9}
@@ -60,16 +58,12 @@ jobs:
           metrics = {
               "status": status,
           '''.replace('          ', '        ')
-          tail_anchor = '''        if completed.returncode != 0:
-              metrics["stderrTail"] = tail(stderr_file)
-          '''.replace('              ', '            ')
-          tail_replacement = '''        if stderr_tail:
-              metrics["stderrTail"] = stderr_tail
-          '''.replace('              ', '            ')
+          tail_anchor = '        if completed.returncode != 0:\n            metrics["stderrTail"] = tail(stderr_file)\n'
+          tail_replacement = '        if stderr_tail:\n            metrics["stderrTail"] = stderr_tail\n'
           if 'status = "RESOURCE_EXHAUSTION" if resource_failure else "FAILED"' not in source:
-              assert source.count(status_anchor) == 1, 'run_stage status marker drifted'
+              assert source.count(intro_anchor) == 1, 'run_stage intro marker drifted'
               assert source.count(tail_anchor) == 1, 'run_stage stderr marker drifted'
-              source = source.replace(status_anchor, status_replacement, 1)
+              source = source.replace(intro_anchor, intro_replacement, 1)
               source = source.replace(tail_anchor, tail_replacement, 1)
               runner.write_text(source)
 
