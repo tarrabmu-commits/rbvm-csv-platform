@@ -17,7 +17,7 @@ import java.util.Locale;
 import java.util.Map;
 
 public final class PostgresMigratorSelfTest {
-    private static final int LATEST_SCHEMA_VERSION = 31;
+    private static final int LATEST_SCHEMA_VERSION = 32;
 
     private PostgresMigratorSelfTest() {
     }
@@ -106,6 +106,8 @@ public final class PostgresMigratorSelfTest {
                 sql.contains("CREATE TABLE rbvm.public_intelligence_sync_job"));
         assert database.executedSql.stream().anyMatch(sql ->
                 sql.contains("CREATE VIEW rbvm.public_intelligence_provider_status_v1"));
+        assert database.executedSql.stream().anyMatch(sql ->
+                sql.contains("CREATE INDEX exposure_observation_observation_lookup_idx"));
 
         long observationCreates = count(database, "CREATE TABLE rbvm.observation (");
         long operationalFindingCreates = count(database, "CREATE VIEW rbvm.operational_finding");
