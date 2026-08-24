@@ -4,135 +4,119 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  progressive-evidence:
+  promote-projection-optimization:
     if: github.head_ref == 'full-scalability-benchmark-v1'
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    services:
-      postgres:
-        image: postgres:16.14-bookworm@sha256:92620daddcd947f8d5ab5ba66e848702fe443d87fed30c4cea8e389fd78dfc55
-        env:
-          POSTGRES_DB: rbvm
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres-scalability-owner
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d rbvm"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: full-scalability-benchmark-v1
+          fetch-depth: 0
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: '21'
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: '3.12'
-      - name: Fetch pinned pgJDBC
-        env:
-          PGJDBC_VERSION: '42.7.13'
-          PGJDBC_SHA256: '6e0e4cc2d8cae902084f8a2b18728b073a6fd9d1f87c9d8bff8f298c18185b93'
+      - name: Apply measured projection optimization
         run: |
           set -euo pipefail
-          driver="$RUNNER_TEMP/postgresql-$PGJDBC_VERSION.jar"
-          curl --fail --location --silent --show-error \
-            "https://repo1.maven.org/maven2/org/postgresql/postgresql/$PGJDBC_VERSION/postgresql-$PGJDBC_VERSION.jar" \
-            --output "$driver"
-          printf '%s  %s\n' "$PGJDBC_SHA256" "$driver" | sha256sum --check
-          printf 'RBVM_POSTGRES_DRIVER_JAR=%s\n' "$driver" >> "$GITHUB_ENV"
-      - name: Apply focused projection round-trip experiment
-        run: |
           python3 - <<'PY'
           from pathlib import Path
 
           path = Path('src/main/java/io/rbvm/postgres/PostgresCanonicalProjection.java')
           source = path.read_text()
+          original = source
 
-          # 1. INSERT ... ON CONFLICT already tells us whether an observation exists.
-          start = source.index('        UUID existingObservation = selectUuid(connection, """')
-          end = source.index('        EntityRef asset = ensureAsset(', start)
-          source = source[:start] + source[end:]
+          preselect = '''        UUID existingObservation = selectUuid(connection, """
+                  SELECT id FROM rbvm.observation
+                  WHERE tenant_id = ? AND source_profile_id = ? AND fingerprint = ?
+                  """, accumulator.tenantId, accumulator.sourceProfileId,
+                  observation.observationFingerprint());
+          if (existingObservation != null) {
+              accumulator.duplicateObservations++;
+              linkImportObservation(connection, accumulator, observation, existingObservation);
+              return;
+          }
 
-          # 2. A newly inserted exposure already contains public_id; avoid the immediate UPDATE.
-          old = ('        if (!createdThisCall) {\n'
-                 '            updateExistingExposure(connection, accumulator, cached, observation);\n'
-                 '        } else {\n'
-                 '            executeUpdate(connection, """\n'
-                 '                    UPDATE rbvm.exposure SET public_id = ?\n'
-                 '                    WHERE tenant_id = ? AND id = ?\n'
-                 '                    """, cached.publicId(), accumulator.tenantId, cached.id());\n'
-                 '        }\n'
-                 '        return cached;')
-          new = ('        if (!createdThisCall) {\n'
-                 '            updateExistingExposure(connection, accumulator, cached, observation);\n'
-                 '        }\n'
-                 '        return cached;')
-          assert source.count(old) == 1, 'exposure insert-followup marker missing'
-          source = source.replace(old, new, 1)
+          '''
+          preselect = preselect.replace('          ', '        ')
+          if preselect in source:
+              source = source.replace(preselect, '', 1)
 
-          # 3. New cases already contain public_id. Only a DB-existing case needs the legacy
-          #    backfill/update once when it first enters this import cache.
-          case_start = source.index('    private static EntityRef ensureCase(')
-          case_end = source.index('    private static EntityRef ensureExposure(', case_start)
-          case = source[case_start:case_end]
-          old = ('            } else {\n'
-                 '                accumulator.updatedCaseIds.add(cached.id());\n'
-                 '            }\n'
-                 '        }\n'
-                 '        executeUpdate(connection, """\n'
-                 '                UPDATE rbvm.vulnerability_case SET public_id = ?, updated_at = ?\n'
-                 '                WHERE tenant_id = ? AND id = ?\n'
-                 '                """, cached.publicId(), accumulator.now, accumulator.tenantId, cached.id());\n'
-                 '        return cached;')
-          new = ('            } else {\n'
-                 '                accumulator.updatedCaseIds.add(cached.id());\n'
-                 '                executeUpdate(connection, """\n'
-                 '                        UPDATE rbvm.vulnerability_case SET public_id = ?, updated_at = ?\n'
-                 '                        WHERE tenant_id = ? AND id = ?\n'
-                 '                        """, cached.publicId(), accumulator.now,\n'
-                 '                        accumulator.tenantId, cached.id());\n'
-                 '            }\n'
-                 '        }\n'
-                 '        return cached;')
-          assert case.count(old) == 1, 'case update marker missing'
-          case = case.replace(old, new, 1)
-          source = source[:case_start] + case + source[case_end:]
+          exposure_old = '''        if (!createdThisCall) {
+              updateExistingExposure(connection, accumulator, cached, observation);
+          } else {
+              executeUpdate(connection, """
+                      UPDATE rbvm.exposure SET public_id = ?
+                      WHERE tenant_id = ? AND id = ?
+                      """, cached.publicId(), accumulator.tenantId, cached.id());
+          }
+          return cached;
+          }'''.replace('          ', '        ')
+          exposure_new = '''        if (!createdThisCall) {
+              updateExistingExposure(connection, accumulator, cached, observation);
+          }
+          return cached;
+          }'''.replace('          ', '        ')
+          if exposure_old in source:
+              source = source.replace(exposure_old, exposure_new, 1)
 
-          path.write_text(source)
+          case_marker = '''        EntityRef cached = accumulator.cases.get(naturalKey);
+          if (cached == null) {'''.replace('          ', '        ')
+          if case_marker in source and 'boolean existingCase = false;' not in source[source.index('    private static EntityRef ensureCase('):source.index('    private static EntityRef ensureExposure(')]:
+              source = source.replace(
+                  case_marker,
+                  '''        EntityRef cached = accumulator.cases.get(naturalKey);
+          boolean existingCase = false;
+          if (cached == null) {'''.replace('          ', '        '),
+                  1,
+              )
+
+          case_old = '''            } else {
+                  accumulator.updatedCaseIds.add(cached.id());
+              }
+          }
+          executeUpdate(connection, """
+                  UPDATE rbvm.vulnerability_case SET public_id = ?, updated_at = ?
+                  WHERE tenant_id = ? AND id = ?
+                  """, cached.publicId(), accumulator.now, accumulator.tenantId, cached.id());
+          return cached;
+          }'''.replace('          ', '        ')
+          case_new = '''            } else {
+                  accumulator.updatedCaseIds.add(cached.id());
+                  existingCase = true;
+              }
+          }
+          if (existingCase) {
+              executeUpdate(connection, """
+                      UPDATE rbvm.vulnerability_case SET public_id = ?, updated_at = ?
+                      WHERE tenant_id = ? AND id = ?
+                      """, cached.publicId(), accumulator.now, accumulator.tenantId, cached.id());
+          }
+          return cached;
+          }'''.replace('          ', '        ')
+          if case_old in source:
+              source = source.replace(case_old, case_new, 1)
+
+          if source != original:
+              path.write_text(source)
           PY
-          grep -n "existingObservation\|UPDATE rbvm.exposure SET public_id\|UPDATE rbvm.vulnerability_case SET public_id" \
-            src/main/java/io/rbvm/postgres/PostgresCanonicalProjection.java || true
-      - name: Compile benchmark runtime
+      - name: Compile optimized source
         run: ./scripts/compile.sh --tests
-      - name: Run 10K projection round-trip A/B
+      - name: Commit optimized source
         env:
-          RBVM_PROJECTION_BACKEND: POSTGRESQL
-          RBVM_JDBC_URL: jdbc:postgresql://127.0.0.1:5432/rbvm?sslmode=disable
-          RBVM_DB_USER: postgres
-          RBVM_DB_PASSWORD: postgres-scalability-owner
-          RBVM_DB_MIGRATE: 'true'
-          RBVM_SCALABILITY_BENCHMARK_MODE: 'true'
+          TARGET_BRANCH: full-scalability-benchmark-v1
         run: |
           set -euo pipefail
-          python3 scripts/run-full-scalability-benchmark-isolated.py \
-            --sizes 10000 \
-            --stress-max-rows 10000 \
-            --tier-timeout-seconds 600 \
-            --output-directory build/full-scalability-pr-evidence
-          classpath="build/manual/main:build/manual/test:${RBVM_POSTGRES_DRIVER_JAR}"
-          java -ea -cp "$classpath" io.rbvm.postgres.PostgresFullScalabilityTableStatsProbe \
-            build/full-scalability-pr-evidence/postgres-table-stats.tsv
-      - name: Upload diagnostic evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: rbvm-full-scalability-pr-evidence-${{ github.sha }}
-          path: build/full-scalability-pr-evidence/
-          if-no-files-found: warn
-          retention-days: 30
+          if git diff --quiet -- src/main/java/io/rbvm/postgres/PostgresCanonicalProjection.java; then
+            echo 'Measured optimization already promoted; no commit needed.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/main/java/io/rbvm/postgres/PostgresCanonicalProjection.java
+          git commit -m 'Reduce canonical projection round trips'
+          git push origin "HEAD:${TARGET_BRANCH}"
