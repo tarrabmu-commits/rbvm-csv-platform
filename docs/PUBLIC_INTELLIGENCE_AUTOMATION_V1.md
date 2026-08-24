@@ -66,6 +66,14 @@ The automation controller is constructed without source I/O. It starts only afte
 
 On graceful shutdown, the automation scheduler is stopped before the underlying source orchestrator. This prevents new timer work from being submitted while active source workers are being interrupted and terminalized.
 
+## Multi-node deployment boundary
+
+`PUBLIC_INTELLIGENCE_AUTOMATION_V1` is **not leader election**. V31 prevents two simultaneously persisted jobs for the same provider, but it does not assign scheduler ownership to one application instance and it does not provide a distributed lease or heartbeat.
+
+Until an explicit ownership/lease contract exists, automatic startup/bootstrap/scheduled refresh must be enabled on **one application node** only. Other nodes may expose the read/status/manual-sync APIs, but their automation settings must remain disabled.
+
+This single-automation-node rule avoids duplicate timer attempts and prevents deployment topology from being mistaken for scheduler coordination. A future multi-node automation design must add an explicit ownership/lease contract rather than infer leadership from process age, hostname order, or stale timestamps.
+
 ## Hard-crash boundary
 
 This version does not guess that an existing V31 `RUNNING` row is stale after a hard process crash. There is no lease/owner/heartbeat identity yet, so automatically failing such a row could incorrectly terminate work owned by another application node.
