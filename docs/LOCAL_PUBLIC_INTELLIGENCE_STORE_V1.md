@@ -17,7 +17,7 @@ Public source data is shared once for the platform. Customer context such as Ass
 
 ## V30 boundary
 
-V30 establishes the persistence and local-lookup contract. Official-source acquisition, end-to-end synchronization lifecycle/status, operator-triggered refresh, scheduled refresh, UI, and CSV local-lookup cutover are layered on top without changing V30 provider-record semantics.
+V30 establishes the persistence and local-lookup contract. **CSV enrichment is not switched to the local store by V30 itself**; official-source acquisition, end-to-end synchronization lifecycle/status, operator-triggered refresh, scheduled refresh, UI, and the product CSV local-lookup cutover are later layers built on top without changing V30 provider-record semantics.
 
 This separation makes persistence, acquisition, orchestration, and product transport independently testable.
 
