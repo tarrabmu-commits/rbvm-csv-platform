@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 main = (ROOT / "src/main/java/io/rbvm/csv/RbvmPlatformMain.java").read_text(encoding="utf-8")
 executor = (ROOT / "src/main/java/io/rbvm/csv/CsvFirstLocalEnrichmentExecutor.java").read_text(encoding="utf-8")
 exporter = (ROOT / "src/main/java/io/rbvm/postgres/PostgresCsvFirstLocalIntelligenceSnapshotExporter.java").read_text(encoding="utf-8")
+cisa_validation = (ROOT / "src/main/java/io/rbvm/postgres/PostgresCisaKevCatalogValidationReader.java").read_text(encoding="utf-8")
 builder = ROOT / "scripts/build-local-public-intelligence-snapshot.py"
 local_enricher = ROOT / "scripts/enrich-uploaded-csv-local.py"
 
@@ -23,7 +24,14 @@ assert "LOOKUP_BATCH_SIZE = 1_000" in exporter
 assert "intelligence.lookupCurrent(batch)" in exporter
 assert "status.readStatus()" in exporter
 assert "latestSuccessId()" in exporter
+assert "Safe_Negative_Absence" in exporter
+assert "cisaCatalogValidation.isCompleteValidatedCatalog" in exporter
 assert "Payload_Base64" in exporter
+assert "public_intelligence_sync_job" in cisa_validation
+assert "j.status = 'COMPLETE'" in cisa_validation
+assert "j.stage = 'COMPLETE'" in cisa_validation
+assert "r.status = 'COMPLETE'" in cisa_validation
+assert "known_exploited_vulnerabilities.json" in cisa_validation
 
 assert 'resolve("scripts/enrich-uploaded-csv-local.py")' in executor
 assert 'resolve("scripts/build-local-public-intelligence-snapshot.py")' in executor
@@ -37,6 +45,7 @@ assert "collector.nvd_normalized" in builder_text
 assert "collector.cve_program_normalized" in builder_text
 assert '"LOCAL_V30_STORE"' in builder_text
 assert "NOT_LISTED_ONLY_AFTER_COMPLETE_VALIDATED_CATALOG" in builder_text
+assert 'status["CISA_KEV"]["safeNegativeAbsence"]' in builder_text
 assert "urlopen" not in builder_text and "urllib.request" not in builder_text
 
 local_text = local_enricher.read_text(encoding="utf-8")
@@ -46,7 +55,7 @@ assert 'report["tenantDatabaseStateUsed"] = False' in local_text
 assert "urlopen" not in local_text and "urllib.request" not in local_text
 
 STATUS_HEADER = [
-    "Provider", "Has_Success", "Success_ID", "Sync_Mode", "Source_URI",
+    "Provider", "Has_Success", "Safe_Negative_Absence", "Success_ID", "Sync_Mode", "Source_URI",
     "Source_Version", "Source_SHA256", "Source_Published_At", "Observed_At",
     "Completed_At", "Record_Count",
 ]
@@ -66,7 +75,9 @@ def b64(payload):
     ).decode("ascii")
 
 
-def write_export(directory, cisa_success):
+def write_export(directory, cisa_success, cisa_safe):
+    if cisa_safe and not cisa_success:
+        raise AssertionError("fixture cannot mark CISA negative-safe without a successful source")
     cves = ["CVE-2024-0001", "CVE-2024-0002"]
     (directory / "requested-cves.txt").write_text("\n".join(cves) + "\n", encoding="utf-8")
     (directory / "export.properties").write_text(
@@ -80,9 +91,11 @@ def write_export(directory, cisa_success):
         writer.writeheader()
         for provider in PROVIDERS:
             has_success = provider in {"NVD", "FIRST_EPSS"} or (provider == "CISA_KEV" and cisa_success)
+            safe_negative = provider == "CISA_KEV" and cisa_safe
             writer.writerow({
                 "Provider": provider,
                 "Has_Success": str(has_success).lower(),
+                "Safe_Negative_Absence": str(safe_negative).lower(),
                 "Success_ID": "11111111-1111-1111-1111-111111111111" if has_success else "",
                 "Sync_Mode": "INCREMENTAL" if has_success else "",
                 "Source_URI": f"https://example.invalid/{provider}" if has_success else "",
@@ -127,12 +140,12 @@ def write_export(directory, cisa_success):
             })
 
 
-def build_case(cisa_success):
+def build_case(cisa_success, cisa_safe):
     with tempfile.TemporaryDirectory(prefix="rbvm-local-intel-cutover-") as tmp:
         root = Path(tmp)
         export = root / "export"
         export.mkdir()
-        write_export(export, cisa_success)
+        write_export(export, cisa_success, cisa_safe)
         output = root / "snapshot.json"
         report = root / "report.json"
         subprocess.run([
@@ -142,18 +155,22 @@ def build_case(cisa_success):
         snapshot = json.loads(output.read_text(encoding="utf-8"))
         assert snapshot["contractId"] == "PUBLIC_CVE_INTEL_SNAPSHOT_V1"
         assert snapshot["acquisition"]["mode"] == "LOCAL_V30_STORE"
+        assert snapshot["cisaKevCatalog"]["completeValidatedCatalogAvailable"] is cisa_safe
         assert len(snapshot["snapshotSha256"]) == 64
         by_cve = {row["cveId"]: row for row in snapshot["records"]}
         assert by_cve["CVE-2024-0001"]["nvd"]["vulnStatus"] == "Analyzed"
         assert by_cve["CVE-2024-0001"]["epss"]["probability"] == "0.25"
         if cisa_success:
             assert by_cve["CVE-2024-0001"]["cisaKev"]["listed"] is True
-            assert by_cve["CVE-2024-0002"]["cisaKev"] == {"listed": False}
         else:
             assert by_cve["CVE-2024-0001"]["cisaKev"] is None
+        if cisa_safe:
+            assert by_cve["CVE-2024-0002"]["cisaKev"] == {"listed": False}
+        else:
             assert by_cve["CVE-2024-0002"]["cisaKev"] is None
 
 
-build_case(True)
-build_case(False)
+build_case(True, True)
+build_case(True, False)
+build_case(False, False)
 print("CSV local public-intelligence cutover checks: PASS")
