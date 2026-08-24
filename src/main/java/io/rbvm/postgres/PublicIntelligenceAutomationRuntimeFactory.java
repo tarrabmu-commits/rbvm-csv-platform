@@ -1,5 +1,6 @@
 package io.rbvm.postgres;
 
+import java.io.IOException;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -12,7 +13,7 @@ public final class PublicIntelligenceAutomationRuntimeFactory {
     public static Optional<PublicIntelligenceAutomationController> fromEnvironment(
             Map<String, String> environment,
             Optional<? extends PublicIntelligenceSyncTrigger> trigger
-    ) {
+    ) throws IOException {
         Objects.requireNonNull(environment, "environment");
         Objects.requireNonNull(trigger, "trigger");
         PublicIntelligenceAutomationSettings automation =
