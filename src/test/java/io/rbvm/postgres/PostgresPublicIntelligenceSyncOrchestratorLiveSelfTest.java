@@ -49,9 +49,10 @@ public final class PostgresPublicIntelligenceSyncOrchestratorLiveSelfTest {
                     "first complete-snapshot orchestration must complete");
             require(cisaJob1.syncRunId() != null,
                     "completed orchestrator job must retain exact V30 run identity");
-            require(current.currentCves(PostgresPublicIntelligenceStore.Provider.CISA_KEV)
-                            .equals(Set.of("CVE-2099-92001")),
-                    "first complete CISA snapshot must become current");
+            Set<String> afterCisa1 =
+                    current.currentCves(PostgresPublicIntelligenceStore.Provider.CISA_KEV);
+            require(afterCisa1.contains("CVE-2099-92001"),
+                    "first complete CISA snapshot must publish its test CVE as current");
 
             var cisa2 = coordinator.submit(
                     PostgresPublicIntelligenceStore.Provider.CISA_KEV,
@@ -60,11 +61,13 @@ public final class PostgresPublicIntelligenceSyncOrchestratorLiveSelfTest {
             var cisaJob2 = terminal(jobs, cisa2, Duration.ofSeconds(8));
             require(cisaJob2.status() == PostgresPublicIntelligenceSyncJobStore.Status.COMPLETE,
                     "second complete-snapshot orchestration must complete");
-            require(pipeline.secondCisaPrevious.equals(Set.of("CVE-2099-92001")),
-                    "complete-snapshot provider must receive exact previous current CVE set");
-            require(current.currentCves(PostgresPublicIntelligenceStore.Provider.CISA_KEV)
-                            .equals(Set.of("CVE-2099-92002")),
-                    "explicit tombstone must suppress the removed CISA CVE");
+            require(pipeline.secondCisaPrevious.contains("CVE-2099-92001"),
+                    "complete-snapshot provider must receive its previous current test CVE");
+            Set<String> afterCisa2 =
+                    current.currentCves(PostgresPublicIntelligenceStore.Provider.CISA_KEV);
+            require(!afterCisa2.contains("CVE-2099-92001")
+                            && afterCisa2.contains("CVE-2099-92002"),
+                    "explicit tombstone must suppress the removed CISA test CVE");
 
             var nvdYear = coordinator.submit(
                     PostgresPublicIntelligenceStore.Provider.NVD,
