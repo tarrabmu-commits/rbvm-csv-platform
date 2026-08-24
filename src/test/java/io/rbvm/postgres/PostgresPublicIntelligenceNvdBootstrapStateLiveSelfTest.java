@@ -51,6 +51,22 @@ public final class PostgresPublicIntelligenceNvdBootstrapStateLiveSelfTest {
                 "synthetic failed annual source",
                 t0.plusSeconds(3));
 
+        var wrongMode2004 = sources.beginOrReplay(
+                new PostgresPublicIntelligenceStore.SourceDescriptor(
+                        PostgresPublicIntelligenceStore.Provider.NVD,
+                        "https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-2004.json.gz",
+                        "automation-live-2004-wrong-mode",
+                        "4".repeat(64),
+                        null,
+                        t0.plusSeconds(4)),
+                PostgresPublicIntelligenceStore.SyncMode.INCREMENTAL,
+                t0.plusSeconds(3));
+        sources.completeRun(
+                wrongMode2004.runId(),
+                PostgresPublicIntelligenceStore.Provider.NVD,
+                0,
+                t0.plusSeconds(5));
+
         var modified = sources.beginOrReplay(
                 new PostgresPublicIntelligenceStore.SourceDescriptor(
                         PostgresPublicIntelligenceStore.Provider.NVD,
@@ -58,23 +74,26 @@ public final class PostgresPublicIntelligenceNvdBootstrapStateLiveSelfTest {
                         "automation-live-modified",
                         "3".repeat(64),
                         null,
-                        t0.plusSeconds(4)),
+                        t0.plusSeconds(6)),
                 PostgresPublicIntelligenceStore.SyncMode.INCREMENTAL,
-                t0.plusSeconds(3));
+                t0.plusSeconds(5));
         sources.completeRun(
                 modified.runId(),
                 PostgresPublicIntelligenceStore.Provider.NVD,
                 0,
-                t0.plusSeconds(5));
+                t0.plusSeconds(7));
 
         Set<Integer> years = reader.completedAnnualYears();
         require(years.contains(2002), "completed exact annual NVD run must count toward bootstrap");
         require(!years.contains(2003), "failed annual NVD run must not count toward bootstrap");
+        require(!years.contains(2004),
+                "incremental annual-looking NVD run must not count toward bootstrap");
         require(!years.contains(0), "modified NVD source must never masquerade as annual coverage");
 
         System.out.println(
                 "PostgresPublicIntelligenceNvdBootstrapStateLiveSelfTest: PASS"
-                        + " completed_annual=PASS failed_annual_ignored=PASS modified_ignored=PASS");
+                        + " completed_annual=PASS failed_annual_ignored=PASS"
+                        + " wrong_mode_ignored=PASS modified_ignored=PASS");
     }
 
     private static void require(boolean condition, String message) {
