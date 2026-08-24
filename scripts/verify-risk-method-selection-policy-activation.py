@@ -133,7 +133,13 @@ for marker in [
     assert marker.lower() in doc.lower(), f'activation documentation missing {marker!r}'
 
 assert 'RbvmRiskMethodSelectionPolicyActivationEventSelfTest.main(args);' in platform
-assert 'PostgresV26RiskMethodSelectionActivationLiveSelfTest' in workflow
-assert 'V18-V27' in workflow
+for live_test in [
+    'PostgresV23FormulaResultLiveSelfTest',
+    'PostgresV24DerivedRiskLiveSelfTest',
+    'PostgresV25RiskMethodSelectionPolicyLiveSelfTest',
+    'PostgresV26RiskMethodSelectionActivationLiveSelfTest',
+    'PostgresV27ActiveRiskMethodExecutionBindingLiveSelfTest',
+]:
+    assert live_test in workflow, f'postgres workflow missing required live proof {live_test!r}'
 
 print('Risk Method Selection Policy Activation V1 structural checks: PASS')
