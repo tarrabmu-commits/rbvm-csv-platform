@@ -161,24 +161,100 @@ def dominates(left, right):
     return all(a >= b for a, b in zip(left, right)) and any(a > b for a, b in zip(left, right))
 
 
-def nondominated_fronts(vectors):
-    remaining = set(vectors)
-    fronts = {}
+def dominance_relation(left, right):
+    """Return 1 if left dominates, -1 if right dominates, otherwise 0.
+
+    A single pass is materially cheaper than asking ``dominates`` twice for
+    every pair and is exactly equivalent to the frozen dominance definition.
+    """
+    left_better = False
+    right_better = False
+    for left_value, right_value in zip(left, right):
+        if left_value > right_value:
+            left_better = True
+        elif right_value > left_value:
+            right_better = True
+        if left_better and right_better:
+            return 0
+    if left_better:
+        return 1
+    if right_better:
+        return -1
+    return 0
+
+
+def pareto_relations(vectors):
+    """Compute fronts and row-weighted dominance counts in one pairwise pass.
+
+    Identical five-dimensional vectors cannot dominate one another because the
+    frozen policy requires at least one strictly greater dimension. Grouping
+    identical vectors therefore preserves every row result while avoiding
+    repeated work. Unique vector pairs are compared exactly once, after which a
+    deterministic topological peel produces the same iterative nondominated
+    fronts as the original reference implementation.
+    """
+    if not vectors:
+        return {}, {}, {}
+
+    groups = {}
+    for row_index, value in vectors.items():
+        groups.setdefault(value, []).append(row_index)
+
+    unique_vectors = sorted(groups)
+    outgoing = {value: [] for value in unique_vectors}
+    incoming_group_count = {value: 0 for value in unique_vectors}
+    dominates_rows_by_group = {value: 0 for value in unique_vectors}
+    dominated_by_rows_by_group = {value: 0 for value in unique_vectors}
+
+    for left_index, left in enumerate(unique_vectors):
+        left_rows = len(groups[left])
+        for right in unique_vectors[left_index + 1:]:
+            relation = dominance_relation(left, right)
+            if relation == 1:
+                outgoing[left].append(right)
+                incoming_group_count[right] += 1
+                dominates_rows_by_group[left] += len(groups[right])
+                dominated_by_rows_by_group[right] += left_rows
+            elif relation == -1:
+                outgoing[right].append(left)
+                incoming_group_count[left] += 1
+                dominates_rows_by_group[right] += left_rows
+                dominated_by_rows_by_group[left] += len(groups[right])
+
+    pending = dict(incoming_group_count)
+    current = [value for value in unique_vectors if pending[value] == 0]
+    group_fronts = {}
     front_number = 1
-    while remaining:
-        front = []
-        for candidate in sorted(remaining):
-            if not any(
-                other != candidate and dominates(vectors[other], vectors[candidate])
-                for other in remaining
-            ):
-                front.append(candidate)
-        if not front:
-            raise RuntimeError("Pareto front calculation made no progress")
-        for index in front:
-            fronts[index] = front_number
-        remaining.difference_update(front)
+    assigned = 0
+    while current:
+        next_front = []
+        for value in current:
+            group_fronts[value] = front_number
+            assigned += 1
+            for dominated in outgoing[value]:
+                pending[dominated] -= 1
+                if pending[dominated] == 0:
+                    next_front.append(dominated)
+        current = sorted(next_front)
         front_number += 1
+
+    if assigned != len(unique_vectors):
+        raise RuntimeError("Pareto front calculation made no progress")
+
+    fronts = {}
+    dominates_count = {}
+    dominated_by_count = {}
+    for value, row_indexes in groups.items():
+        for row_index in row_indexes:
+            fronts[row_index] = group_fronts[value]
+            dominates_count[row_index] = dominates_rows_by_group[value]
+            dominated_by_count[row_index] = dominated_by_rows_by_group[value]
+    return fronts, dominates_count, dominated_by_count
+
+
+def nondominated_fronts(vectors):
+    """Compatibility helper retaining the historical function contract."""
+    fronts, _, _ = pareto_relations(vectors)
     return fronts
 
 
@@ -231,16 +307,10 @@ def main():
             vectors[index] = value
         blockers_by_row[index] = blockers
 
-    fronts = nondominated_fronts(vectors) if vectors else {}
-    dominates_count = {index: 0 for index in vectors}
-    dominated_by_count = {index: 0 for index in vectors}
-    for left, left_vector in vectors.items():
-        for right, right_vector in vectors.items():
-            if left == right:
-                continue
-            if dominates(left_vector, right_vector):
-                dominates_count[left] += 1
-                dominated_by_count[right] += 1
+    if vectors:
+        fronts, dominates_count, dominated_by_count = pareto_relations(vectors)
+    else:
+        fronts, dominates_count, dominated_by_count = {}, {}, {}
 
     output = []
     front_counts = {}
