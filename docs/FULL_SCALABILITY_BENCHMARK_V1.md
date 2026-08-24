@@ -35,6 +35,8 @@ Synthetic public-intelligence seeding is benchmark setup and is measured separat
 
 The hot-path acquisition metric begins at local PostgreSQL lookup/export (`localLookupExportSeconds`). This prevents a benchmark fixture-generation cost from being mislabeled as product upload latency.
 
+The production benchmark entrypoint is `scripts/run-full-scalability-benchmark-isolated.py`. It uses one process to construct and admit the deterministic provider fixture, then a second isolated process (`PostgresFullScalabilityLocalExportProbe`) to measure the V30 lookup/export. Therefore the reported lookup process wall/CPU/peak-RSS metrics do not include synthetic seeding. The cold combined-process lookup duration is retained separately as diagnostic evidence and is not used as the hot-path metric.
+
 The benchmark seeds deterministic provider records for:
 
 - NVD;
@@ -50,6 +52,8 @@ CISA non-membership semantics are exercised through the same V31-linked V30 vali
 
 - `RBVM_SCALABILITY_BENCHMARK_MODE=true`;
 - the configured PostgreSQL JDBC target starts with `jdbc:postgresql://127.0.0.1:` or `jdbc:postgresql://localhost:`.
+
+The isolated local-export probe enforces the same benchmark-mode and local-JDBC restrictions even though it is read-only. This prevents benchmark instrumentation from being repointed at an operational database.
 
 The standard harness resets the local `rbvm` schema between tiers so each tier has an isolated database population. `--keep-database-between-tiers` exists only for experiments that intentionally measure cumulative database growth.
 
@@ -89,6 +93,8 @@ Each tier produces stage and aggregate metrics including:
 - artifact byte sizes;
 - exact stage that timed out or failed.
 
+For the V30 lookup/export stage, process resource metrics are captured from the isolated process only. Synthetic seed process wall time and peak RSS are exposed separately as setup diagnostics.
+
 The summary records host identity: Git commit, Python version, Java version, platform, machine architecture, CPU count, visible memory, and sanitized local JDBC database endpoint.
 
 ## Correctness gates
@@ -115,11 +121,11 @@ No benchmark result should be generalized beyond its recorded machine, PostgreSQ
 
 ## CI strategy
 
-Normal pull-request verification checks the benchmark contract structurally and compiles the bridge. PostgreSQL integration runs a bounded smoke tier to prove the live harness on an ephemeral local database.
+Normal pull-request verification checks the benchmark contract structurally and compiles the bridge. PostgreSQL integration runs a bounded 1K isolated-process smoke tier to prove the live harness on an ephemeral local database and uploads its evidence as a short-retention artifact.
 
 The full 1K-to-100K progression and stress mode are intentionally exposed as a manual workflow. Running 100K+ on every pull request would measure shared GitHub runner contention as much as application performance and would unnecessarily slow correctness feedback.
 
-Full-run artifacts retain `summary.json`, `summary.csv`, per-tier results, process timing logs, PostgreSQL bridge metrics, and generated benchmark artifacts for later engineering comparison.
+Full-run artifacts retain `summary.json`, `summary.csv`, per-tier results, isolated process timing logs, PostgreSQL bridge/probe metrics, and generated benchmark artifacts for later engineering comparison.
 
 ## Semantic non-goals
 
