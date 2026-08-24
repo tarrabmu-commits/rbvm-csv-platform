@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /** Exact CSV-first priority -> canonical Finding materialization boundary. */
@@ -20,6 +21,8 @@ public interface CanonicalMvpPriorityStore {
             List<PriorityRow> rows,
             Instant materializedAt
     ) throws IOException;
+
+    Optional<PriorityView> latestForFinding(String findingId) throws IOException;
 
     record PriorityRow(
             long sourceRowNumber,
@@ -45,6 +48,30 @@ public interface CanonicalMvpPriorityStore {
             int mappedSourceRows,
             String sourceCsvSha256,
             String priorityCsvSha256
+    ) {
+    }
+
+    record PriorityView(
+            String findingId,
+            UUID importId,
+            UUID csvRunId,
+            UUID analysisId,
+            String status,
+            Integer front,
+            Long dominatedBy,
+            Long dominates,
+            String blockers,
+            String explanation,
+            Boolean kevListed,
+            String internetFacing,
+            String assetCriticality,
+            BigDecimal epssProbability,
+            BigDecimal contextualCvssV4,
+            List<Long> sourceRowNumbers,
+            String sourceCsvSha256,
+            String priorityCsvSha256,
+            String resultSha256,
+            Instant materializedAt
     ) {
     }
 
