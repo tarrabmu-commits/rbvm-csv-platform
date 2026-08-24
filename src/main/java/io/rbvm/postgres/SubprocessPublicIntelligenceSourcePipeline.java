@@ -211,6 +211,24 @@ public final class SubprocessPublicIntelligenceSourcePipeline
         ProcessBuilder builder = new ProcessBuilder(List.copyOf(command));
         builder.directory(directory.toFile());
         builder.redirectErrorStream(true);
+
+        // Do not leak the server process environment (database credentials, API-key registry
+        // locations, or other RBVM secrets) into parser/acquisition helpers. Preserve only the
+        // executable search path plus deterministic UTF-8 behavior. The GitHub token is exposed
+        // only to the exact CVE Program acquisition helper that may authenticate to api.github.com.
+        Map<String, String> childEnvironment = builder.environment();
+        String path = childEnvironment.get("PATH");
+        String githubToken = childEnvironment.get("GITHUB_TOKEN");
+        boolean cveProgramAcquisition = command.stream().anyMatch(
+                value -> value.endsWith("fetch-local-public-intelligence-source.py"))
+                && command.contains(PostgresPublicIntelligenceStore.Provider.CVE_PROGRAM.name());
+        childEnvironment.clear();
+        if (path != null && !path.isBlank()) childEnvironment.put("PATH", path);
+        childEnvironment.put("PYTHONUTF8", "1");
+        if (cveProgramAcquisition && githubToken != null && !githubToken.isBlank()) {
+            childEnvironment.put("GITHUB_TOKEN", githubToken);
+        }
+
         Process process = builder.start();
         ExecutorService reader = Executors.newSingleThreadExecutor(runnable -> {
             Thread thread = new Thread(runnable, "rbvm-intelligence-tool-output");
