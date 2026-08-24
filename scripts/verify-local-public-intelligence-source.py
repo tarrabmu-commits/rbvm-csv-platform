@@ -12,6 +12,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 FETCHER = ROOT / "scripts" / "fetch-local-public-intelligence-source.py"
+BRIDGE = ROOT / "scripts" / "build-public-intelligence-bundle-from-acquisition.py"
 OBSERVED = "2026-08-24T05:30:00Z"
 
 
@@ -54,11 +55,37 @@ def descriptor(output):
     return value
 
 
+def bundle(acquisition, output):
+    completed = subprocess.run(
+        [sys.executable, str(BRIDGE), str(acquisition), str(output)],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    require_success(completed)
+    values = {}
+    for line in (output / "manifest.properties").read_text(encoding="utf-8").splitlines():
+        key, value = line.split("=", 1)
+        values[key] = value
+    acquired = descriptor(acquisition)
+    assert values["artifactType"] == "PUBLIC_INTELLIGENCE_SYNC_BUNDLE"
+    assert values["schemaVersion"] == "1"
+    assert values["provider"] == acquired["provider"]
+    assert values["syncMode"] == acquired["syncMode"]
+    assert values["sourceUri"] == acquired["sourceUri"]
+    assert values["sourceVersion"] == acquired["sourceVersion"]
+    assert values["sourceSha256"] == acquired["sourceSha256"]
+    assert values["observedAt"] == acquired["observedAt"]
+    return values
+
+
 def main():
     source_text = FETCHER.read_text(encoding="utf-8")
     assert "Authorization" in source_text
     assert "if github_api_auth" in source_text
     assert 'hostname != "api.github.com"' in source_text
+    assert "github_api_auth=True" in source_text
     assert "nvd.nist.gov" in source_text
     assert "epss.empiricalsecurity.com" in source_text
     assert "www.cisa.gov" in source_text
@@ -101,6 +128,8 @@ def main():
         assert nvd_desc["syncMode"] == "BOOTSTRAP"
         assert nvd_desc["sourcePublishedAt"] == "2026-08-24T05:00:00Z"
         assert nvd_desc["nvdUncompressedSha256"] == hashlib.sha256(nvd_json).hexdigest()
+        nvd_bundle = bundle(root / "nvd-out", root / "nvd-bundle")
+        assert nvd_bundle["recordCount"] == "1"
 
         bad_meta = root / "bad.meta"
         bad_meta.write_text(
@@ -131,6 +160,8 @@ def main():
         epss_desc = descriptor(root / "epss-out")
         assert epss_desc["provider"] == "FIRST_EPSS"
         assert epss_desc["sourceVersion"] == "v2026.06.15:2026-08-24"
+        epss_bundle = bundle(root / "epss-out", root / "epss-bundle")
+        assert epss_bundle["recordCount"] == "1"
 
         cisa = root / "kev.json"
         cisa.write_text(
@@ -157,6 +188,8 @@ def main():
         cisa_desc = descriptor(root / "cisa-out")
         assert cisa_desc["provider"] == "CISA_KEV"
         assert cisa_desc["recordCount"] == 1
+        cisa_bundle = bundle(root / "cisa-out", root / "cisa-bundle")
+        assert cisa_bundle["recordCount"] == "1"
 
         commit_sha = "1" * 40
         commit = root / "commit.json"
@@ -178,7 +211,11 @@ def main():
                     {
                         "dataType": "CVE_RECORD",
                         "dataVersion": "5.2",
-                        "cveMetadata": {"cveId": "CVE-2026-11003"},
+                        "cveMetadata": {
+                            "cveId": "CVE-2026-11003",
+                            "datePublished": "2026-08-20T00:00:00Z",
+                            "dateUpdated": "2026-08-24T04:00:00Z",
+                        },
                         "containers": {"cna": {}},
                     }
                 ),
@@ -190,6 +227,24 @@ def main():
         assert cve_desc["sourceVersion"] == commit_sha
         assert cve_desc["archiveCveRecordCount"] == 1
         assert cve_desc["sourceUri"].endswith(f"/{commit_sha}.zip")
+        cve_bundle = bundle(root / "cve-out", root / "cve-bundle")
+        assert cve_bundle["recordCount"] == "1"
+
+        tampered = root / "tampered-out"
+        tampered.mkdir()
+        for child in (root / "cisa-out").iterdir():
+            tampered.joinpath(child.name).write_bytes(child.read_bytes())
+        source = tampered / "source.json"
+        source.write_text(source.read_text(encoding="utf-8") + " ", encoding="utf-8")
+        rejected = subprocess.run(
+            [sys.executable, str(BRIDGE), str(tampered), str(root / "tampered-bundle")],
+            cwd=ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        assert rejected.returncode != 0
+        assert not (root / "tampered-bundle" / "manifest.properties").exists()
 
     print("Local public intelligence source acquisition checks: PASS")
 
