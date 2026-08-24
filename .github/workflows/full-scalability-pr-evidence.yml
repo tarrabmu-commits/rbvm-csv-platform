@@ -46,84 +46,21 @@ jobs:
             --output "$driver"
           printf '%s  %s\n' "$PGJDBC_SHA256" "$driver" | sha256sum --check
           printf 'RBVM_POSTGRES_DRIVER_JAR=%s\n' "$driver" >> "$GITHUB_ENV"
-      - name: Apply reverse index and fully parameterized manifest experiment
+      - name: Disable parent mutation flush for attribution only
         run: |
           set -euo pipefail
-          cat > db/migration/V32__exposure_observation_reverse_lookup.sql <<'SQL'
-          BEGIN;
-          CREATE INDEX exposure_observation_observation_lookup_idx
-              ON rbvm.exposure_observation (tenant_id, observation_id, exposure_id);
-          COMMIT;
-          SQL
           python3 - <<'PY'
           from pathlib import Path
-
-          migrator = Path('src/main/java/io/rbvm/postgres/PostgresMigrator.java')
-          source = migrator.read_text()
-          old = '            new Migration(31, "V31__public_intelligence_sync_job.sql")\n    );'
-          new = ('            new Migration(31, "V31__public_intelligence_sync_job.sql"),\n'
-                 '            new Migration(32, "V32__exposure_observation_reverse_lookup.sql")\n'
-                 '    );')
-          assert source.count(old) == 1, 'migration tail marker drifted'
-          migrator.write_text(source.replace(old, new, 1))
-
-          exporter = Path('src/main/java/io/rbvm/postgres/PostgresCanonicalImportFindingExporter.java')
-          source = exporter.read_text()
-          start_marker = '            try (PreparedStatement statement = connection.prepareStatement("""\n                    SELECT e.id AS finding_id,'
-          start = source.index(start_marker)
-          sql_end = source.index('                    """)) {', start) + len('                    """)) {')
-          replacement = '''            try (PreparedStatement statement = connection.prepareStatement("""
-                    SELECT e.id AS finding_id,
-                           MIN(io.source_row_number) AS source_row_number,
-                           sp.external_key AS source_profile_key,
-                           a.observed_name AS asset_name,
-                           v.cve_id,
-                           ac.observed_product_name AS product_name,
-                           e.status AS finding_status,
-                           e.current_severity
-                    FROM rbvm.import_observation io
-                    JOIN rbvm.import_run ir
-                      ON ir.tenant_id = io.tenant_id AND ir.id = io.import_id
-                    JOIN rbvm.source_profile sp
-                      ON sp.tenant_id = ir.tenant_id AND sp.id = ir.source_profile_id
-                    JOIN rbvm.tenant t
-                      ON t.id = ir.tenant_id
-                    JOIN LATERAL (
-                        SELECT link.exposure_id
-                        FROM rbvm.exposure_observation link
-                        WHERE link.tenant_id = io.tenant_id
-                          AND link.observation_id = io.observation_id
-                        OFFSET 0
-                    ) eo ON true
-                    JOIN LATERAL (
-                        SELECT x.id, x.asset_id, x.vulnerability_id, x.component_id,
-                               x.status, x.current_severity
-                        FROM rbvm.exposure x
-                        WHERE x.tenant_id = io.tenant_id
-                          AND x.id = eo.exposure_id
-                        OFFSET 0
-                    ) e ON true
-                    JOIN rbvm.asset a
-                      ON a.tenant_id = io.tenant_id AND a.id = e.asset_id
-                    JOIN rbvm.vulnerability v
-                      ON v.id = e.vulnerability_id
-                    JOIN rbvm.asset_component ac
-                      ON ac.tenant_id = io.tenant_id AND ac.id = e.component_id
-                    WHERE io.import_id = ? AND t.tenant_key = ?
-                    GROUP BY e.id, sp.external_key, a.observed_name, v.cve_id,
-                             ac.observed_product_name, e.status, e.current_severity
-                    ORDER BY MIN(io.source_row_number), e.id
-                    """)) {'''
-          source = source[:start] + replacement + source[sql_end:]
-          exporter.write_text(source)
+          path = Path('src/main/java/io/rbvm/postgres/PostgresCanonicalProjection.java')
+          source = path.read_text()
+          old = '                accumulator.parentMutations.flush(connection);\n'
+          assert source.count(old) == 1, 'parent mutation flush marker drifted'
+          path.write_text(source.replace(old, '', 1))
           PY
-          git diff --check -- \
-            src/main/java/io/rbvm/postgres/PostgresMigrator.java \
-            src/main/java/io/rbvm/postgres/PostgresCanonicalImportFindingExporter.java \
-            db/migration/V32__exposure_observation_reverse_lookup.sql
+          git diff --check -- src/main/java/io/rbvm/postgres/PostgresCanonicalProjection.java
       - name: Compile benchmark runtime
         run: ./scripts/compile.sh --tests
-      - name: Run 10K parameterized-manifest A/B
+      - name: Run 10K parent-flush attribution A/B
         env:
           RBVM_PROJECTION_BACKEND: POSTGRESQL
           RBVM_JDBC_URL: jdbc:postgresql://127.0.0.1:5432/rbvm?sslmode=disable
