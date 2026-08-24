@@ -55,6 +55,10 @@ if [[ -f "$ROOT_DIR/src/main/resources/web/customer-flow.js" ]]; then
   # source module retains compatibility with the legacy synchronous route.
   python3 "$ROOT_DIR/scripts/stabilize-csv-first-async-runtime.py" "$MAIN_CLASSES/web/rbvm-ui.js"
 fi
+if [[ -f "$ROOT_DIR/src/main/resources/web/customer-flow-local-api.js" ]]; then
+  printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
+  cat "$ROOT_DIR/src/main/resources/web/customer-flow-local-api.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
+fi
 if [[ -f "$ROOT_DIR/src/main/resources/web/csv-run-review.js" ]]; then
   printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
   cat "$ROOT_DIR/src/main/resources/web/csv-run-review.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
