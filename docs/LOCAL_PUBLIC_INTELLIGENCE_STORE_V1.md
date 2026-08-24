@@ -104,14 +104,16 @@ If any provider download, validation, parse, or import stage fails, the run beco
 
 ## Next implementation layers
 
-The next work on top of V30 is:
+The source-format/admission layer is defined by `PUBLIC_INTELLIGENCE_SYNC_BUNDLE_V1`: downloaded official NVD, FIRST EPSS, CISA KEV, and CVE Program payloads are converted into a SHA-bound provider-neutral bundle, fully validated, and admitted to V30 in bounded batches before a run can become COMPLETE.
 
-1. official-source bootstrap/incremental adapters for NVD, FIRST EPSS, CISA KEV, and CVE Program;
-2. background synchronization job + provider-level persisted status;
-3. `GET /api/v1/intelligence/status` and Operator `POST /api/v1/intelligence/sync`;
+The remaining work on top of V30 is:
+
+1. hardened official network acquisition/bootstrap orchestration for NVD, FIRST EPSS, CISA KEV, and CVE Program;
+2. incremental synchronization plus provider-level persisted status;
+3. background synchronization runtime with `GET /api/v1/intelligence/status` and Operator `POST /api/v1/intelligence/sync`;
 4. Intelligence Sources UI with manual **Update Intelligence Now**;
-5. daily server-side scheduling and stale-source policy;
+5. daily server-side scheduling, stale-source policy, recovery, and observability;
 6. CSV enrichment cutover from live per-upload provider calls to `lookupCurrent(...)`;
-7. 5k/6k/10k Finding PostgreSQL local-lookup benchmarks.
+7. full scalability/capacity benchmarking at 1K, 5K, 10K, 25K, 50K, 100K+ Findings plus progressive stress testing to the measured bottleneck. 10K is a regression checkpoint, not a platform limit.
 
 No change in this contract alters `RBVM_MVP_PRIORITY_POLICY_V1`, its frozen SHA, CVSS/EPSS/KEV semantics, or the intentionally `NON_COMPUTABLE` Organizational Risk state.
