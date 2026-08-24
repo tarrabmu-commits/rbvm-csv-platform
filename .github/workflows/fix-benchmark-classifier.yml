@@ -1,0 +1,57 @@
+name: fix-benchmark-classifier
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.head_ref == 'full-scalability-benchmark-v1'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.head_ref }}
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Repair benchmark classifier
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/run-full-scalability-benchmark.py')
+          source = path.read_text()
+          start_marker = '        stderr_tail = tail(stderr_file) if completed.returncode != 0 else ""\n'
+          end_marker = '            "returnCode": completed.returncode,\n'
+          start = source.index(start_marker)
+          end = source.index(end_marker, start)
+          fixed = '''        stderr_tail = tail(stderr_file) if completed.returncode != 0 else ""
+        status = "PASS"
+        if completed.returncode != 0:
+            resource_failure = completed.returncode in {137, -9}
+            marker = "SQLState="
+            if marker in stderr_tail:
+                sqlstate = stderr_tail.split(marker, 1)[1][:5]
+                resource_failure = resource_failure or sqlstate.startswith("53")
+            status = "RESOURCE_EXHAUSTION" if resource_failure else "FAILED"
+        metrics = {
+            "status": status,
+'''
+          source = source[:start] + fixed + source[end:]
+          path.write_text(source)
+          PY
+          python3 -m py_compile scripts/run-full-scalability-benchmark.py
+          python3 scripts/verify-full-scalability-benchmark.py
+          git diff --check -- scripts/run-full-scalability-benchmark.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/run-full-scalability-benchmark.py
+          if git diff --cached --quiet; then
+            echo 'Classifier source already correct.'
+            exit 0
+          fi
+          git commit -m 'Fix benchmark resource classifier indentation'
+          git push origin HEAD:${{ github.head_ref }}
