@@ -81,6 +81,10 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
         try (Connection connection = connections.open()) {
             beginProjectionTransaction(connection);
             try {
+                try (PreparedStatement planMode = connection.prepareStatement(
+                        "SET LOCAL plan_cache_mode = force_custom_plan")) {
+                    planMode.execute();
+                }
                 Instant now = clock.instant();
                 UUID tenantId = ensureTenant(connection, now);
                 UUID sourceProfileId = ensureSourceProfile(
@@ -120,6 +124,7 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                         }
                 );
                 verifyAnalysis(input.analysis(), projected, accumulator);
+                accumulator.parentMutations.flush(connection);
                 recomputeCases(connection, tenantId, sourceProfileId, now);
                 writeMaterialization(connection, accumulator, now);
                 completeImportRun(connection, tenantId, input.importId(), projected, now);
@@ -409,17 +414,6 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
             WazuhObservation observation
     ) throws SQLException {
         accumulator.acceptedObservations++;
-        UUID existingObservation = selectUuid(connection, """
-                SELECT id FROM rbvm.observation
-                WHERE tenant_id = ? AND source_profile_id = ? AND fingerprint = ?
-                """, accumulator.tenantId, accumulator.sourceProfileId,
-                observation.observationFingerprint());
-        if (existingObservation != null) {
-            accumulator.duplicateObservations++;
-            linkImportObservation(connection, accumulator, observation, existingObservation);
-            return;
-        }
-
         EntityRef asset = ensureAsset(connection, accumulator, observation);
         EntityRef vulnerability = ensureVulnerability(connection, accumulator, observation);
         EntityRef component = ensureComponent(connection, accumulator, asset, observation);
@@ -483,6 +477,7 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                 observation.agentIdentityKey()
         );
         EntityRef cached = accumulator.assets.get(naturalKey);
+        boolean createdThisCall = false;
         if (cached == null) {
             String publicId = publicId("asset", naturalKey);
             UUID proposed = stableUuid("asset", naturalKey);
@@ -522,29 +517,11 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
             accumulator.assets.put(naturalKey, cached);
             if (isNew) {
                 accumulator.newAssets++;
+                createdThisCall = true;
             }
         }
-        executeUpdate(connection, """
-                UPDATE rbvm.asset SET
-                    public_id = ?,
-                    first_observed_at = LEAST(first_observed_at, ?),
-                    observed_name = CASE WHEN ? > last_observed_at THEN ? ELSE observed_name END,
-                    os_name_raw = CASE WHEN ? > last_observed_at THEN ? ELSE os_name_raw END,
-                    last_observed_at = GREATEST(last_observed_at, ?),
-                    updated_at = ?
-                WHERE tenant_id = ? AND id = ?
-                """,
-                cached.publicId(),
-                observation.detectedAt(),
-                observation.detectedAt(),
-                observation.agentObservedName(),
-                observation.detectedAt(),
-                observation.osNameRaw(),
-                observation.detectedAt(),
-                accumulator.now,
-                accumulator.tenantId,
-                cached.id()
-        );
+        accumulator.parentMutations.observeAsset(
+                cached.id(), cached.publicId(), createdThisCall, observation);
         return cached;
     }
 
@@ -554,6 +531,7 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
             WazuhObservation observation
     ) throws SQLException {
         EntityRef cached = accumulator.vulnerabilities.get(observation.cveId());
+        boolean createdThisCall = false;
         if (cached == null) {
             UUID proposed = stableUuid("vulnerability", observation.cveId());
             UUID inserted = returningUuid(connection, """
@@ -593,44 +571,11 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
             accumulator.vulnerabilities.put(observation.cveId(), cached);
             if (isNew) {
                 accumulator.newVulnerabilities++;
+                createdThisCall = true;
             }
         }
-        executeUpdate(connection, """
-                UPDATE rbvm.vulnerability SET
-                    description_current = CASE
-                        WHEN length(?) > 0 AND
-                             (description_observed_at IS NULL OR ? > description_observed_at)
-                        THEN ? ELSE description_current END,
-                    description_observed_at = CASE
-                        WHEN length(?) > 0 AND
-                             (description_observed_at IS NULL OR ? > description_observed_at)
-                        THEN ? ELSE description_observed_at END
-                WHERE id = ?
-                """,
-                observation.descriptionSnapshot(),
-                observation.detectedAt(),
-                observation.descriptionSnapshot(),
-                observation.descriptionSnapshot(),
-                observation.detectedAt(),
-                observation.detectedAt(),
-                cached.id()
-        );
-        if (observation.intelligence() != null) {
-            VulnerabilityIntelligenceEvidence intel = observation.intelligence();
-            executeUpdate(connection, """
-                    UPDATE rbvm.vulnerability SET
-                        cvss_version = ?, cvss_base_score = ?, cvss_vector = ?,
-                        epss_probability = ?, epss_percentile = ?, known_exploited = ?,
-                        kev_date_added = ?, kev_due_date = ?, intelligence_observed_at = ?,
-                        intelligence_source_references = ?, priority_tier = ?
-                    WHERE id = ? AND (intelligence_observed_at IS NULL
-                        OR ? > intelligence_observed_at)
-                    """,
-                    intel.cvssVersion(), intel.cvssBaseScore(), intel.cvssVector(),
-                    intel.epssProbability(), intel.epssPercentile(), intel.knownExploited(),
-                    intel.kevDateAdded(), intel.kevDueDate(), intel.observedAt(),
-                    intel.sourceReferences(), intel.priorityTier(), cached.id(), intel.observedAt());
-        }
+        accumulator.parentMutations.observeVulnerability(
+                cached.id(), createdThisCall, observation);
         return cached;
     }
 
@@ -645,6 +590,7 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                 observation.affectedProductIdentityKey()
         );
         EntityRef cached = accumulator.components.get(naturalKey);
+        boolean createdThisCall = false;
         if (cached == null) {
             String publicId = publicId("component", naturalKey);
             UUID proposed = stableUuid("component", naturalKey);
@@ -683,35 +629,38 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
             accumulator.components.put(naturalKey, cached);
             if (isNew) {
                 accumulator.newComponents++;
+                createdThisCall = true;
             }
         }
-        executeUpdate(connection, """
-                UPDATE rbvm.asset_component SET
-                    public_id = ?,
-                    first_observed_at = LEAST(first_observed_at, ?),
-                    observed_product_name = CASE
-                        WHEN ? > last_observed_at THEN ? ELSE observed_product_name END,
-                    package_version = CASE
-                        WHEN ? > last_observed_at THEN ? ELSE package_version END,
-                    package_architecture = CASE
-                        WHEN ? > last_observed_at THEN ? ELSE package_architecture END,
-                    last_observed_at = GREATEST(last_observed_at, ?),
-                    updated_at = ?
-                WHERE tenant_id = ? AND id = ?
-                """,
-                cached.publicId(),
-                observation.detectedAt(),
-                observation.detectedAt(),
-                observation.affectedProductObservedName(),
-                observation.detectedAt(),
-                observation.packageVersion(),
-                observation.detectedAt(),
-                observation.packageArchitecture(),
-                observation.detectedAt(),
-                accumulator.now,
-                accumulator.tenantId,
-                cached.id()
-        );
+        if (!createdThisCall) {
+            executeUpdate(connection, """
+                    UPDATE rbvm.asset_component SET
+                        public_id = ?,
+                        first_observed_at = LEAST(first_observed_at, ?),
+                        observed_product_name = CASE
+                            WHEN ? > last_observed_at THEN ? ELSE observed_product_name END,
+                        package_version = CASE
+                            WHEN ? > last_observed_at THEN ? ELSE package_version END,
+                        package_architecture = CASE
+                            WHEN ? > last_observed_at THEN ? ELSE package_architecture END,
+                        last_observed_at = GREATEST(last_observed_at, ?),
+                        updated_at = ?
+                    WHERE tenant_id = ? AND id = ?
+                    """,
+                    cached.publicId(),
+                    observation.detectedAt(),
+                    observation.detectedAt(),
+                    observation.affectedProductObservedName(),
+                    observation.detectedAt(),
+                    observation.packageVersion(),
+                    observation.detectedAt(),
+                    observation.packageArchitecture(),
+                    observation.detectedAt(),
+                    accumulator.now,
+                    accumulator.tenantId,
+                    cached.id()
+            );
+        }
         return cached;
     }
 
@@ -871,12 +820,13 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
                 accumulator.newCases++;
             } else {
                 accumulator.updatedCaseIds.add(cached.id());
+                executeUpdate(connection, """
+                        UPDATE rbvm.vulnerability_case SET public_id = ?, updated_at = ?
+                        WHERE tenant_id = ? AND id = ?
+                        """, cached.publicId(), accumulator.now,
+                        accumulator.tenantId, cached.id());
             }
         }
-        executeUpdate(connection, """
-                UPDATE rbvm.vulnerability_case SET public_id = ?, updated_at = ?
-                WHERE tenant_id = ? AND id = ?
-                """, cached.publicId(), accumulator.now, accumulator.tenantId, cached.id());
         return cached;
     }
 
@@ -953,11 +903,6 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
         }
         if (!createdThisCall) {
             updateExistingExposure(connection, accumulator, cached, observation);
-        } else {
-            executeUpdate(connection, """
-                    UPDATE rbvm.exposure SET public_id = ?
-                    WHERE tenant_id = ? AND id = ?
-                    """, cached.publicId(), accumulator.tenantId, cached.id());
         }
         return cached;
     }
@@ -1533,6 +1478,7 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
         private final UUID sourceProfileId;
         private final ProjectionImport input;
         private final Instant now;
+        private final PostgresCanonicalProjectionMutationBuffer parentMutations;
         private final Map<String, EntityRef> assets = new HashMap<>();
         private final Map<String, EntityRef> vulnerabilities = new HashMap<>();
         private final Map<String, EntityRef> components = new HashMap<>();
@@ -1559,6 +1505,7 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
             this.sourceProfileId = sourceProfileId;
             this.input = input;
             this.now = now;
+            this.parentMutations = new PostgresCanonicalProjectionMutationBuffer(tenantId, now);
         }
     }
 

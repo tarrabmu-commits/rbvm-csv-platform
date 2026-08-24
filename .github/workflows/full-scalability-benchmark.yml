@@ -1,0 +1,108 @@
+name: full-scalability-benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      sizes:
+        description: "Comma-separated Finding counts"
+        required: true
+        default: "1000,5000,10000,25000,50000,100000"
+        type: string
+      unique_cve_ratio:
+        description: "Unique CVEs / Findings; 0.05 standard, 1.0 lookup worst-case"
+        required: true
+        default: "0.05"
+        type: string
+      stress:
+        description: "Continue doubling beyond the largest requested tier"
+        required: true
+        default: false
+        type: boolean
+      stress_max_rows:
+        description: "Run-safety ceiling only; not a platform limit"
+        required: true
+        default: "1600000"
+        type: string
+      tier_timeout_seconds:
+        description: "Per-stage timeout used to identify a measured bottleneck"
+        required: true
+        default: "1800"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  full-scalability:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    services:
+      postgres:
+        image: postgres:16.14-bookworm@sha256:92620daddcd947f8d5ab5ba66e848702fe443d87fed30c4cea8e389fd78dfc55
+        env:
+          POSTGRES_DB: rbvm
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres-scalability-owner
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rbvm"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Fetch pinned pgJDBC
+        env:
+          PGJDBC_VERSION: '42.7.13'
+          PGJDBC_SHA256: '6e0e4cc2d8cae902084f8a2b18728b073a6fd9d1f87c9d8bff8f298c18185b93'
+        run: |
+          set -euo pipefail
+          driver="$RUNNER_TEMP/postgresql-$PGJDBC_VERSION.jar"
+          curl --fail --location --silent --show-error \
+            "https://repo1.maven.org/maven2/org/postgresql/postgresql/$PGJDBC_VERSION/postgresql-$PGJDBC_VERSION.jar" \
+            --output "$driver"
+          printf '%s  %s\n' "$PGJDBC_SHA256" "$driver" | sha256sum --check
+          printf 'RBVM_POSTGRES_DRIVER_JAR=%s\n' "$driver" >> "$GITHUB_ENV"
+      - name: Compile benchmark bridge and application
+        run: ./scripts/compile.sh --tests
+      - name: Run progressive end-to-end benchmark
+        env:
+          RBVM_PROJECTION_BACKEND: POSTGRESQL
+          RBVM_JDBC_URL: jdbc:postgresql://127.0.0.1:5432/rbvm?sslmode=disable
+          RBVM_DB_USER: postgres
+          RBVM_DB_PASSWORD: postgres-scalability-owner
+          RBVM_DB_MIGRATE: 'true'
+          RBVM_SCALABILITY_BENCHMARK_MODE: 'true'
+          BENCHMARK_SIZES: ${{ inputs.sizes }}
+          BENCHMARK_UNIQUE_CVE_RATIO: ${{ inputs.unique_cve_ratio }}
+          BENCHMARK_STRESS: ${{ inputs.stress }}
+          BENCHMARK_STRESS_MAX_ROWS: ${{ inputs.stress_max_rows }}
+          BENCHMARK_TIER_TIMEOUT_SECONDS: ${{ inputs.tier_timeout_seconds }}
+        run: |
+          set -euo pipefail
+          args=(
+            --sizes "$BENCHMARK_SIZES"
+            --unique-cve-ratio "$BENCHMARK_UNIQUE_CVE_RATIO"
+            --stress-max-rows "$BENCHMARK_STRESS_MAX_ROWS"
+            --tier-timeout-seconds "$BENCHMARK_TIER_TIMEOUT_SECONDS"
+          )
+          if [[ "$BENCHMARK_STRESS" == "true" ]]; then
+            args+=(--stress)
+          fi
+          python3 scripts/run-full-scalability-benchmark-isolated.py "${args[@]}"
+      - name: Upload benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: rbvm-full-scalability-${{ github.sha }}
+          path: build/full-scalability/
+          if-no-files-found: error
+          retention-days: 30
