@@ -24,7 +24,9 @@ public final class PostgresV31PublicIntelligenceSyncJobLiveSelfTest {
                 new PostgresPublicIntelligenceStore(connections, false);
         require(jobs.schemaVersion() >= 31, "sync-job live proof requires schema 31+");
 
-        Instant t0 = Instant.parse("2026-08-24T06:00:00Z");
+        // Keep this source completion deterministically newer than any earlier live-test run
+        // that may use wall-clock completion time in the same PostgreSQL workflow.
+        Instant t0 = Instant.parse("2099-08-24T06:00:00Z");
         var provider = PostgresPublicIntelligenceStore.Provider.CISA_KEV;
 
         List<PublicIntelligenceStatusReader.ProviderStatus> initial = jobs.readStatus();
