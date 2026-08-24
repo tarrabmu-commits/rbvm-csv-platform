@@ -67,6 +67,7 @@ for token in [
 
 for token in [
     "provider = 'NVD'",
+    "sync_mode = 'BOOTSTRAP'",
     "status = 'COMPLETE'",
     "nvdcve-2\\.0-(20[0-9]{2})\\.json\\.gz",
     "completedAnnualYears",
@@ -88,6 +89,7 @@ for token in [
 for token in [
     "completed exact annual NVD run must count toward bootstrap",
     "failed annual NVD run must not count toward bootstrap",
+    "incremental annual-looking NVD run must not count toward bootstrap",
     "modified NVD source must never masquerade as annual coverage",
 ]:
     assert token in live_test, f"automation live test missing {token!r}"
