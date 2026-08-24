@@ -46,23 +46,22 @@ jobs:
             --output "$driver"
           printf '%s  %s\n' "$PGJDBC_SHA256" "$driver" | sha256sum --check
           printf 'RBVM_POSTGRES_DRIVER_JAR=%s\n' "$driver" >> "$GITHUB_ENV"
-      - name: Disable RI triggers for attribution only
+      - name: Analyze newly projected relations before parent updates
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
           path = Path('src/main/java/io/rbvm/postgres/PostgresCanonicalProjection.java')
           source = path.read_text()
-          marker = '        connection.setAutoCommit(false);\n'
-          replacement = '''        connection.setAutoCommit(false);\n        try (PreparedStatement attribution = connection.prepareStatement(\n                "SET LOCAL session_replication_role = replica")) {\n            attribution.execute();\n        }\n'''
-          assert source.count(marker) >= 1, 'projection transaction marker drifted'
-          source = source.replace(marker, replacement, 1)
-          path.write_text(source)
+          marker = '                accumulator.parentMutations.flush(connection);\n'
+          replacement = '''                try (PreparedStatement analyze = connection.prepareStatement(\n                        "ANALYZE rbvm.asset_component, rbvm.observation, "\n                                + "rbvm.vulnerability_case, rbvm.exposure")) {\n                    analyze.execute();\n                }\n                accumulator.parentMutations.flush(connection);\n'''
+          assert source.count(marker) == 1, 'parent mutation flush marker drifted'
+          path.write_text(source.replace(marker, replacement, 1))
           PY
           git diff --check -- src/main/java/io/rbvm/postgres/PostgresCanonicalProjection.java
       - name: Compile benchmark runtime
         run: ./scripts/compile.sh --tests
-      - name: Run 10K RI-trigger attribution A/B
+      - name: Run 10K transaction-local ANALYZE A/B
         env:
           RBVM_PROJECTION_BACKEND: POSTGRESQL
           RBVM_JDBC_URL: jdbc:postgresql://127.0.0.1:5432/rbvm?sslmode=disable
