@@ -36,7 +36,7 @@ with tempfile.TemporaryDirectory() as tmp:
     enriched = tmp / "enriched.csv"
     analysis = tmp / "analysis.csv"
     summary = tmp / "summary.json"
-    bundle = tmp / "customer-v3.json"
+    bundle = tmp / "customer-v4.json"
 
     base_bt = "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N/E:A"
     base_b = "CVSS:4.0/AV:L/AC:L/AT:P/PR:L/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N"
@@ -77,19 +77,19 @@ with tempfile.TemporaryDirectory() as tmp:
         })
 
     bundle.write_text(json.dumps({
-        "contractId": "RBVM_CUSTOMER_ASSET_BUNDLE_V3",
-        "schemaVersion": 3,
+        "contractId": "RBVM_CUSTOMER_ASSET_BUNDLE_V4",
+        "schemaVersion": 4,
         "assets": [
             {
-                "customerAssetKey": "", "displayName": "asset-a", "assetCriticality": "HIGH", "internetFacing": "YES",
+                "customerAssetKey": "", "displayName": "asset-a", "assetCriticality": "HIGH", "internetFacing": "YES", "publiclyExposed": "YES",
                 "cvssConfidentialityRequirement": "H", "cvssIntegrityRequirement": "M", "cvssAvailabilityRequirement": "L",
             },
             {
-                "customerAssetKey": "", "displayName": "asset-b", "assetCriticality": "LOW", "internetFacing": "NO",
+                "customerAssetKey": "", "displayName": "asset-b", "assetCriticality": "LOW", "internetFacing": "NO", "publiclyExposed": "NO",
                 "cvssConfidentialityRequirement": "H", "cvssIntegrityRequirement": "X", "cvssAvailabilityRequirement": "X",
             },
             {
-                "customerAssetKey": "", "displayName": "asset-c", "assetCriticality": "MODERATE", "internetFacing": "YES",
+                "customerAssetKey": "", "displayName": "asset-c", "assetCriticality": "MODERATE", "internetFacing": "YES", "publiclyExposed": "UNKNOWN",
                 "cvssConfidentialityRequirement": "H", "cvssIntegrityRequirement": "H", "cvssAvailabilityRequirement": "H",
             },
         ],
@@ -106,6 +106,8 @@ with tempfile.TemporaryDirectory() as tmp:
         raise AssertionError("analysis must preserve finding row count")
 
     first, second, third = rows
+    if [row["Publicly_Exposed"] for row in rows] != ["YES", "NO", "UNKNOWN"]:
+        raise AssertionError("explicit Publicly Exposed evidence was not preserved")
     if first["CVSS4_Threat_E_Resolved"] != "A" or first["CVSS4_Threat_E_Status"] != "PRESENT_KEV_ATTESTED":
         raise AssertionError("KEV listed must resolve E:A when published E is absent")
     if (first["CVSS4_CR_Resolved"], first["CVSS4_IR_Resolved"], first["CVSS4_AR_Resolved"]) != ("H", "M", "L"):
@@ -130,10 +132,16 @@ with tempfile.TemporaryDirectory() as tmp:
         raise AssertionError("contextual CVSS must not be relabeled Organizational Risk")
 
     result = json.loads(summary.read_text(encoding="utf-8"))
-    if result["contractId"] != "CSV_RUN_EVIDENCE_ANALYSIS_V2":
+    if result["contractId"] != "CSV_RUN_EVIDENCE_ANALYSIS_V3":
         raise AssertionError("analysis contract version was not advanced")
-    if result["source"]["customerBundleContractId"] != "RBVM_CUSTOMER_ASSET_BUNDLE_V3":
-        raise AssertionError("customer bundle provenance is missing")
+    if result["source"]["customerBundleContractId"] != "RBVM_CUSTOMER_ASSET_BUNDLE_V4":
+        raise AssertionError("customer bundle V4 provenance is missing")
+    if result["coverage"]["publiclyExposedStatus"] != {"NO": 1, "UNKNOWN": 1, "YES": 1}:
+        raise AssertionError("Publicly Exposed coverage is incorrect")
+    if result["cisaBodCustomerContext"]["publiclyExposedSemanticId"] != "cisa:PE:1.0.0":
+        raise AssertionError("CISA Publicly Exposed semantic identity is missing")
+    if result["cisaBodCustomerContext"]["internetFacingMapping"] != "FORBIDDEN":
+        raise AssertionError("Internet Facing must not map to CISA Publicly Exposed")
     if result["coverage"]["environmentalRequirementDefinedRows"] != 3:
         raise AssertionError("Environmental requirement coverage count is incorrect")
     if result["coverage"]["contextualNomenclature"].get("CVSS-BTE") != 1 or result["coverage"]["contextualNomenclature"].get("CVSS-BE") != 1:
@@ -141,4 +149,4 @@ with tempfile.TemporaryDirectory() as tmp:
     if result["rbvmV2"]["riskComputedRows"] != 0 or result["rbvmV2"]["status"] != "NON_COMPUTABLE":
         raise AssertionError("analysis must not fabricate V2 risk")
 
-print("CSV run evidence analysis V2 + direct CVSS Environmental requirements: PASS")
+print("CSV run evidence analysis V3 + explicit CISA Publicly Exposed: PASS")

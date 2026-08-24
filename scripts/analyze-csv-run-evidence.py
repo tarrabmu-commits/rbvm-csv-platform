@@ -3,7 +3,7 @@
 
 Inputs:
 - enriched CSV produced by enrich-uploaded-csv.py
-- optional RBVM_CUSTOMER_ASSET_BUNDLE_V2 or V3 JSON
+- optional RBVM_CUSTOMER_ASSET_BUNDLE_V2, V3, or V4 JSON
 
 Outputs:
 - row-preserving evidence/benchmark CSV
@@ -11,10 +11,12 @@ Outputs:
 
 CVSS technical severity, EPSS probability, KEV/SSVC threat signals, and customer
 context remain separate. Public CVSS-B/CVSS-BT values are consumed as severity
-evidence. V3 customer bundles may declare CVSS v4 CR/IR/AR directly using native
-X/L/M/H metric values; these declarations can produce CVSS-BE/CVSS-BTE contextual
-technical severity. Asset Criticality is never converted to CR/IR/AR and asset-level
-Internet Facing is never converted to MAV.
+evidence. V3/V4 customer bundles may declare CVSS v4 CR/IR/AR directly using
+native X/L/M/H metric values; these declarations can produce CVSS-BE/CVSS-BTE
+contextual technical severity. V4 additionally carries explicit CISA Publicly
+Exposed evidence. Asset Criticality is never converted to CR/IR/AR, asset-level
+Internet Facing is never converted to MAV, and Internet Facing is never converted
+to CISA Publicly Exposed.
 """
 
 import argparse
@@ -28,13 +30,16 @@ from cvss_v4_official import CvssV4Error, score_record
 
 CRITICALITY = {"MISSION_CRITICAL", "HIGH", "MODERATE", "LOW"}
 INTERNET = {"YES", "NO"}
+PUBLICLY_EXPOSED = {"YES", "NO"}
 SECURITY_REQUIREMENT = {"X", "L", "M", "H"}
+BUNDLE_V4 = "RBVM_CUSTOMER_ASSET_BUNDLE_V4"
 BUNDLE_V3 = "RBVM_CUSTOMER_ASSET_BUNDLE_V3"
 BUNDLE_V2 = "RBVM_CUSTOMER_ASSET_BUNDLE_V2"
 ENV_SOURCE = "CUSTOMER_DECLARED_CVSS_V4_SECURITY_REQUIREMENTS"
+PUBLICLY_EXPOSED_SOURCE = "CUSTOMER_DECLARED_CISA_PUBLICLY_EXPOSED"
 
 ANALYSIS_COLUMNS = [
-    "Customer_Context_Status", "Asset_Criticality", "Internet_Facing",
+    "Customer_Context_Status", "Asset_Criticality", "Internet_Facing", "Publicly_Exposed",
     "CVSS4_Threat_E_Status", "CVSS4_Threat_E_Resolved",
     "CVSS4_CR_Resolved", "CVSS4_IR_Resolved", "CVSS4_AR_Resolved", "CVSS4_MAV_Resolved",
     "CVSS4_Environmental_Requirement_Status", "CVSS4_Environmental_Requirement_Source",
@@ -85,15 +90,26 @@ def requirement(asset, field, index, enabled):
     return value
 
 
+def customer_binary(asset, field, index, enabled, allowed, label):
+    if not enabled:
+        return "UNKNOWN"
+    value = str(asset.get(field) or "UNKNOWN").strip().upper()
+    if value != "UNKNOWN" and value not in allowed:
+        raise RuntimeError(f"customer asset {index} has invalid {label}; expected UNKNOWN/YES/NO")
+    return value
+
+
 def load_bundle(path):
     if not path:
         return [], None, None, None
     value = json.loads(path.read_text(encoding="utf-8"))
     contract_id = value.get("contractId")
     schema_version = value.get("schemaVersion")
-    if (contract_id, schema_version) not in {(BUNDLE_V3, 3), (BUNDLE_V2, 2)}:
-        raise RuntimeError("expected RBVM_CUSTOMER_ASSET_BUNDLE_V3 schemaVersion 3 or legacy V2 schemaVersion 2")
-    environmental_enabled = contract_id == BUNDLE_V3
+    supported = {(BUNDLE_V4, 4), (BUNDLE_V3, 3), (BUNDLE_V2, 2)}
+    if (contract_id, schema_version) not in supported:
+        raise RuntimeError("expected RBVM_CUSTOMER_ASSET_BUNDLE_V4 schemaVersion 4, V3 schemaVersion 3, or legacy V2 schemaVersion 2")
+    environmental_enabled = contract_id in {BUNDLE_V4, BUNDLE_V3}
+    publicly_exposed_enabled = contract_id == BUNDLE_V4
     assets = value.get("assets")
     if not isinstance(assets, list):
         raise RuntimeError("customer bundle assets must be an array")
@@ -109,11 +125,15 @@ def load_bundle(path):
             raise RuntimeError(f"customer asset {index} has invalid criticality")
         if internet != "UNKNOWN" and internet not in INTERNET:
             raise RuntimeError(f"customer asset {index} has invalid internetFacing")
+        publicly_exposed = customer_binary(
+            asset, "publiclyExposed", index, publicly_exposed_enabled, PUBLICLY_EXPOSED, "publiclyExposed"
+        )
         normalized.append({
             "customerAssetKey": key,
             "displayName": name,
             "assetCriticality": criticality,
             "internetFacing": internet,
+            "publiclyExposed": publicly_exposed,
             "cvssConfidentialityRequirement": requirement(asset, "cvssConfidentialityRequirement", index, environmental_enabled),
             "cvssIntegrityRequirement": requirement(asset, "cvssIntegrityRequirement", index, environmental_enabled),
             "cvssAvailabilityRequirement": requirement(asset, "cvssAvailabilityRequirement", index, environmental_enabled),
@@ -246,6 +266,7 @@ def analyze_row(row, asset, context_status):
     threat_status, threat_e = resolve_threat_e(row)
     criticality = asset["assetCriticality"] if asset else "UNKNOWN"
     internet = asset["internetFacing"] if asset else "UNKNOWN"
+    publicly_exposed = asset["publiclyExposed"] if asset else "UNKNOWN"
     cr, ir, ar, environmental_status, environmental_source = environmental_requirements(asset)
     mav = "X"
     score = score_context(row, cr, ir, ar, environmental_status)
@@ -264,6 +285,7 @@ def analyze_row(row, asset, context_status):
         "Customer_Context_Status": context_status,
         "Asset_Criticality": criticality,
         "Internet_Facing": internet,
+        "Publicly_Exposed": publicly_exposed,
         "CVSS4_Threat_E_Status": threat_status,
         "CVSS4_Threat_E_Resolved": threat_e,
         "CVSS4_CR_Resolved": cr,
@@ -299,6 +321,7 @@ def main():
     calculated_counts = Counter()
     threat_counts = Counter()
     environmental_counts = Counter()
+    publicly_exposed_counts = Counter()
     mode_counts = Counter()
     contextual_nomenclature_counts = Counter()
 
@@ -313,6 +336,7 @@ def main():
         calculated_counts[str(row.get("CVSS4_Calculated_Status") or "LEGACY_NOT_CALCULATED")] += 1
         threat_counts[extra["CVSS4_Threat_E_Status"]] += 1
         environmental_counts[extra["CVSS4_Environmental_Requirement_Status"]] += 1
+        publicly_exposed_counts[extra["Publicly_Exposed"]] += 1
         mode_counts[extra["CVSS4_Context_Mode"]] += 1
         contextual_nomenclature_counts[extra["CVSS4_Context_Nomenclature"] or "NONE"] += 1
 
@@ -332,7 +356,7 @@ def main():
     contextual_calculated = sum(row["CVSS4_Context_Score_Status"] == "CALCULATED_FIRST_REFERENCE_COMPATIBLE" for row in output)
 
     summary = {
-        "contractId": "CSV_RUN_EVIDENCE_ANALYSIS_V2",
+        "contractId": "CSV_RUN_EVIDENCE_ANALYSIS_V3",
         "source": {
             "enrichedCsv": a.enriched_csv.name,
             "customerBundle": a.customer_bundle.name if a.customer_bundle else None,
@@ -349,10 +373,17 @@ def main():
             "cisaSsvcPresentRows": ssvc_present,
             "customerContextStatus": dict(sorted(context_counts.items())),
             "customerContextCompleteRows": complete_context,
+            "publiclyExposedStatus": dict(sorted(publicly_exposed_counts.items())),
             "environmentalRequirementStatus": dict(sorted(environmental_counts.items())),
             "environmentalRequirementDefinedRows": environmental_defined,
             "contextualCvssCalculatedRows": contextual_calculated,
             "contextualNomenclature": dict(sorted(contextual_nomenclature_counts.items())),
+        },
+        "cisaBodCustomerContext": {
+            "publiclyExposedSemanticId": "cisa:PE:1.0.0",
+            "source": PUBLICLY_EXPOSED_SOURCE,
+            "internetFacingMapping": "FORBIDDEN",
+            "legacyBundleUpgrade": "V2/V3 -> publiclyExposed=UNKNOWN",
         },
         "cvss4Context": {
             "resolverContractId": "CVSS_V4_CONTEXT_RESOLVER_V2",
@@ -365,7 +396,7 @@ def main():
         "benchmarkFields": [
             "Severity", "CVSS4_Base_Score", "CVSS4_Base_Severity", "CVSS4_Calculated_Nomenclature", "CVSS4_Calculated_Score", "CVSS4_Calculated_Severity",
             "CVSS4_CR_Resolved", "CVSS4_IR_Resolved", "CVSS4_AR_Resolved", "CVSS4_Context_Nomenclature", "CVSS4_Context_Score", "CVSS4_Context_Severity",
-            "EPSS_Probability", "KEV_Listed", "CISA_Exploitation", "CISA_Automatable", "CISA_Technical_Impact", "Asset_Criticality", "Internet_Facing",
+            "EPSS_Probability", "KEV_Listed", "CISA_Exploitation", "CISA_Automatable", "CISA_Technical_Impact", "Asset_Criticality", "Internet_Facing", "Publicly_Exposed",
         ],
         "rbvmV2": {
             "status": "NON_COMPUTABLE",
