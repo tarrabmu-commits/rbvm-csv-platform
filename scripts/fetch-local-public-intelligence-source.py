@@ -5,7 +5,6 @@ import argparse
 from datetime import date, datetime, timezone
 import gzip
 import hashlib
-import io
 import json
 import os
 from pathlib import Path
@@ -116,11 +115,12 @@ def bounded_local_copy(source, target, maximum):
     return size
 
 
-def request_headers(accept):
+def request_headers(accept, *, github_api_auth=False):
     headers = {"Accept": accept, "User-Agent": USER_AGENT}
-    token = os.environ.get("GITHUB_TOKEN")
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
+    if github_api_auth:
+        token = os.environ.get("GITHUB_TOKEN")
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
     return headers
 
 
@@ -130,8 +130,21 @@ def allowed_final_host(url, allowed_hosts):
         raise RuntimeError("official source redirect left the HTTPS host allowlist")
 
 
-def fetch_bytes(url, target, maximum, *, accept, allowed_hosts):
-    request = Request(url, headers=request_headers(accept))
+def fetch_bytes(
+    url,
+    target,
+    maximum,
+    *,
+    accept,
+    allowed_hosts,
+    github_api_auth=False,
+):
+    if github_api_auth and urlparse(url).hostname != "api.github.com":
+        raise RuntimeError("GitHub API credentials may be sent only to api.github.com")
+    request = Request(
+        url,
+        headers=request_headers(accept, github_api_auth=github_api_auth),
+    )
     with urlopen(request, timeout=120) as response:  # nosec: fixed/derived official HTTPS URLs
         if response.status != 200:
             raise RuntimeError(f"official source returned HTTP {response.status}")
@@ -158,7 +171,7 @@ def fetch_bytes(url, target, maximum, *, accept, allowed_hosts):
     return written
 
 
-def fetch_text(url, maximum, *, allowed_hosts):
+def fetch_text(url, maximum, *, allowed_hosts, github_api_auth=False):
     with tempfile.TemporaryDirectory(prefix="rbvm-source-text-") as temp:
         path = Path(temp) / "source.txt"
         fetch_bytes(
@@ -167,6 +180,7 @@ def fetch_text(url, maximum, *, allowed_hosts):
             maximum,
             accept="text/plain, application/json",
             allowed_hosts=allowed_hosts,
+            github_api_auth=github_api_auth,
         )
         try:
             return path.read_text(encoding="utf-8")
@@ -243,8 +257,10 @@ def acquire_nvd(args, output, observed_at):
     feed = args.nvd_feed or "modified"
     if not NVD_FEED_RE.fullmatch(feed):
         raise RuntimeError("--nvd-feed must be modified or a year >= 2002")
-    if feed != "modified" and int(feed) < 2002:
-        raise RuntimeError("NVD year feed must be 2002 or later")
+    if feed != "modified":
+        year = int(feed)
+        if year < 2002 or year > datetime.now(timezone.utc).year:
+            raise RuntimeError("NVD year feed must be between 2002 and the current UTC year")
     stem = f"nvdcve-2.0-{feed}"
     meta_url = f"{NVD_BASE}/{stem}.meta"
     source_url = f"{NVD_BASE}/{stem}.json.gz"
@@ -252,7 +268,10 @@ def acquire_nvd(args, output, observed_at):
         if not args.offline_metadata:
             raise RuntimeError("NVD offline mode requires --offline-metadata")
         require_regular(args.offline_metadata, "--offline-metadata")
-        meta_text = args.offline_metadata.read_text(encoding="utf-8")
+        try:
+            meta_text = args.offline_metadata.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            raise RuntimeError("NVD offline metadata must be UTF-8") from exc
     else:
         meta_text = fetch_text(meta_url, MAX_META_BYTES, allowed_hosts={"nvd.nist.gov"})
     meta = parse_nvd_meta(meta_text)
@@ -448,8 +467,12 @@ def acquire_cve_program(args, output, observed_at):
             CVE_COMMIT_API,
             MAX_GITHUB_API_BYTES,
             allowed_hosts={"api.github.com"},
+            github_api_auth=True,
         )
-        commit_payload = json.loads(commit_text)
+        try:
+            commit_payload = json.loads(commit_text)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("CVE Program GitHub commit response is not valid JSON") from exc
     sha, published = cve_commit_descriptor(commit_payload)
     source_url = CVE_ARCHIVE.format(sha=sha)
     source = output / "source.zip"
@@ -493,7 +516,7 @@ def main():
     prepare_output(args.output)
     if args.provider != "NVD" and args.nvd_feed:
         raise RuntimeError("--nvd-feed is valid only for provider NVD")
-    if args.provider != "NVD" and args.offline_metadata and args.provider != "CVE_PROGRAM":
+    if args.provider not in {"NVD", "CVE_PROGRAM"} and args.offline_metadata:
         raise RuntimeError("--offline-metadata is valid only for NVD or CVE_PROGRAM")
 
     try:
