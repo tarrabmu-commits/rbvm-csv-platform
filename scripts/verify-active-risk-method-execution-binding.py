@@ -143,8 +143,14 @@ for marker in [
 
 assert 'RbvmActiveRiskMethodExecutionBindingSelfTest.main(args);' in platform
 assert 'DefaultActiveRiskMethodExecutionBindingMaterializerSelfTest.main(args);' in platform
-assert 'PostgresV27ActiveRiskMethodExecutionBindingLiveSelfTest' in workflow
-assert 'V18-V27' in workflow
+for live_test in [
+    'PostgresV23FormulaResultLiveSelfTest',
+    'PostgresV24DerivedRiskLiveSelfTest',
+    'PostgresV25RiskMethodSelectionPolicyLiveSelfTest',
+    'PostgresV26RiskMethodSelectionActivationLiveSelfTest',
+    'PostgresV27ActiveRiskMethodExecutionBindingLiveSelfTest',
+]:
+    assert live_test in workflow, f'postgres workflow missing required live proof {live_test!r}'
 
 for marker in [
     'never stores or means `current`',
