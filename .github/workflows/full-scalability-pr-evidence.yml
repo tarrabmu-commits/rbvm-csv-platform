@@ -30,80 +30,64 @@ jobs:
           source = path.read_text()
           original = source
 
-          preselect = '''        UUID existingObservation = selectUuid(connection, """
-                  SELECT id FROM rbvm.observation
-                  WHERE tenant_id = ? AND source_profile_id = ? AND fingerprint = ?
-                  """, accumulator.tenantId, accumulator.sourceProfileId,
-                  observation.observationFingerprint());
-          if (existingObservation != null) {
-              accumulator.duplicateObservations++;
-              linkImportObservation(connection, accumulator, observation, existingObservation);
-              return;
-          }
+          # 1. INSERT ... ON CONFLICT already tells us whether an observation exists.
+          marker = '        UUID existingObservation = selectUuid(connection, """'
+          if marker in source:
+              start = source.index(marker)
+              end = source.index('        EntityRef asset = ensureAsset(', start)
+              source = source[:start] + source[end:]
 
-          '''
-          preselect = preselect.replace('          ', '        ')
-          if preselect in source:
-              source = source.replace(preselect, '', 1)
+          # 2. A newly inserted exposure already contains public_id; avoid the immediate UPDATE.
+          old = ('        if (!createdThisCall) {\n'
+                 '            updateExistingExposure(connection, accumulator, cached, observation);\n'
+                 '        } else {\n'
+                 '            executeUpdate(connection, """\n'
+                 '                    UPDATE rbvm.exposure SET public_id = ?\n'
+                 '                    WHERE tenant_id = ? AND id = ?\n'
+                 '                    """, cached.publicId(), accumulator.tenantId, cached.id());\n'
+                 '        }\n'
+                 '        return cached;')
+          new = ('        if (!createdThisCall) {\n'
+                 '            updateExistingExposure(connection, accumulator, cached, observation);\n'
+                 '        }\n'
+                 '        return cached;')
+          if old in source:
+              source = source.replace(old, new, 1)
 
-          exposure_old = '''        if (!createdThisCall) {
-              updateExistingExposure(connection, accumulator, cached, observation);
-          } else {
-              executeUpdate(connection, """
-                      UPDATE rbvm.exposure SET public_id = ?
-                      WHERE tenant_id = ? AND id = ?
-                      """, cached.publicId(), accumulator.tenantId, cached.id());
-          }
-          return cached;
-          }'''.replace('          ', '        ')
-          exposure_new = '''        if (!createdThisCall) {
-              updateExistingExposure(connection, accumulator, cached, observation);
-          }
-          return cached;
-          }'''.replace('          ', '        ')
-          if exposure_old in source:
-              source = source.replace(exposure_old, exposure_new, 1)
+          # 3. New cases already contain public_id. Only a DB-existing case needs the legacy
+          #    backfill/update once when it first enters this import cache.
+          case_start = source.index('    private static EntityRef ensureCase(')
+          case_end = source.index('    private static EntityRef ensureExposure(', case_start)
+          case = source[case_start:case_end]
+          old = ('            } else {\n'
+                 '                accumulator.updatedCaseIds.add(cached.id());\n'
+                 '            }\n'
+                 '        }\n'
+                 '        executeUpdate(connection, """\n'
+                 '                UPDATE rbvm.vulnerability_case SET public_id = ?, updated_at = ?\n'
+                 '                WHERE tenant_id = ? AND id = ?\n'
+                 '                """, cached.publicId(), accumulator.now, accumulator.tenantId, cached.id());\n'
+                 '        return cached;')
+          new = ('            } else {\n'
+                 '                accumulator.updatedCaseIds.add(cached.id());\n'
+                 '                executeUpdate(connection, """\n'
+                 '                        UPDATE rbvm.vulnerability_case SET public_id = ?, updated_at = ?\n'
+                 '                        WHERE tenant_id = ? AND id = ?\n'
+                 '                        """, cached.publicId(), accumulator.now,\n'
+                 '                        accumulator.tenantId, cached.id());\n'
+                 '            }\n'
+                 '        }\n'
+                 '        return cached;')
+          if old in case:
+              case = case.replace(old, new, 1)
+              source = source[:case_start] + case + source[case_end:]
 
-          case_marker = '''        EntityRef cached = accumulator.cases.get(naturalKey);
-          if (cached == null) {'''.replace('          ', '        ')
-          if case_marker in source and 'boolean existingCase = false;' not in source[source.index('    private static EntityRef ensureCase('):source.index('    private static EntityRef ensureExposure(')]:
-              source = source.replace(
-                  case_marker,
-                  '''        EntityRef cached = accumulator.cases.get(naturalKey);
-          boolean existingCase = false;
-          if (cached == null) {'''.replace('          ', '        '),
-                  1,
-              )
-
-          case_old = '''            } else {
-                  accumulator.updatedCaseIds.add(cached.id());
-              }
-          }
-          executeUpdate(connection, """
-                  UPDATE rbvm.vulnerability_case SET public_id = ?, updated_at = ?
-                  WHERE tenant_id = ? AND id = ?
-                  """, cached.publicId(), accumulator.now, accumulator.tenantId, cached.id());
-          return cached;
-          }'''.replace('          ', '        ')
-          case_new = '''            } else {
-                  accumulator.updatedCaseIds.add(cached.id());
-                  existingCase = true;
-              }
-          }
-          if (existingCase) {
-              executeUpdate(connection, """
-                      UPDATE rbvm.vulnerability_case SET public_id = ?, updated_at = ?
-                      WHERE tenant_id = ? AND id = ?
-                      """, cached.publicId(), accumulator.now, accumulator.tenantId, cached.id());
-          }
-          return cached;
-          }'''.replace('          ', '        ')
-          if case_old in source:
-              source = source.replace(case_old, case_new, 1)
-
-          if source != original:
-              path.write_text(source)
+          if source == original:
+              raise SystemExit('Measured optimization produced no source diff')
+          path.write_text(source)
           PY
+          git diff --check -- src/main/java/io/rbvm/postgres/PostgresCanonicalProjection.java
+          git diff -- src/main/java/io/rbvm/postgres/PostgresCanonicalProjection.java
       - name: Compile optimized source
         run: ./scripts/compile.sh --tests
       - name: Commit optimized source
@@ -111,10 +95,7 @@ jobs:
           TARGET_BRANCH: full-scalability-benchmark-v1
         run: |
           set -euo pipefail
-          if git diff --quiet -- src/main/java/io/rbvm/postgres/PostgresCanonicalProjection.java; then
-            echo 'Measured optimization already promoted; no commit needed.'
-            exit 0
-          fi
+          test -n "$(git status --short -- src/main/java/io/rbvm/postgres/PostgresCanonicalProjection.java)"
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add src/main/java/io/rbvm/postgres/PostgresCanonicalProjection.java
