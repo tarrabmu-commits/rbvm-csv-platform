@@ -4,6 +4,7 @@
 /dist/*.jar
 /dist/*.jar.sha256
 /dist/*.spdx.json
+/.env.local
 __pycache__/
 *.py[cod]
 *.log
