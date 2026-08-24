@@ -36,6 +36,9 @@ public final class PostgresCisaKevCatalogValidationReader implements CisaKevCata
                            AND r.source_uri = ?
                            AND j.status = 'COMPLETE'
                            AND j.stage = 'COMPLETE'
+                           AND j.source_uri = r.source_uri
+                           AND j.source_version = r.source_version
+                           AND j.source_sha256 = r.source_sha256
                      )
                      """)) {
             statement.setObject(1, syncRunId);
