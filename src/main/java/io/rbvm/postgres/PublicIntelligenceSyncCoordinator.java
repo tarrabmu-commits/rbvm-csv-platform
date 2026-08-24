@@ -14,6 +14,7 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 /**
@@ -254,18 +255,25 @@ public final class PublicIntelligenceSyncCoordinator
         }
         try (var paths = Files.walk(root)) {
             for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
-                if (Files.isSymbolicLink(path)) {
-                    Files.deleteIfExists(path);
-                } else {
-                    Files.deleteIfExists(path);
-                }
+                Files.deleteIfExists(path);
             }
         }
     }
 
     @Override
     public void close() {
-        executor.shutdown();
+        executor.shutdownNow();
+        boolean interrupted = false;
+        try {
+            if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+            }
+        } catch (InterruptedException exception) {
+            interrupted = true;
+            executor.shutdownNow();
+        } finally {
+            if (interrupted) Thread.currentThread().interrupt();
+        }
     }
 
     public static final class AlreadyRunningException extends IOException {
