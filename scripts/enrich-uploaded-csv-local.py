@@ -37,11 +37,13 @@ def write_json_atomic(path, value):
 
 def main():
     args = arguments()
-    snapshot = load_json(args.intel_snapshot, "local public-intelligence snapshot")
-    acquisition = snapshot.get("acquisition")
-    if not isinstance(acquisition, dict) or acquisition.get("mode") != "LOCAL_V30_STORE":
-        raise RuntimeError("local CSV enrichment requires a LOCAL_V30_STORE snapshot")
+    if args.intel_snapshot.is_symlink() or not args.intel_snapshot.is_file():
+        raise RuntimeError("local public-intelligence snapshot must be a regular file")
 
+    # Do not deserialize the potentially large snapshot in this wrapper while the child
+    # enricher is also holding it. The child performs full contract/SHA/scope validation;
+    # local acquisition provenance is checked only after the child has exited, so the two
+    # snapshot object graphs never coexist in separate Python processes.
     enricher = Path(__file__).resolve().with_name("enrich-uploaded-csv.py")
     command = [
         sys.executable,
@@ -52,6 +54,14 @@ def main():
         "--report", str(args.report),
     ]
     subprocess.run(command, check=True)
+
+    snapshot = load_json(args.intel_snapshot, "local public-intelligence snapshot")
+    acquisition = snapshot.get("acquisition")
+    if not isinstance(acquisition, dict) or acquisition.get("mode") != "LOCAL_V30_STORE":
+        args.output.unlink(missing_ok=True)
+        args.report.unlink(missing_ok=True)
+        raise RuntimeError("local CSV enrichment requires a LOCAL_V30_STORE snapshot")
+    del snapshot
 
     report = load_json(args.report, "CSV-first enrichment report")
     report["acquisitionMode"] = "LOCAL_V30_STORE"

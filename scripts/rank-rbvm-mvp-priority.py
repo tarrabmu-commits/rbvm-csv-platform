@@ -36,36 +36,11 @@ CANONICAL = {
     "outputSemantics": "RELATIVE_TREATMENT_PRIORITY_PARETO_FRONT_WITHIN_INPUT_SET",
     "organizationalRisk": False,
     "dimensions": [
-        {
-            "name": "CISA_KEV",
-            "source": "KEV_Listed",
-            "orientation": "HIGHER_IS_MORE_URGENT",
-            "mapping": {"false": 0, "true": 1},
-        },
-        {
-            "name": "CUSTOMER_INTERNET_FACING",
-            "source": "Internet_Facing",
-            "orientation": "HIGHER_IS_MORE_URGENT",
-            "mapping": {"NO": 0, "YES": 1},
-        },
-        {
-            "name": "CUSTOMER_ASSET_CRITICALITY",
-            "source": "Asset_Criticality",
-            "orientation": "HIGHER_IS_MORE_URGENT",
-            "mapping": {"LOW": 1, "MODERATE": 2, "HIGH": 3, "MISSION_CRITICAL": 4},
-        },
-        {
-            "name": "FIRST_EPSS_30_DAY_PROBABILITY",
-            "source": "EPSS_Probability",
-            "orientation": "HIGHER_IS_MORE_URGENT",
-            "range": [0, 1],
-        },
-        {
-            "name": "CVSS_V4_CONTEXTUAL_TECHNICAL_SEVERITY",
-            "source": "CVSS4_Context_Score",
-            "orientation": "HIGHER_IS_MORE_URGENT",
-            "range": [0, 10],
-        },
+        {"name": "CISA_KEV", "source": "KEV_Listed", "orientation": "HIGHER_IS_MORE_URGENT", "mapping": {"false": 0, "true": 1}},
+        {"name": "CUSTOMER_INTERNET_FACING", "source": "Internet_Facing", "orientation": "HIGHER_IS_MORE_URGENT", "mapping": {"NO": 0, "YES": 1}},
+        {"name": "CUSTOMER_ASSET_CRITICALITY", "source": "Asset_Criticality", "orientation": "HIGHER_IS_MORE_URGENT", "mapping": {"LOW": 1, "MODERATE": 2, "HIGH": 3, "MISSION_CRITICAL": 4}},
+        {"name": "FIRST_EPSS_30_DAY_PROBABILITY", "source": "EPSS_Probability", "orientation": "HIGHER_IS_MORE_URGENT", "range": [0, 1]},
+        {"name": "CVSS_V4_CONTEXTUAL_TECHNICAL_SEVERITY", "source": "CVSS4_Context_Score", "orientation": "HIGHER_IS_MORE_URGENT", "range": [0, 10]},
     ],
     "dominance": "A_DOMINATES_B_IFF_ALL_DIMENSIONS_A_GTE_B_AND_AT_LEAST_ONE_GT",
     "fronting": "ITERATIVE_NONDOMINATED_SORT; FRONT_1_HIGHEST_RELATIVE_TREATMENT_PRIORITY",
@@ -123,7 +98,6 @@ def parse_decimal(value, minimum, maximum, blocker):
 
 def vector(row):
     blockers = []
-
     try:
         kev = parse_bool(row.get("KEV_Listed"))
     except ValueError as error:
@@ -145,7 +119,6 @@ def vector(row):
     except ValueError as error:
         blockers.append(str(error))
         epss = None
-
     try:
         cvss = parse_decimal(row.get("CVSS4_Context_Score"), Decimal("0"), Decimal("10"), "CVSS4_CONTEXT_SCORE_MISSING_OR_INVALID")
     except ValueError as error:
@@ -162,11 +135,7 @@ def dominates(left, right):
 
 
 def dominance_relation(left, right):
-    """Return 1 if left dominates, -1 if right dominates, otherwise 0.
-
-    A single pass is materially cheaper than asking ``dominates`` twice for
-    every pair and is exactly equivalent to the frozen dominance definition.
-    """
+    """Return 1 if left dominates, -1 if right dominates, otherwise 0."""
     left_better = False
     right_better = False
     for left_value, right_value in zip(left, right):
@@ -184,14 +153,14 @@ def dominance_relation(left, right):
 
 
 def pareto_relations(vectors):
-    """Compute fronts and row-weighted dominance counts in one pairwise pass.
+    """Compute exact fronts and row-weighted dominance counts with O(n) memory.
 
-    Identical five-dimensional vectors cannot dominate one another because the
-    frozen policy requires at least one strictly greater dimension. Grouping
-    identical vectors therefore preserves every row result while avoiding
-    repeated work. Unique vector pairs are compared exactly once, after which a
-    deterministic topological peel produces the same iterative nondominated
-    fronts as the original reference implementation.
+    The frozen policy is unchanged. Identical five-dimensional vectors are grouped because
+    equal vectors never dominate one another. The first pairwise pass computes incoming
+    dominator counts plus row-weighted dominates/dominated-by counts without retaining a
+    quadratic adjacency graph. Front peeling then replays only the comparisons needed to
+    decrement remaining incoming counts. Across all fronts this is at most one additional
+    pairwise pass, keeping exact O(n^2) comparison complexity and O(n) retained memory.
     """
     if not vectors:
         return {}, {}, {}
@@ -201,7 +170,6 @@ def pareto_relations(vectors):
         groups.setdefault(value, []).append(row_index)
 
     unique_vectors = sorted(groups)
-    outgoing = {value: [] for value in unique_vectors}
     incoming_group_count = {value: 0 for value in unique_vectors}
     dominates_rows_by_group = {value: 0 for value in unique_vectors}
     dominated_by_rows_by_group = {value: 0 for value in unique_vectors}
@@ -211,31 +179,38 @@ def pareto_relations(vectors):
         for right in unique_vectors[left_index + 1:]:
             relation = dominance_relation(left, right)
             if relation == 1:
-                outgoing[left].append(right)
                 incoming_group_count[right] += 1
                 dominates_rows_by_group[left] += len(groups[right])
                 dominated_by_rows_by_group[right] += left_rows
             elif relation == -1:
-                outgoing[right].append(left)
                 incoming_group_count[left] += 1
                 dominates_rows_by_group[right] += left_rows
                 dominated_by_rows_by_group[left] += len(groups[right])
 
     pending = dict(incoming_group_count)
-    current = [value for value in unique_vectors if pending[value] == 0]
+    remaining = set(unique_vectors)
+    current = sorted(value for value in unique_vectors if pending[value] == 0)
     group_fronts = {}
     front_number = 1
     assigned = 0
+
     while current:
-        next_front = []
         for value in current:
             group_fronts[value] = front_number
             assigned += 1
-            for dominated in outgoing[value]:
-                pending[dominated] -= 1
-                if pending[dominated] == 0:
-                    next_front.append(dominated)
-        current = sorted(next_front)
+        remaining.difference_update(current)
+        if not remaining:
+            break
+
+        # Do not retain outgoing edges. Recompute domination from this front to the
+        # unassigned set and release each relation immediately.
+        for value in current:
+            for candidate in remaining:
+                if dominance_relation(value, candidate) == 1:
+                    pending[candidate] -= 1
+                    if pending[candidate] < 0:
+                        raise RuntimeError("Pareto incoming dominance count became negative")
+        current = sorted(value for value in remaining if pending[value] == 0)
         front_number += 1
 
     if assigned != len(unique_vectors):
@@ -253,13 +228,16 @@ def pareto_relations(vectors):
 
 
 def nondominated_fronts(vectors):
-    """Compatibility helper retaining the historical function contract."""
     fronts, _, _ = pareto_relations(vectors)
     return fronts
 
 
 def canonical_file_sha(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def ranked_explanation(row, front, dominated_by, dominates_rows):
@@ -278,16 +256,11 @@ def ranked_explanation(row, front, dominated_by, dominates_rows):
 
 def unrankable_explanation(blockers):
     labels = [BLOCKER_LABELS.get(blocker, blocker) for blocker in blockers]
-    return (
-        "Unrankable because required evidence is missing or invalid: "
-        + ", ".join(labels)
-        + ". Missing evidence is not imputed."
-    )
+    return "Unrankable because required evidence is missing or invalid: " + ", ".join(labels) + ". Missing evidence is not imputed."
 
 
-def main():
-    args = arguments()
-    with args.analysis_csv.open("r", encoding="utf-8-sig", newline="") as handle:
+def input_metadata(path):
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
         headers = list(reader.fieldnames or [])
         required = {"KEV_Listed", "Internet_Facing", "Asset_Criticality", "EPSS_Probability", "CVSS4_Context_Score"}
@@ -297,64 +270,60 @@ def main():
         collisions = sorted(set(headers) & set(OUTPUT_COLUMNS))
         if collisions:
             raise RuntimeError("priority output columns already exist: " + ", ".join(collisions))
-        rows = list(reader)
+        vectors = {}
+        blockers_by_row = {}
+        row_count = 0
+        for index, row in enumerate(reader):
+            value, blockers = vector(row)
+            if value is not None:
+                vectors[index] = value
+            blockers_by_row[index] = blockers
+            row_count += 1
+    return headers, vectors, blockers_by_row, row_count
 
-    vectors = {}
-    blockers_by_row = {}
-    for index, row in enumerate(rows):
-        value, blockers = vector(row)
-        if value is not None:
-            vectors[index] = value
-        blockers_by_row[index] = blockers
 
+def main():
+    args = arguments()
+    headers, vectors, blockers_by_row, row_count = input_metadata(args.analysis_csv)
     if vectors:
         fronts, dominates_count, dominated_by_count = pareto_relations(vectors)
     else:
         fronts, dominates_count, dominated_by_count = {}, {}, {}
 
-    output = []
     front_counts = {}
     unrankable_reasons = {}
-    for index, row in enumerate(rows):
-        joined = dict(row)
-        if index in vectors:
-            front = fronts[index]
-            explanation = ranked_explanation(
-                row,
-                front,
-                dominated_by_count[index],
-                dominates_count[index],
-            )
-            joined.update({
-                "RBVM_MVP_Priority_Status": "RANKED_RELATIVE_ONLY",
-                "RBVM_MVP_Priority_Front": str(front),
-                "RBVM_MVP_Priority_Dominated_By": str(dominated_by_count[index]),
-                "RBVM_MVP_Priority_Dominates": str(dominates_count[index]),
-                "RBVM_MVP_Priority_Blockers": "",
-                "RBVM_MVP_Priority_Explanation": explanation,
-                "RBVM_MVP_Priority_Method_SHA256": METHOD_SHA256,
-            })
-            front_counts[str(front)] = front_counts.get(str(front), 0) + 1
-        else:
-            blockers = blockers_by_row[index]
-            joined.update({
-                "RBVM_MVP_Priority_Status": "UNRANKABLE_MISSING_EVIDENCE",
-                "RBVM_MVP_Priority_Front": "",
-                "RBVM_MVP_Priority_Dominated_By": "",
-                "RBVM_MVP_Priority_Dominates": "",
-                "RBVM_MVP_Priority_Blockers": "|".join(blockers),
-                "RBVM_MVP_Priority_Explanation": unrankable_explanation(blockers),
-                "RBVM_MVP_Priority_Method_SHA256": METHOD_SHA256,
-            })
-            for blocker in blockers:
-                unrankable_reasons[blocker] = unrankable_reasons.get(blocker, 0) + 1
-        output.append(joined)
-
     args.ranked_csv.parent.mkdir(parents=True, exist_ok=True)
-    with args.ranked_csv.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=headers + OUTPUT_COLUMNS)
+    with args.analysis_csv.open("r", encoding="utf-8-sig", newline="") as source, args.ranked_csv.open("w", encoding="utf-8", newline="") as target:
+        reader = csv.DictReader(source)
+        writer = csv.DictWriter(target, fieldnames=headers + OUTPUT_COLUMNS)
         writer.writeheader()
-        writer.writerows(output)
+        for index, row in enumerate(reader):
+            if index in vectors:
+                front = fronts[index]
+                row.update({
+                    "RBVM_MVP_Priority_Status": "RANKED_RELATIVE_ONLY",
+                    "RBVM_MVP_Priority_Front": str(front),
+                    "RBVM_MVP_Priority_Dominated_By": str(dominated_by_count[index]),
+                    "RBVM_MVP_Priority_Dominates": str(dominates_count[index]),
+                    "RBVM_MVP_Priority_Blockers": "",
+                    "RBVM_MVP_Priority_Explanation": ranked_explanation(row, front, dominated_by_count[index], dominates_count[index]),
+                    "RBVM_MVP_Priority_Method_SHA256": METHOD_SHA256,
+                })
+                front_counts[str(front)] = front_counts.get(str(front), 0) + 1
+            else:
+                blockers = blockers_by_row[index]
+                row.update({
+                    "RBVM_MVP_Priority_Status": "UNRANKABLE_MISSING_EVIDENCE",
+                    "RBVM_MVP_Priority_Front": "",
+                    "RBVM_MVP_Priority_Dominated_By": "",
+                    "RBVM_MVP_Priority_Dominates": "",
+                    "RBVM_MVP_Priority_Blockers": "|".join(blockers),
+                    "RBVM_MVP_Priority_Explanation": unrankable_explanation(blockers),
+                    "RBVM_MVP_Priority_Method_SHA256": METHOD_SHA256,
+                })
+                for blocker in blockers:
+                    unrankable_reasons[blocker] = unrankable_reasons.get(blocker, 0) + 1
+            writer.writerow(row)
 
     report = {
         "contractId": REPORT_CONTRACT,
@@ -372,9 +341,9 @@ def main():
             "derivation": "DETERMINISTIC_RENDERING_OF_ADMITTED_INPUTS_FRONT_AND_DOMINANCE_COUNTS",
             "changesPriority": False,
         },
-        "rows": len(rows),
+        "rows": row_count,
         "rankedRows": len(vectors),
-        "unrankableRows": len(rows) - len(vectors),
+        "unrankableRows": row_count - len(vectors),
         "frontCounts": dict(sorted(front_counts.items(), key=lambda item: int(item[0]))),
         "unrankableReasons": dict(sorted(unrankable_reasons.items())),
         "notes": [

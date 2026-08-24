@@ -1,6 +1,7 @@
 package io.rbvm.csv;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -216,9 +217,11 @@ final class CsvFirstLocalEnrichmentExecutor {
 
     private static String fileDiagnostic(Path path, String fallback) throws IOException {
         if (!Files.isRegularFile(path) || Files.isSymbolicLink(path)) return fallback;
-        byte[] bytes = Files.readAllBytes(path);
-        String value = new String(
-                bytes, 0, Math.min(bytes.length, MAX_PROCESS_OUTPUT_BYTES), StandardCharsets.UTF_8).trim();
+        byte[] bytes;
+        try (InputStream input = Files.newInputStream(path)) {
+            bytes = input.readNBytes(MAX_PROCESS_OUTPUT_BYTES);
+        }
+        String value = new String(bytes, StandardCharsets.UTF_8).trim();
         return value.isBlank() ? fallback : value;
     }
 

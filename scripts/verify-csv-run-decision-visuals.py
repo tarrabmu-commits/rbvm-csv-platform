@@ -63,7 +63,7 @@ for forbidden in [
         raise AssertionError(f"CSV run visual module contains forbidden construct {forbidden!r}")
 
 required_mount = [
-    "CSV_RUN_DECISION_VISUALS_MOUNT_V1",
+    "CSV_RUN_DECISION_VISUALS_MOUNT_V2",
     "/api/v1/csv-first-priorities/",
     "/api/v1/csv-first-enrichments/",
     "/method-admission",
@@ -74,13 +74,19 @@ required_mount = [
     "RBVM_MVP_Priority_Dominated_By = 'MISSING'",
     "window.rbvmCsvRunVisuals.render",
     "data-csv-run-review",
-    "cache: 'no-store'",
+    "panel.rbvmPriorityPreviewRows",
+    "panel.rbvmPriorityReport",
+    "panel.rbvmMethodAdmission",
+    "bounded decision visualizations",
+    "same bounded",
 ]
 for token in required_mount:
     if token not in MOUNT:
         raise AssertionError(f"CSV run visual mount missing {token!r}")
 
 for forbidden in [
+    "fetch(`${priorityRoot}/csv`",
+    "parseCsv(await",
     "POST",
     "PUT",
     "DELETE",
@@ -90,7 +96,7 @@ for forbidden in [
     "localStorage",
 ]:
     if forbidden in MOUNT:
-        raise AssertionError(f"CSV run visual mount must remain read-only: found {forbidden!r}")
+        raise AssertionError(f"CSV run visual mount must remain bounded/read-only without duplicate CSV loading: found {forbidden!r}")
 
 for token in [
     ".runviz-root",
@@ -140,4 +146,4 @@ if COMPILE.index(js_line) > COMPILE.index(mount_line):
 if SHA not in POLICY or '"weights": []' not in POLICY or '"thresholds": []' not in POLICY:
     raise AssertionError("Visualization contract is not pinned to the weight-free, threshold-free MVP policy")
 
-print("CSV run standards-oriented decision visual checks: PASS")
+print("CSV run standards-oriented bounded decision visual checks: PASS")

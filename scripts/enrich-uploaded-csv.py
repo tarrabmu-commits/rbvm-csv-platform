@@ -27,7 +27,6 @@ THREAT_KEYS = ("E",)
 ENV_KEYS = ("CR", "IR", "AR", "MAV", "MAC", "MAT", "MPR", "MUI", "MVC", "MVI", "MVA", "MSC", "MSI", "MSA")
 SUPP_KEYS = ("S", "AU", "R", "V", "RE", "U")
 CVSS4_METRIC_ORDER = BASE_KEYS + THREAT_KEYS + ENV_KEYS + SUPP_KEYS
-CVSS4_OPTIONAL_KEYS = set(THREAT_KEYS + ENV_KEYS + SUPP_KEYS)
 CVSS4_KNOWN_KEYS = set(CVSS4_METRIC_ORDER)
 
 ENRICHMENT_HEADERS = [
@@ -66,10 +65,7 @@ def arguments():
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--observed-at")
     parser.add_argument("--skip-cve-services", action="store_true")
-    parser.add_argument(
-        "--intel-snapshot", type=Path,
-        help="use an existing PUBLIC_CVE_INTEL_SNAPSHOT_V1 instead of calling providers; replay/testing only",
-    )
+    parser.add_argument("--intel-snapshot", type=Path, help="use an existing PUBLIC_CVE_INTEL_SNAPSHOT_V1 instead of calling providers; replay/testing only")
     return parser.parse_args()
 
 
@@ -104,7 +100,8 @@ def is_true(value):
     return str(value or "").strip().lower() in {"true", "1", "yes", "listed"}
 
 
-def read_input(path):
+def inspect_input(path):
+    """Validate once and retain only headers, unique CVEs and row count."""
     if not path.is_file() or path.is_symlink():
         raise RuntimeError("input must be a regular non-symlink CSV file")
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
@@ -115,19 +112,21 @@ def read_input(path):
         collisions = sorted(set(headers) & set(ENRICHMENT_HEADERS))
         if collisions:
             raise RuntimeError("input already contains reserved enrichment columns: " + ", ".join(collisions))
-        rows, cves, invalid = [], set(), []
+        cves = set()
+        invalid = []
+        row_count = 0
         for number, row in enumerate(reader, 2):
+            row_count += 1
             cve = (row.get("CVE_ID") or "").strip().upper()
             if not CVE_PATTERN.fullmatch(cve):
-                invalid.append((number, cve))
+                if len(invalid) < 10:
+                    invalid.append((number, cve))
             else:
-                row["CVE_ID"] = cve
                 cves.add(cve)
-            rows.append(row)
     if invalid:
-        preview = ", ".join(f"row {n}: {v or '<blank>'}" for n, v in invalid[:10])
+        preview = ", ".join(f"row {n}: {v or '<blank>'}" for n, v in invalid)
         raise RuntimeError(f"invalid CVE_ID values: {preview}")
-    return headers, rows, sorted(cves)
+    return headers, sorted(cves), row_count
 
 
 def default_sidecar(output, suffix):
@@ -219,13 +218,6 @@ def parse_cvss4_vector(vector):
 
 
 def canonical_cvss4_vector(vector):
-    """Canonicalize CVSS v4 semantics without choosing a provider winner.
-
-    FIRST CVSS v4 optional metrics default to X/Not Defined. Some providers emit
-    every optional X metric while others publish the compact Base vector. Those
-    serializations are semantically equivalent and must not create false source
-    ambiguity. Raw provider vectors remain preserved in CVSS4_Assessments_JSON.
-    """
     raw = text(vector).strip()
     metrics = parse_cvss4_vector(raw)
     if metrics is None:
@@ -291,12 +283,10 @@ def cvss_columns(record):
         "CVSS4_Base_Score": text(assessment.get("baseScore")),
         "CVSS4_Base_Severity": text(assessment.get("baseSeverity")),
     })
-
     vector_metrics = parse_cvss4_vector(assessment.get("vector")) or {}
     for key in CVSS4_METRIC_ORDER:
         if key in vector_metrics:
             result[f"CVSS4_{key}"] = text(vector_metrics[key])
-
     metrics = assessment.get("metrics") if isinstance(assessment.get("metrics"), dict) else {}
     for family in ("base", "threat", "environmental", "supplemental"):
         values = metrics.get(family) if isinstance(metrics.get(family), dict) else {}
@@ -339,7 +329,6 @@ def calculated_cvss_columns(columns):
     if status != "PRESENT":
         result["CVSS4_Calculated_Status"] = status or "MISSING"
         return result
-
     vector = base_vector(columns)
     if not vector:
         result["CVSS4_Calculated_Status"] = "INVALID_BASE_METRICS"
@@ -423,14 +412,32 @@ def enrichment_columns(record, snapshot):
     return result
 
 
-def write_csv(path, headers, rows):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    with temporary.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=headers, extrasaction="raise")
+def stream_enriched_csv(input_path, output_path, headers, by_cve, snapshot):
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output_path.with_suffix(output_path.suffix + ".tmp")
+    cvss_status = {"PRESENT": 0, "MISSING": 0, "AMBIGUOUS": 0}
+    calculated_status = {}
+    base_validation = {}
+    written = 0
+    with input_path.open("r", encoding="utf-8-sig", newline="") as source, temporary.open("w", encoding="utf-8", newline="") as target:
+        reader = csv.DictReader(source)
+        if list(reader.fieldnames or []) != headers:
+            raise RuntimeError("input CSV headers changed between validation and enrichment")
+        writer = csv.DictWriter(target, fieldnames=headers + ENRICHMENT_HEADERS, extrasaction="raise")
         writer.writeheader()
-        writer.writerows(rows)
-    temporary.replace(path)
+        for row in reader:
+            cve = (row.get("CVE_ID") or "").strip().upper()
+            row["CVE_ID"] = cve
+            columns = enrichment_columns(by_cve[cve], snapshot)
+            cvss_status[columns["CVSS4_Status"]] += 1
+            calculated_status[columns["CVSS4_Calculated_Status"]] = calculated_status.get(columns["CVSS4_Calculated_Status"], 0) + 1
+            validation = columns["CVSS4_Base_Score_Validation"] or "NOT_APPLICABLE"
+            base_validation[validation] = base_validation.get(validation, 0) + 1
+            row.update(columns)
+            writer.writerow(row)
+            written += 1
+    temporary.replace(output_path)
+    return written, cvss_status, calculated_status, base_validation
 
 
 def write_json(path, value):
@@ -442,7 +449,7 @@ def write_json(path, value):
 
 def main():
     args = arguments()
-    headers, rows, cves = read_input(args.input)
+    headers, cves, input_rows = inspect_input(args.input)
     input_sha = sha256_file(args.input)
     snapshot_path = args.snapshot_output or default_sidecar(args.output, ".public-intel.json")
     collector_report = args.collector_report or default_sidecar(args.output, ".public-intel.report.json")
@@ -451,24 +458,14 @@ def main():
     else:
         run_collector(args, snapshot_path, collector_report)
     snapshot, by_cve = load_snapshot(snapshot_path, cves)
-    enriched_rows = []
-    cvss_status = {"PRESENT": 0, "MISSING": 0, "AMBIGUOUS": 0}
-    calculated_status = {}
-    base_validation = {}
-    for row in rows:
-        columns = enrichment_columns(by_cve[row["CVE_ID"]], snapshot)
-        cvss_status[columns["CVSS4_Status"]] += 1
-        calculated_status[columns["CVSS4_Calculated_Status"]] = calculated_status.get(columns["CVSS4_Calculated_Status"], 0) + 1
-        validation = columns["CVSS4_Base_Score_Validation"] or "NOT_APPLICABLE"
-        base_validation[validation] = base_validation.get(validation, 0) + 1
-        merged = dict(row)
-        merged.update(columns)
-        enriched_rows.append(merged)
-    write_csv(args.output, headers + ENRICHMENT_HEADERS, enriched_rows)
+    written, cvss_status, calculated_status, base_validation = stream_enriched_csv(args.input, args.output, headers, by_cve, snapshot)
+    if written != input_rows:
+        raise RuntimeError("input row count changed between validation and enrichment")
+
     report = {
         "schemaVersion": 2,
         "contractId": "CSV_FIRST_PUBLIC_INTELLIGENCE_ENRICHMENT_V1",
-        "status": "COMPLETE", "input": str(args.input), "inputSha256": input_sha, "inputRows": len(rows), "uniqueCves": len(cves),
+        "status": "COMPLETE", "input": str(args.input), "inputSha256": input_sha, "inputRows": input_rows, "uniqueCves": len(cves),
         "output": str(args.output), "outputSha256": sha256_file(args.output),
         "publicIntelSnapshot": str(snapshot_path), "publicIntelSnapshotSha256": snapshot.get("snapshotSha256"), "observedAt": snapshot.get("observedAt"),
         "cvssV4RowStatus": cvss_status, "cvssV4CalculatedStatus": dict(sorted(calculated_status.items())),

@@ -33,7 +33,7 @@ for required in [
 if 'rbvm-dashboard-core.js' not in compile_sh or 'rbvm-dashboard-core.css' not in compile_sh:
     raise AssertionError('stabilized dashboard is not bundled')
 if 'stabilize-frontend-runtime.py' not in compile_sh:
-    raise AssertionError('legacy Overview bounded-read transform is not executed by compile.sh')
+    raise AssertionError('frontend retention/bounded-read transform is not executed by compile.sh')
 if 'MAX_PAGES' in core or 'nextCursor' in core:
     raise AssertionError('stabilized dashboard must not crawl the full case catalog in the browser')
 
@@ -41,8 +41,25 @@ legacy = "const [sum,cases]=await Promise.all([summary(),allCases()]);"
 bounded = "const [sum,cases]=await Promise.all([summary(),json('/api/v1/cases?limit=100').then(data=>data.cases||[])]);"
 if ui.count(legacy) != 1:
     raise AssertionError('legacy Overview source shape drifted; stabilization transform must fail closed')
-if legacy not in transform or bounded not in transform or 'count != 1' not in transform:
+if legacy not in transform or bounded not in transform or 'replace_once(' not in transform:
     raise AssertionError('Overview stabilization transform is not exact/fail-closed')
+
+navigate_source = "state.cases = []; state.assets = []; state.reportCases = null;"
+popstate_source = "state.cases=[];state.assets=[];state.reportCases=null;closeOverlay();render();"
+if navigate_source not in transform or popstate_source not in transform:
+    raise AssertionError('stabilization transform must release full-catalog browser caches on SPA/history navigation')
+if "SPA navigation cache release" not in transform or "history navigation cache release" not in transform:
+    raise AssertionError('cache-release transforms must be independently fail-closed')
+
+for token in [
+    "managed asset table pagination",
+    "filtered.slice(assetPage*PAGE_SIZE,assetPage*PAGE_SIZE+PAGE_SIZE)",
+    "pageLabel.textContent=`${filtered.length} matching · page ${assetPage+1} of ${pages}`",
+    "previousPage.addEventListener('click'",
+    "nextPage.addEventListener('click'",
+]:
+    if token not in transform:
+        raise AssertionError(f'managed asset DOM pagination guard missing: {token}')
 
 for invalid_token in ['var(--surface-2)', 'var(--surface-3)', 'var(--muted)', 'var(--accent)']:
     if invalid_token in css:
@@ -54,4 +71,4 @@ for required_token in ['var(--surface-subtle)', 'var(--text-muted)', 'var(--bran
 if "One dashboard renderer in the core SPA" not in doc:
     raise AssertionError("stabilization documentation is incomplete")
 
-print("RBVM stabilization V1 checks: PASS")
+print("RBVM stabilization V1 bounded-dashboard/assets + navigation cache-release checks: PASS")

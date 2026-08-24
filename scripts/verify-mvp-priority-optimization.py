@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 import importlib.util
+import inspect
 from pathlib import Path
 import random
 
@@ -15,7 +16,7 @@ for token in (
     "pareto_relations",
     "dominance_relation",
     "row-weighted dominance counts",
-    "Unique vector pairs are compared exactly once",
+    "O(n) retained memory",
 ):
     if token not in SOURCE:
         raise AssertionError(f"optimized Pareto implementation missing {token}")
@@ -26,6 +27,10 @@ assert spec.loader is not None
 spec.loader.exec_module(module)
 if module.METHOD_SHA256 != EXPECTED_SHA:
     raise AssertionError("optimization changed the frozen MVP method identity")
+
+implementation = inspect.getsource(module.pareto_relations)
+if "outgoing =" in implementation or "outgoing[" in implementation:
+    raise AssertionError("Pareto implementation must not retain a quadratic outgoing adjacency graph")
 
 
 def reference(vectors):
@@ -74,16 +79,12 @@ for trial in range(30):
     for _ in range(max(4, row_count // 3)):
         pool.append(tuple(rng.choice(values) for values in value_sets))
     for index in range(row_count):
-        # Repeated vectors are deliberate: they are common in exposure-heavy
-        # CSV runs and are the main safe optimization opportunity.
         vectors[index] = rng.choice(pool)
     expected = reference(vectors)
     actual = module.pareto_relations(vectors)
     if actual != expected:
         raise AssertionError(f"optimized Pareto result differs from reference on trial {trial}")
 
-# Explicit identical-vector rule: equals do not dominate equals, but every row
-# in a stronger vector dominates every row in the weaker group.
 strong = (Decimal(1), Decimal(1), Decimal(4), Decimal("0.9"), Decimal("9.0"))
 weak = (Decimal(0), Decimal(0), Decimal(1), Decimal("0.1"), Decimal("3.0"))
 vectors = {0: strong, 1: strong, 2: weak, 3: weak, 4: weak}
@@ -95,4 +96,4 @@ if [dominates_count[index] for index in (0, 1)] != [3, 3]:
 if [dominated_by_count[index] for index in (2, 3, 4)] != [2, 2, 2]:
     raise AssertionError("row-weighted dominated-by counts drift for grouped vectors")
 
-print("RBVM MVP Pareto optimization equivalence: PASS")
+print("RBVM MVP Pareto optimization equivalence + linear retained memory guard: PASS")
