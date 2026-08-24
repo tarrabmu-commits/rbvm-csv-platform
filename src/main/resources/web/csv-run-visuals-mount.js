@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const CONTRACT = 'CSV_RUN_DECISION_VISUALS_MOUNT_V1';
+  const CONTRACT = 'CSV_RUN_DECISION_VISUALS_MOUNT_V2';
   const UUID = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
   let queued = false;
   let generation = 0;
@@ -24,46 +24,11 @@
     return node;
   };
 
-  function parseCsv(text) {
-    const rows = [];
-    let row = [];
-    let cell = '';
-    let quoted = false;
-    for (let index = 0; index < text.length; index++) {
-      const ch = text[index];
-      if (quoted) {
-        if (ch === '"') {
-          if (text[index + 1] === '"') { cell += '"'; index++; }
-          else quoted = false;
-        } else cell += ch;
-        continue;
-      }
-      if (ch === '"') quoted = true;
-      else if (ch === ',') { row.push(cell); cell = ''; }
-      else if (ch === '\n') {
-        row.push(cell.endsWith('\r') ? cell.slice(0, -1) : cell);
-        rows.push(row); row = []; cell = '';
-      } else cell += ch;
-    }
-    if (quoted) throw new Error('Priority CSV contains an unterminated quoted field.');
-    if (cell.length || row.length) {
-      row.push(cell.endsWith('\r') ? cell.slice(0, -1) : cell);
-      rows.push(row);
-    }
-    const meaningful = rows.filter(values => values.some(value => String(value).trim() !== ''));
-    if (meaningful.length < 2) throw new Error('Priority CSV contains no finding rows.');
-    const headers = meaningful[0].map((value, index) => index === 0 ? String(value).replace(/^\uFEFF/, '') : String(value));
-    return meaningful.slice(1).map(values => Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ''])));
-  }
-
   function visualRows(rows) {
     return rows.map(row => {
       const value = {...row};
       if (!String(value.EPSS_Probability || '').trim()) value.EPSS_Probability = 'MISSING';
-      if (value.CVSS4_Context_Score_Status !== 'CALCULATED_FIRST_REFERENCE_COMPATIBLE'
-          || !String(value.CVSS4_Context_Score || '').trim()) {
-        value.CVSS4_Context_Score = 'MISSING';
-      }
+      if (value.CVSS4_Context_Score_Status !== 'CALCULATED_FIRST_REFERENCE_COMPATIBLE' || !String(value.CVSS4_Context_Score || '').trim()) value.CVSS4_Context_Score = 'MISSING';
       if (value.RBVM_MVP_Priority_Status !== 'RANKED_RELATIVE_ONLY') {
         value.RBVM_MVP_Priority_Dominates = 'MISSING';
         value.RBVM_MVP_Priority_Dominated_By = 'MISSING';
@@ -97,21 +62,31 @@
 
     panel.dataset.runvizState = 'loading';
     const current = ++generation;
-    const loading = h('div', {class: 'runviz-loading', text: 'Loading immutable decision visualizations…'});
+    const loading = h('div', {class: 'runviz-loading', text: 'Loading bounded decision visualizations…'});
     metrics.insertAdjacentElement('afterend', loading);
 
-    const priorityRoot = `/api/v1/csv-first-priorities/${encodeURIComponent(ids.runId)}/${encodeURIComponent(ids.analysisId)}`;
-    const analysisRoot = `/api/v1/csv-first-enrichments/${encodeURIComponent(ids.runId)}/analyses/${encodeURIComponent(ids.analysisId)}`;
     try {
-      const [csvResponse, report, admission] = await Promise.all([
-        fetch(`${priorityRoot}/csv`, {cache: 'no-store'}),
-        loadJson(`${priorityRoot}/report`, 'MVP priority report'),
-        loadJson(`${analysisRoot}/method-admission`, 'Method-admission report'),
-      ]);
-      if (!csvResponse.ok) throw new Error(`Priority-ranked CSV could not be loaded (HTTP ${csvResponse.status}).`);
-      const rows = visualRows(parseCsv(await csvResponse.text()));
+      let rows = Array.isArray(panel.rbvmPriorityPreviewRows) ? panel.rbvmPriorityPreviewRows : null;
+      let report = panel.rbvmPriorityReport || null;
+      let admission = panel.rbvmMethodAdmission || null;
+      const priorityRoot = `/api/v1/csv-first-priorities/${encodeURIComponent(ids.runId)}/${encodeURIComponent(ids.analysisId)}`;
+      const analysisRoot = `/api/v1/csv-first-enrichments/${encodeURIComponent(ids.runId)}/analyses/${encodeURIComponent(ids.analysisId)}`;
+
+      // The review panel owns a bounded priority preview. Reuse that exact array instead of
+      // downloading/parsing the immutable priority CSV a second time. Only compact JSON
+      // reports are fetched as a compatibility fallback for older review panels.
+      const requests = [];
+      if (!report) requests.push(loadJson(`${priorityRoot}/report`, 'MVP priority report').then(value => { report = value; }));
+      if (!admission) requests.push(loadJson(`${analysisRoot}/method-admission`, 'Method-admission report').then(value => { admission = value; }));
+      await Promise.all(requests);
+      if (!rows) {
+        loading.replaceWith(h('div', {class: 'callout callout-warning', text: 'Decision visualization rows are unavailable. Reopen Review Findings to build the bounded preview; complete immutable artifacts remain downloadable.'}));
+        panel.dataset.runvizState = 'ready';
+        return;
+      }
       if (current !== generation || !panel.isConnected) return;
-      const visual = window.rbvmCsvRunVisuals.render(rows, report, admission);
+      const visual = window.rbvmCsvRunVisuals.render(visualRows(rows), report, admission);
+      if (panel.rbvmPriorityPreviewTruncated === true) visual.prepend(h('div', {class: 'callout callout-info', text: `Visual plots use the same bounded ${rows.length}-row browser preview. Report-level counts remain sourced from the complete immutable priority report.`}));
       loading.replaceWith(visual);
       panel.dataset.runvizState = 'ready';
     } catch (error) {
@@ -121,20 +96,10 @@
     }
   }
 
-  function scan() {
-    for (const panel of document.querySelectorAll('[data-csv-run-review]')) mount(panel);
-  }
-
-  function schedule() {
-    if (queued) return;
-    queued = true;
-    queueMicrotask(() => {
-      queued = false;
-      scan();
-    });
-  }
-
-  new MutationObserver(schedule).observe(document.documentElement, {childList: true, subtree: true});
+  function scan() { for (const panel of document.querySelectorAll('[data-csv-run-review]')) mount(panel); }
+  function schedule() { if (queued) return; queued = true; queueMicrotask(() => { queued = false; scan(); }); }
+  const observerRoot = document.getElementById('rbvm-app') || document.documentElement;
+  new MutationObserver(schedule).observe(observerRoot, {childList: true, subtree: true});
   window.addEventListener('DOMContentLoaded', schedule);
   window.addEventListener('popstate', schedule);
   schedule();
