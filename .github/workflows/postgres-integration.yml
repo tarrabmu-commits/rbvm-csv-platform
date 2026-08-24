@@ -11,7 +11,7 @@ permissions:
 jobs:
   v22-live-integration:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:16.14-bookworm@sha256:92620daddcd947f8d5ab5ba66e848702fe443d87fed30c4cea8e389fd78dfc55
@@ -32,6 +32,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
       - name: Fetch pinned pgJDBC
         env:
           PGJDBC_VERSION: '42.7.13'
@@ -71,3 +74,42 @@ jobs:
           java -ea -cp "$classpath" io.rbvm.postgres.PostgresPublicIntelligenceSyncOrchestratorLiveSelfTest
           java -ea -cp "$classpath" io.rbvm.postgres.PostgresPublicIntelligenceNvdBootstrapStateLiveSelfTest
           java -ea -cp "$classpath" io.rbvm.postgres.PostgresCsvFirstLocalIntelligenceSnapshotExporterLiveSelfTest
+      - name: Run 1K full-scalability correctness smoke
+        env:
+          RBVM_PROJECTION_BACKEND: POSTGRESQL
+          RBVM_JDBC_URL: jdbc:postgresql://127.0.0.1:5432/rbvm?sslmode=disable
+          RBVM_DB_USER: postgres
+          RBVM_DB_PASSWORD: postgres-live-owner
+          RBVM_DB_MIGRATE: 'true'
+          RBVM_SCALABILITY_BENCHMARK_MODE: 'true'
+        run: |
+          set -euo pipefail
+          python3 scripts/run-full-scalability-benchmark-isolated.py \
+            --sizes 1000 \
+            --stress-max-rows 1000 \
+            --tier-timeout-seconds 120 \
+            --output-directory build/full-scalability-smoke
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          summary = json.loads(Path('build/full-scalability-smoke/summary.json').read_text())
+          assert summary['status'] == 'PASS', summary
+          assert summary['sizesExecuted'] == [1000], summary
+          assert summary['tenThousandIsPlatformLimit'] is False, summary
+          tier = summary['tiers'][0]
+          assert tier['rows'] == 1000 and tier['status'] == 'PASS', tier
+          assert tier['canonical']['priorityMappedSourceRows'] == 1000, tier
+          stage = tier['stages']['publicIntelligenceSeedExport']
+          assert stage['measurementBoundary'] == 'ISOLATED_LOCAL_LOOKUP_EXPORT_PROCESS', stage
+          assert stage['setupStatus'] == 'PASS', stage
+          assert stage['peakRssMiB'] > 0, stage
+          print('Full scalability 1K PostgreSQL isolated smoke: PASS')
+          PY
+      - name: Upload 1K scalability smoke evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: rbvm-full-scalability-smoke-${{ github.sha }}
+          path: build/full-scalability-smoke/
+          if-no-files-found: error
+          retention-days: 7
