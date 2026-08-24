@@ -1,0 +1,166 @@
+openapi: 3.1.2
+info:
+  title: RBVM CSV-First Customer Asset Bundle API V1
+  version: 1.0.0
+  description: >-
+    Run-scoped local persistence transport for the exact customer-declared
+    RBVM_CUSTOMER_ASSET_BUNDLE_V4 JSON artifact. The transport does not infer,
+    normalize, score, or translate customer evidence. It persists the supplied
+    artifact beside the corresponding CSV-first enrichment run.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/csv-first-customer-assets/{runId}:
+    parameters:
+      - name: runId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getCsvFirstCustomerAssetBundle
+      summary: Read the saved customer asset bundle for one CSV-first run
+      responses:
+        '200':
+          description: Exact saved customer asset bundle
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerAssetBundleV4'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+    put:
+      operationId: putCsvFirstCustomerAssetBundle
+      summary: Save or replace the exact customer asset bundle for one CSV-first run
+      description: >-
+        The run must already exist. This endpoint is artifact persistence only;
+        it does not derive Publicly Exposed from Internet Facing or derive CVSS
+        CR/IR/AR from Asset Criticality.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerAssetBundleV4'
+      responses:
+        '200':
+          description: Bundle saved locally
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaveResponse'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '413':
+          $ref: '#/components/responses/Problem'
+        '415':
+          $ref: '#/components/responses/Problem'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    CustomerAssetBundleV4:
+      type: object
+      additionalProperties: true
+      required: [contractId, schemaVersion, assets]
+      properties:
+        contractId:
+          type: string
+          const: RBVM_CUSTOMER_ASSET_BUNDLE_V4
+        schemaVersion:
+          type: integer
+          const: 4
+        exportedAt:
+          type: string
+          format: date-time
+        semantics:
+          type: string
+        note:
+          type: string
+        assets:
+          type: array
+          maxItems: 5000
+          items:
+            $ref: '#/components/schemas/CustomerAssetV4'
+    CustomerAssetV4:
+      type: object
+      additionalProperties: false
+      required:
+        - customerAssetKey
+        - displayName
+        - assetCriticality
+        - internetFacing
+        - publiclyExposed
+        - cvssConfidentialityRequirement
+        - cvssIntegrityRequirement
+        - cvssAvailabilityRequirement
+      properties:
+        customerAssetKey:
+          type: string
+        displayName:
+          type: string
+        assetCriticality:
+          type: string
+          enum: [UNKNOWN, MISSION_CRITICAL, HIGH, MODERATE, LOW]
+        internetFacing:
+          type: string
+          enum: [UNKNOWN, YES, NO]
+        publiclyExposed:
+          type: string
+          enum: [UNKNOWN, YES, NO]
+          description: Explicit cisa:PE:1.0.0 customer declaration; never inferred from internetFacing.
+        cvssConfidentialityRequirement:
+          type: string
+          enum: [X, L, M, H]
+        cvssIntegrityRequirement:
+          type: string
+          enum: [X, L, M, H]
+        cvssAvailabilityRequirement:
+          type: string
+          enum: [X, L, M, H]
+    SaveResponse:
+      type: object
+      additionalProperties: false
+      required: [status, runId, artifact, fileName, bytes, semantics]
+      properties:
+        status:
+          type: string
+          const: SAVED
+        runId:
+          type: string
+          format: uuid
+        artifact:
+          type: string
+        fileName:
+          type: string
+          const: customer-assets-v4.json
+        bytes:
+          type: integer
+          minimum: 1
+        semantics:
+          type: string
+          const: EXACT_CUSTOMER_DECLARED_BUNDLE_NO_INFERENCE
+  responses:
+    Problem:
+      description: API problem response
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
