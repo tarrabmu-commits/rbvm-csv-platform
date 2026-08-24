@@ -30,6 +30,7 @@ import io.rbvm.postgres.PostgresDecisionMethodologyPolicyStoreSelfTest;
 import io.rbvm.postgres.PostgresFoundationSelfTest;
 import io.rbvm.postgres.PostgresManagedAssetRegistrySelfTest;
 import io.rbvm.postgres.PostgresScannerManagedAssetLinkRegistrySelfTest;
+import io.rbvm.postgres.PublicIntelligenceAutomationSelfTest;
 
 import io.rbvm.domain.DomainCatalogSelfTest;
 import io.rbvm.security.ApiSecuritySelfTest;
@@ -108,6 +109,7 @@ public final class PlatformSelfTest {
         CsvDecisionInputHttpSelfTest.main(args);
         PublicIntelligenceStatusHttpSelfTest.main(args);
         PublicIntelligenceSyncHttpSelfTest.main(args);
+        PublicIntelligenceAutomationSelfTest.main(args);
         CanonicalProjectionSelfTest.main(args);
         PostgresFoundationSelfTest.main(args);
         PostgresManagedAssetRegistrySelfTest.main(args);
