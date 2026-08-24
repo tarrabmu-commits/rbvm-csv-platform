@@ -6,6 +6,7 @@ runner = (ROOT / "scripts/run-full-scalability-benchmark.py").read_text(encoding
 isolated_runner = (ROOT / "scripts/run-full-scalability-benchmark-isolated.py").read_text(encoding="utf-8")
 bridge = (ROOT / "src/test/java/io/rbvm/postgres/PostgresFullScalabilityBenchmarkBridge.java").read_text(encoding="utf-8")
 probe = (ROOT / "src/test/java/io/rbvm/postgres/PostgresFullScalabilityLocalExportProbe.java").read_text(encoding="utf-8")
+projection = (ROOT / "src/main/java/io/rbvm/postgres/PostgresCanonicalProjection.java").read_text(encoding="utf-8")
 doc = (ROOT / "docs/FULL_SCALABILITY_BENCHMARK_V1.md").read_text(encoding="utf-8")
 full_workflow = (ROOT / ".github/workflows/full-scalability-benchmark.yml").read_text(encoding="utf-8")
 postgres_workflow = (ROOT / ".github/workflows/postgres-integration.yml").read_text(encoding="utf-8")
@@ -90,6 +91,18 @@ if 'hot_path_seconds = seed["localLookupExportSeconds"]' not in runner:
     raise AssertionError("benchmark hot path must start at local PostgreSQL lookup/export")
 if '"syntheticPublicIntelligenceSeedSeconds": seed["setupSeedSeconds"]' not in runner:
     raise AssertionError("synthetic provider seeding must be reported separately as setup")
+
+# Large canonical imports force custom PostgreSQL plans only inside the import transaction.
+# This prevents cached RI-trigger plans chosen against nearly-empty growing relations from
+# becoming quadratic, without changing FK enforcement or the case-event transaction path.
+plan_token = 'SET LOCAL plan_cache_mode = force_custom_plan'
+if projection.count(plan_token) != 1:
+    raise AssertionError("canonical import projection must set force_custom_plan exactly once")
+import_start = projection.index("public void synchronizeImport")
+case_event_start = projection.index("public void synchronizeCaseEvent")
+plan_position = projection.index(plan_token)
+if not import_start < plan_position < case_event_start:
+    raise AssertionError("force_custom_plan must remain scoped to synchronizeImport only")
 
 # Product decisions must not drift inside a performance harness.
 for token in [
