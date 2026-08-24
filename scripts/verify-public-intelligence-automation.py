@@ -67,7 +67,7 @@ for token in [
 
 for token in [
     "ANNUAL_URI = Pattern.compile",
-    "nvd\\.nist\\.gov/feeds/json/cve/2\\.0/",
+    "nvdcve-2",
     "(20[0-9]{2})",
     "provider = 'NVD'",
     "sync_mode = 'BOOTSTRAP'",
