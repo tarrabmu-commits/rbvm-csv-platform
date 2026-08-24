@@ -78,12 +78,16 @@ public interface CanonicalMvpPriorityStore {
     }
 
     final class ConflictException extends IOException {
+        private static final long serialVersionUID = 1L;
+
         public ConflictException(String message) {
             super(message);
         }
     }
 
     final class NotFoundException extends IOException {
+        private static final long serialVersionUID = 1L;
+
         public NotFoundException(String message) {
             super(message);
         }
