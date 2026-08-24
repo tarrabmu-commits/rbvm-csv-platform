@@ -66,10 +66,13 @@ for token in [
     assert token in factory, f"automation runtime factory missing {token!r}"
 
 for token in [
+    "ANNUAL_URI = Pattern.compile",
+    "nvd\\.nist\\.gov/feeds/json/cve/2\\.0/",
+    "(20[0-9]{2})",
     "provider = 'NVD'",
     "sync_mode = 'BOOTSTRAP'",
     "status = 'COMPLETE'",
-    "nvdcve-2\\.0-(20[0-9]{2})\\.json\\.gz",
+    "matcher.matches()",
     "completedAnnualYears",
 ]:
     assert token in state_reader, f"NVD bootstrap state reader missing {token!r}"
