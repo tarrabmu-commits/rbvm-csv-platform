@@ -14,7 +14,7 @@ EXPECTED_SHA = "88d5cdb8702c6c0ed2c033c3df6b8abbe1aa392f44f4507685b54082a16dc388
 for token in (
     "pareto_relations",
     "dominance_relation",
-    "Grouping identical vectors",
+    "row-weighted dominance counts",
     "Unique vector pairs are compared exactly once",
 ):
     if token not in SOURCE:
