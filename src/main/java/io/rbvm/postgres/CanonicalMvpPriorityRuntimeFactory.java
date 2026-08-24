@@ -19,6 +19,6 @@ public final class CanonicalMvpPriorityRuntimeFactory {
         PostgresMigrator migrator = new PostgresMigrator(connections);
         int installedVersion = settings.migrate() ? migrator.migrate() : migrator.installedVersion();
         if (installedVersion < 29) return Optional.empty();
-        return Optional.of(new PostgresCanonicalMvpPriorityStore(connections));
+        return Optional.of(new PostgresCanonicalMvpPriorityAccess(connections));
     }
 }
