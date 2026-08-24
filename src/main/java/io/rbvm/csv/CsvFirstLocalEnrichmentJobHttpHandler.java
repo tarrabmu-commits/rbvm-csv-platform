@@ -33,7 +33,7 @@ import java.util.concurrent.TimeUnit;
  * retained while product uploads no longer invoke provider Internet collectors.
  */
 public final class CsvFirstLocalEnrichmentJobHttpHandler implements HttpHandler {
-    public static final String CONTRACT_ID = "CSV_FIRST_LOCAL_ENRICHMENT_JOB_HTTP_V1";
+    public static final String CONTRACT_ID = CsvFirstEnrichmentJobHttpHandler.CONTRACT_ID;
     private static final String ROOT = "/api/v1/csv-first-enrichment-jobs";
     private static final int MAX_CONCURRENT_JOBS = 1;
     private static final int MAX_QUEUED_JOBS = 8;
