@@ -46,22 +46,24 @@ jobs:
             --output "$driver"
           printf '%s  %s\n' "$PGJDBC_SHA256" "$driver" | sha256sum --check
           printf 'RBVM_POSTGRES_DRIVER_JAR=%s\n' "$driver" >> "$GITHUB_ENV"
-      - name: Analyze newly projected relations before parent updates
+      - name: Disable final parent updates for attribution only
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
           path = Path('src/main/java/io/rbvm/postgres/PostgresCanonicalProjection.java')
           source = path.read_text()
-          marker = '                accumulator.parentMutations.flush(connection);\n'
-          replacement = '''                try (PreparedStatement analyze = connection.prepareStatement(\n                        "ANALYZE rbvm.asset_component, rbvm.observation, "\n                                + "rbvm.vulnerability_case, rbvm.exposure")) {\n                    analyze.execute();\n                }\n                accumulator.parentMutations.flush(connection);\n'''
-          assert source.count(marker) == 1, 'parent mutation flush marker drifted'
-          path.write_text(source.replace(marker, replacement, 1))
+          flush = '                accumulator.parentMutations.flush(connection);\n'
+          recompute = '                recomputeCases(connection, tenantId, sourceProfileId, now);\n'
+          assert source.count(flush) == 1, 'parent mutation flush marker drifted'
+          assert source.count(recompute) == 1, 'case recomputation marker drifted'
+          source = source.replace(flush, '', 1).replace(recompute, '', 1)
+          path.write_text(source)
           PY
           git diff --check -- src/main/java/io/rbvm/postgres/PostgresCanonicalProjection.java
       - name: Compile benchmark runtime
         run: ./scripts/compile.sh --tests
-      - name: Run 10K transaction-local ANALYZE A/B
+      - name: Run 10K combined-parent attribution A/B
         env:
           RBVM_PROJECTION_BACKEND: POSTGRESQL
           RBVM_JDBC_URL: jdbc:postgresql://127.0.0.1:5432/rbvm?sslmode=disable
