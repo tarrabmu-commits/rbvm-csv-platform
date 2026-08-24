@@ -93,6 +93,9 @@ for needle in (
             f"V23 live integration must retain V22 Decision Input V3 coverage: missing {needle!r}"
         )
 
+# The PostgreSQL integration workflow may grow past V27. Verify the concrete
+# V3-preserving live test chain instead of pinning a human-readable step label
+# to one historical latest schema version.
 for needle in (
     'v22-live-integration',
     'PostgresV23FormulaResultLiveSelfTest',
@@ -100,7 +103,6 @@ for needle in (
     'PostgresV25RiskMethodSelectionPolicyLiveSelfTest',
     'PostgresV26RiskMethodSelectionActivationLiveSelfTest',
     'PostgresV27ActiveRiskMethodExecutionBindingLiveSelfTest',
-    'Run live V18-V27 persistence, Decision Input V3, Formula, derived-risk, policy, activation, and execution-binding integration',
 ):
     if needle not in workflow:
         raise AssertionError(f"PostgreSQL workflow is stale for Decision Input V3: missing {needle!r}")
