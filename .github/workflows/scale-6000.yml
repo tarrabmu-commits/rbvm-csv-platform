@@ -1,0 +1,56 @@
+name: scale-6000
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/collect-public-vulnerability-intel.py'
+      - 'scripts/enrich-uploaded-csv.py'
+      - 'scripts/analyze-csv-run-evidence.py'
+      - 'scripts/evaluate-rbvm-v2-method-candidates.py'
+      - 'scripts/rank-rbvm-mvp-priority.py'
+      - 'scripts/run-6000-scale-benchmark.py'
+      - 'scripts/verify-enrichment-performance.py'
+      - 'scripts/verify-mvp-priority-optimization.py'
+      - '.github/workflows/scale-6000.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/collect-public-vulnerability-intel.py'
+      - 'scripts/enrich-uploaded-csv.py'
+      - 'scripts/analyze-csv-run-evidence.py'
+      - 'scripts/evaluate-rbvm-v2-method-candidates.py'
+      - 'scripts/rank-rbvm-mvp-priority.py'
+      - 'scripts/run-6000-scale-benchmark.py'
+      - 'scripts/verify-enrichment-performance.py'
+      - 'scripts/verify-mvp-priority-optimization.py'
+      - '.github/workflows/scale-6000.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  csv-first-scale-6000:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Verify bounded enrichment concurrency
+        run: python3 scripts/verify-enrichment-performance.py
+      - name: Verify optimized Pareto semantics against reference
+        run: python3 scripts/verify-mvp-priority-optimization.py
+      - name: Run deterministic 6000-row end-to-end benchmark
+        env:
+          RBVM_SCALE_MAX_SECONDS: '90'
+          RBVM_SCALE_MAX_RSS_MIB: '768'
+        run: python3 scripts/run-6000-scale-benchmark.py
+      - name: Upload scale evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: rbvm-scale-6000
+          path: build/scale-6000
+          if-no-files-found: error
