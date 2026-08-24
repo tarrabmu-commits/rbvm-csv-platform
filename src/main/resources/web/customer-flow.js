@@ -1,13 +1,15 @@
 (() => {
   'use strict';
 
-  const CONTRACT = 'CSV_FIRST_CUSTOMER_ASSET_SETUP_UI_V3';
-  const BUNDLE_CONTRACT = 'RBVM_CUSTOMER_ASSET_BUNDLE_V3';
+  const CONTRACT = 'CSV_FIRST_CUSTOMER_ASSET_SETUP_UI_V4';
+  const BUNDLE_CONTRACT = 'RBVM_CUSTOMER_ASSET_BUNDLE_V4';
+  const LEGACY_BUNDLE_CONTRACT_V3 = 'RBVM_CUSTOMER_ASSET_BUNDLE_V3';
   const LEGACY_BUNDLE_CONTRACT_V2 = 'RBVM_CUSTOMER_ASSET_BUNDLE_V2';
   const LEGACY_BUNDLE_CONTRACT_V1 = 'RBVM_CUSTOMER_ASSET_BUNDLE_V1';
   const MAX_BUNDLE_ASSETS = 5000;
   const CRITICALITY = ['UNKNOWN', 'MISSION_CRITICAL', 'HIGH', 'MODERATE', 'LOW'];
   const INTERNET_FACING = ['UNKNOWN', 'YES', 'NO'];
+  const PUBLICLY_EXPOSED = ['UNKNOWN', 'YES', 'NO'];
   const SECURITY_REQUIREMENT = ['X', 'L', 'M', 'H'];
   let queued = false;
   let activeSetup = null;
@@ -138,6 +140,7 @@
       displayName: name || key,
       assetCriticality: 'UNKNOWN',
       internetFacing: 'UNKNOWN',
+      publiclyExposed: 'UNKNOWN',
       cvssConfidentialityRequirement: 'X',
       cvssIntegrityRequirement: 'X',
       cvssAvailabilityRequirement: 'X',
@@ -186,12 +189,12 @@
       el('div', {class: 'panel-header'},
         el('div', {},
           el('h2', {class: 'panel-title', text: 'CSV-first customer run'}),
-          el('p', {class: 'panel-subtitle', text: 'The uploaded CSV is the complete run scope. Public vulnerability intelligence is automatic; organization-specific asset and CVSS Environmental requirements remain customer-declared.'})
+          el('p', {class: 'panel-subtitle', text: 'The uploaded CSV is the complete run scope. Public vulnerability intelligence is automatic; organization-specific asset context remains customer-declared.'})
         )
       ),
       el('div', {class: 'panel-body'},
         el('div', {class: 'stack'},
-          callout('Automatic: CVSS v4 Base, EPSS, KEV, CISA SSVC, CWE/CPE and provenance. Customer: Asset Criticality, Internet Facing, and optional direct CVSS CR/IR/AR requirements.'),
+          callout('Automatic: CVSS v4 Base, EPSS, KEV, CISA SSVC, CWE/CPE and provenance. Customer: Asset Criticality, legacy Internet Facing, explicit CISA Publicly Exposed, and optional direct CVSS CR/IR/AR requirements.'),
           el('div', {class: 'form-grid'}, field('Customer vulnerability CSV', file)),
           el('div', {class: 'inline-actions'}, run),
           status
@@ -259,10 +262,15 @@
     const internet = selectInput(INTERNET_FACING, asset.internetFacing || 'UNKNOWN', {
       UNKNOWN: 'Select Internet-facing state…', YES: 'Yes — Internet Facing', NO: 'No — Not Internet Facing',
     }, 'internetFacing');
+    const publiclyExposed = selectInput(PUBLICLY_EXPOSED, asset.publiclyExposed || 'UNKNOWN', {
+      UNKNOWN: 'Unknown / not assessed',
+      YES: 'Yes — accessible to unauthenticated or untrusted entities via public networks',
+      NO: 'No — not accessible that way',
+    }, 'publiclyExposed');
     const cr = requirementInput(asset.cvssConfidentialityRequirement, 'CR');
     const ir = requirementInput(asset.cvssIntegrityRequirement, 'IR');
     const ar = requirementInput(asset.cvssAvailabilityRequirement, 'AR');
-    for (const input of [key, name, criticality, internet, cr, ir, ar]) input.addEventListener('change', onChange);
+    for (const input of [key, name, criticality, internet, publiclyExposed, cr, ir, ar]) input.addEventListener('change', onChange);
     for (const input of [key, name]) input.addEventListener('input', onChange);
 
     const remove = button('Remove', 'ghost');
@@ -275,10 +283,12 @@
           field('Asset Name', name),
           field('Asset Criticality', criticality),
           field('Internet Facing?', internet),
+          field('CISA Publicly Exposed?', publiclyExposed),
           field('Confidentiality Requirement (CVSS CR)', cr),
           field('Integrity Requirement (CVSS IR)', ir),
           field('Availability Requirement (CVSS AR)', ar)
         ),
+        callout('CISA Publicly Exposed is an explicit BOD 26-04 customer decision point. Internet Facing is legacy/coarse context and never populates it. UNKNOWN is preserved when not assessed.'),
         callout('CR/IR/AR are direct CVSS v4 Security Requirements. They are not derived from Asset Criticality. X means Not Defined.'),
         el('div', {class: 'inline-actions', style: 'margin-top:12px'}, remove)
       )
@@ -291,6 +301,7 @@
         displayName: name.value.trim(),
         assetCriticality: criticality.value,
         internetFacing: internet.value,
+        publiclyExposed: publiclyExposed.value,
         cvssConfidentialityRequirement: cr.value,
         cvssIntegrityRequirement: ir.value,
         cvssAvailabilityRequirement: ar.value,
@@ -311,26 +322,31 @@
     if (!key && !name) throw new Error(`Asset ${index + 1} needs customerAssetKey or displayName.`);
     const criticality = String(version === 1 ? asset.businessCriticality || 'UNKNOWN' : asset.assetCriticality || 'UNKNOWN').toUpperCase();
     const internetFacing = String(version === 1 ? 'UNKNOWN' : asset.internetFacing || 'UNKNOWN').toUpperCase();
+    const publiclyExposed = String(version === 4 ? asset.publiclyExposed || 'UNKNOWN' : 'UNKNOWN').toUpperCase();
     if (!CRITICALITY.includes(criticality)) throw new Error(`Asset ${index + 1} has invalid Asset Criticality.`);
     if (!INTERNET_FACING.includes(internetFacing)) throw new Error(`Asset ${index + 1} has invalid Internet Facing state.`);
+    if (!PUBLICLY_EXPOSED.includes(publiclyExposed)) throw new Error(`Asset ${index + 1} has invalid CISA Publicly Exposed state.`);
+    const supportsSecurityRequirements = version >= 3;
     return {
       customerAssetKey: key,
       displayName: name || key,
       assetCriticality: criticality,
       internetFacing,
-      cvssConfidentialityRequirement: version === 3 ? validRequirement(asset.cvssConfidentialityRequirement, index, 'CVSS CR') : 'X',
-      cvssIntegrityRequirement: version === 3 ? validRequirement(asset.cvssIntegrityRequirement, index, 'CVSS IR') : 'X',
-      cvssAvailabilityRequirement: version === 3 ? validRequirement(asset.cvssAvailabilityRequirement, index, 'CVSS AR') : 'X',
+      publiclyExposed,
+      cvssConfidentialityRequirement: supportsSecurityRequirements ? validRequirement(asset.cvssConfidentialityRequirement, index, 'CVSS CR') : 'X',
+      cvssIntegrityRequirement: supportsSecurityRequirements ? validRequirement(asset.cvssIntegrityRequirement, index, 'CVSS IR') : 'X',
+      cvssAvailabilityRequirement: supportsSecurityRequirements ? validRequirement(asset.cvssAvailabilityRequirement, index, 'CVSS AR') : 'X',
     };
   }
 
   function validateBundle(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Customer data file must contain one JSON object.');
     if (!Array.isArray(value.assets) || value.assets.length > MAX_BUNDLE_ASSETS) throw new Error('Customer data bundle has an invalid asset list.');
-    if (value.contractId === BUNDLE_CONTRACT && value.schemaVersion === 3) return value.assets.map((asset, index) => normalizeBundleAsset(asset, index, 3));
+    if (value.contractId === BUNDLE_CONTRACT && value.schemaVersion === 4) return value.assets.map((asset, index) => normalizeBundleAsset(asset, index, 4));
+    if (value.contractId === LEGACY_BUNDLE_CONTRACT_V3 && value.schemaVersion === 3) return value.assets.map((asset, index) => normalizeBundleAsset(asset, index, 3));
     if (value.contractId === LEGACY_BUNDLE_CONTRACT_V2 && value.schemaVersion === 2) return value.assets.map((asset, index) => normalizeBundleAsset(asset, index, 2));
     if (value.contractId === LEGACY_BUNDLE_CONTRACT_V1 && value.schemaVersion === 1) return value.assets.map((asset, index) => normalizeBundleAsset(asset, index, 1));
-    throw new Error(`Expected ${BUNDLE_CONTRACT} schema version 3 (legacy V2/V1 are also accepted).`);
+    throw new Error(`Expected ${BUNDLE_CONTRACT} schema version 4 (legacy V3/V2/V1 are also accepted).`);
   }
 
   function mergeBundleIntoSetup(current, imported) {
@@ -399,7 +415,7 @@
         editorsHost.append(callout('No assets loaded yet. Upload a previously downloaded customer-data file or add an asset manually.', 'warning'));
         return;
       }
-      editorsHost.append(callout(`${candidates.length} asset${candidates.length === 1 ? '' : 's'} loaded. Asset Criticality and Internet Facing remain customer context. CR/IR/AR are optional direct CVSS v4 requirements; leave X when not assessed.`));
+      editorsHost.append(callout(`${candidates.length} asset${candidates.length === 1 ? '' : 's'} loaded. Asset Criticality and Internet Facing remain customer context. CISA Publicly Exposed is a separate explicit BOD input and may remain UNKNOWN when it has not been assessed. CR/IR/AR are optional direct CVSS v4 requirements; leave X when not assessed.`));
       candidates.forEach((candidate, index) => {
         const editor = createAssetEditor(candidate, index, markDirty, removeIndex => {
           setup.candidates.splice(removeIndex, 1);
@@ -427,7 +443,7 @@
         setup.candidates = mergeBundleIntoSetup(setup, imported);
         setup.savedAt = null;
         renderEditors();
-        setStatus(status, `Loaded customer data for ${imported.length} asset${imported.length === 1 ? '' : 's'}. Legacy bundles are upgraded with CR/IR/AR=X.`, 'success');
+        setStatus(status, `Loaded customer data for ${imported.length} asset${imported.length === 1 ? '' : 's'}. Legacy V1–V3 bundles are upgraded with publiclyExposed=UNKNOWN; V1/V2 also use CR/IR/AR=X.`, 'success');
       } catch (error) {
         setStatus(status, error.message, 'error');
       } finally {
@@ -442,20 +458,22 @@
         return;
       }
       const invalidIdentity = values.filter(value => !value.customerAssetKey && !value.displayName).length;
-      const incomplete = values.filter(value => value.assetCriticality === 'UNKNOWN' || value.internetFacing === 'UNKNOWN').length;
+      const incompleteLegacyContext = values.filter(value => value.assetCriticality === 'UNKNOWN' || value.internetFacing === 'UNKNOWN').length;
       if (invalidIdentity) {
         setStatus(status, `${invalidIdentity} asset${invalidIdentity === 1 ? '' : 's'} need an Asset ID or Asset Name.`, 'error');
         return;
       }
-      if (incomplete) {
-        setStatus(status, `${incomplete} asset${incomplete === 1 ? '' : 's'} still need Asset Criticality and/or Internet Facing. CR/IR/AR may remain X.`, 'error');
+      if (incompleteLegacyContext) {
+        setStatus(status, `${incompleteLegacyContext} asset${incompleteLegacyContext === 1 ? '' : 's'} still need Asset Criticality and/or Internet Facing for the existing customer-context workflow. CISA Publicly Exposed may remain UNKNOWN; CR/IR/AR may remain X.`, 'error');
         return;
       }
       setup.candidates = values;
       setup.savedAt = new Date().toISOString();
       activeSetup = setup;
       downloadButton.disabled = false;
-      setStatus(status, `Saved ${values.length} customer asset context record${values.length === 1 ? '' : 's'} for this run.`, 'success');
+      const bodIncomplete = values.filter(value => value.publiclyExposed === 'UNKNOWN').length;
+      const suffix = bodIncomplete ? ` ${bodIncomplete} asset${bodIncomplete === 1 ? '' : 's'} remain BOD-incomplete because Publicly Exposed is UNKNOWN.` : '';
+      setStatus(status, `Saved ${values.length} customer asset context record${values.length === 1 ? '' : 's'} for this run.${suffix}`, 'success');
     });
 
     downloadButton.addEventListener('click', () => {
@@ -463,15 +481,15 @@
         setStatus(status, 'Save customer data before downloading it.', 'error');
         return;
       }
-      downloadJson('rbvm-customer-assets-v3.json', {
+      downloadJson('rbvm-customer-assets-v4.json', {
         contractId: BUNDLE_CONTRACT,
-        schemaVersion: 3,
+        schemaVersion: 4,
         exportedAt: new Date().toISOString(),
-        semantics: 'CUSTOMER_DECLARED_ASSET_CONTEXT_PLUS_DIRECT_CVSS_V4_SECURITY_REQUIREMENTS',
-        note: 'CR/IR/AR are direct CVSS v4 X/L/M/H declarations. Asset Criticality does not derive CR/IR/AR. internetFacing is asset-level context and is not NETWORK_REACHABILITY_CSV_V1 evidence or MAV.',
+        semantics: 'CUSTOMER_DECLARED_ASSET_CONTEXT_PLUS_CISA_PUBLICLY_EXPOSED_PLUS_DIRECT_CVSS_V4_SECURITY_REQUIREMENTS',
+        note: 'publiclyExposed is the explicit cisa:PE:1.0.0 BOD decision point. internetFacing remains legacy/coarse asset context and does not populate Publicly Exposed, NETWORK_REACHABILITY_CSV_V1, or MAV. CR/IR/AR are direct CVSS v4 X/L/M/H declarations and are not derived from Asset Criticality.',
         assets: setup.candidates,
       });
-      setStatus(status, `Downloaded reusable V3 customer data for ${setup.candidates.length} asset${setup.candidates.length === 1 ? '' : 's'}.`, 'success');
+      setStatus(status, `Downloaded reusable V4 customer data for ${setup.candidates.length} asset${setup.candidates.length === 1 ? '' : 's'}.`, 'success');
     });
 
     if (enrichedButton) {
@@ -487,13 +505,13 @@
     const panel = el('section', {'data-customer-asset-setup': 'true', class: 'panel'},
       el('div', {class: 'panel-header'},
         el('div', {},
-          el('h2', {class: 'panel-title', text: 'Customer Asset Context — CVSS v4'}),
-          el('p', {class: 'panel-subtitle', text: 'Asset identity comes from the uploaded CSV. Organization-specific CVSS Confidentiality, Integrity, and Availability Requirements are declared directly when known.'})
+          el('h2', {class: 'panel-title', text: 'Customer Asset Context — CISA BOD + CVSS v4'}),
+          el('p', {class: 'panel-subtitle', text: 'Asset identity comes from the uploaded CSV. CISA Publicly Exposed and organization-specific CVSS Confidentiality, Integrity, and Availability Requirements are declared directly when known.'})
         )
       ),
       el('div', {class: 'panel-body'},
         el('div', {class: 'stack'},
-          callout('CR/IR/AR use FIRST CVSS v4 values X/L/M/H. They are not inferred from Asset Criticality. Internet Facing remains separate from endpoint-scoped reachability and does not set MAV.'),
+          callout('Publicly Exposed follows cisa:PE:1.0.0 and remains UNKNOWN until the customer explicitly assesses it. Internet Facing remains separate legacy context and cannot set Publicly Exposed or MAV. CR/IR/AR use FIRST CVSS v4 values X/L/M/H and are not inferred from Asset Criticality.'),
           upload,
           el('div', {class: 'inline-actions'}, uploadButton, addButton, saveButton, downloadButton, enrichedButton, finishButton),
           status,
