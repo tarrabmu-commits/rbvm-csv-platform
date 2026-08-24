@@ -37,13 +37,17 @@ public final class PostgresCsvFirstLocalIntelligenceSnapshotExporter
 
     private final PostgresPublicIntelligenceStore intelligence;
     private final PublicIntelligenceStatusReader status;
+    private final CisaKevCatalogValidationReader cisaCatalogValidation;
 
     public PostgresCsvFirstLocalIntelligenceSnapshotExporter(
             PostgresPublicIntelligenceStore intelligence,
-            PublicIntelligenceStatusReader status
+            PublicIntelligenceStatusReader status,
+            CisaKevCatalogValidationReader cisaCatalogValidation
     ) {
         this.intelligence = Objects.requireNonNull(intelligence, "intelligence");
         this.status = Objects.requireNonNull(status, "status");
+        this.cisaCatalogValidation = Objects.requireNonNull(
+                cisaCatalogValidation, "cisaCatalogValidation");
     }
 
     @Override
@@ -153,7 +157,7 @@ public final class PostgresCsvFirstLocalIntelligenceSnapshotExporter
         }
     }
 
-    private static long writeProviderStatus(
+    private long writeProviderStatus(
             Path outputDirectory,
             Map<PostgresPublicIntelligenceStore.Provider,
                     PublicIntelligenceStatusReader.ProviderStatus> status
@@ -162,16 +166,22 @@ public final class PostgresCsvFirstLocalIntelligenceSnapshotExporter
         Path path = outputDirectory.resolve("provider-status.tsv");
         try (BufferedWriter writer = Files.newBufferedWriter(
                 path, StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
-            writer.write("Provider\tHas_Success\tSuccess_ID\tSync_Mode\tSource_URI\tSource_Version\t"
-                    + "Source_SHA256\tSource_Published_At\tObserved_At\tCompleted_At\tRecord_Count\n");
+            writer.write("Provider\tHas_Success\tSafe_Negative_Absence\tSuccess_ID\tSync_Mode\tSource_URI\t"
+                    + "Source_Version\tSource_SHA256\tSource_Published_At\tObserved_At\tCompleted_At\t"
+                    + "Record_Count\n");
             for (PostgresPublicIntelligenceStore.Provider provider
                     : PostgresPublicIntelligenceStore.Provider.values()) {
                 PublicIntelligenceStatusReader.ProviderStatus value = status.get(provider);
                 boolean hasSuccess = value != null && value.latestSuccessId() != null;
+                boolean safeNegativeAbsence = provider == PostgresPublicIntelligenceStore.Provider.CISA_KEV
+                        && hasSuccess
+                        && cisaCatalogValidation.isCompleteValidatedCatalog(value.latestSuccessId());
                 if (hasSuccess) successful++;
                 writer.write(provider.name());
                 writer.write('\t');
                 writer.write(Boolean.toString(hasSuccess));
+                writer.write('\t');
+                writer.write(Boolean.toString(safeNegativeAbsence));
                 writer.write('\t');
                 writer.write(tsv(hasSuccess ? value.latestSuccessId().toString() : null));
                 writer.write('\t');
@@ -199,9 +209,9 @@ public final class PostgresCsvFirstLocalIntelligenceSnapshotExporter
 
     private static void writeRequestedCves(Path outputDirectory, List<String> cves) throws IOException {
         Path path = outputDirectory.resolve("requested-cves.txt");
-        Files.write(
+        Files.writeString(
                 path,
-                cves.stream().map(cve -> cve + "\n").toList(),
+                cves.isEmpty() ? "" : String.join("\n", cves) + "\n",
                 StandardCharsets.UTF_8,
                 StandardOpenOption.CREATE_NEW,
                 StandardOpenOption.WRITE
