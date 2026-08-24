@@ -3,6 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 HANDLER = (ROOT / "src/main/java/io/rbvm/csv/CsvFirstEnrichmentHttpHandler.java").read_text(encoding="utf-8")
+LOCAL_HANDLER = (ROOT / "src/main/java/io/rbvm/csv/CsvFirstLocalEnrichmentHttpHandler.java").read_text(encoding="utf-8")
 LAUNCHER = (ROOT / "src/main/java/io/rbvm/csv/RbvmPlatformMain.java").read_text(encoding="utf-8")
 RUN = (ROOT / "scripts/run-server.sh").read_text(encoding="utf-8")
 BUILD = (ROOT / "scripts/build-distribution.sh").read_text(encoding="utf-8")
@@ -36,7 +37,7 @@ required_handler = [
 ]
 for token in required_handler:
     if token not in HANDLER:
-        raise AssertionError(f"CSV-first handler missing {token}")
+        raise AssertionError(f"CSV-first compatibility handler missing {token}")
 
 for forbidden in [
     'bash -c', 'sh -c', 'Runtime.getRuntime().exec',
@@ -44,7 +45,7 @@ for forbidden in [
     'customer-bundle.json.tmp', 'StandardCopyOption.REPLACE_EXISTING',
 ]:
     if forbidden in HANDLER:
-        raise AssertionError(f"CSV-first handler contains forbidden execution/decision/overwrite logic: {forbidden}")
+        raise AssertionError(f"CSV-first compatibility handler contains forbidden execution/decision/overwrite logic: {forbidden}")
 
 if 'UUID analysisId = UUID.randomUUID();' not in HANDLER:
     raise AssertionError('each contextual analysis must receive a distinct immutable analysisId')
@@ -59,11 +60,23 @@ if 'response.put("immutable", true);' not in HANDLER:
 if 'response.put("customerBundle"' not in HANDLER:
     raise AssertionError('successful analysis must expose the exact submitted customer bundle artifact')
 
-if 'server.createContext(' not in LAUNCHER or 'new CsvFirstEnrichmentHttpHandler' not in LAUNCHER:
-    raise AssertionError('CSV-first handler is not registered before platform start')
+for token in [
+    'new CsvFirstEnrichmentHttpHandler(',
+    'CsvFirstLocalEnrichmentExecutor',
+    'CSV_FIRST_LOCAL_INTELLIGENCE_UNAVAILABLE',
+    'GLOBAL_PUBLIC_INTELLIGENCE_ONLY',
+    'tenantDatabaseStateUsed',
+]:
+    if token not in LOCAL_HANDLER:
+        raise AssertionError(f'local CSV-first product wrapper missing {token!r}')
+
+if 'server.createContext(' not in LAUNCHER or 'new CsvFirstLocalEnrichmentHttpHandler' not in LAUNCHER:
+    raise AssertionError('local CSV-first product handler is not registered before platform start')
+if 'new CsvFirstEnrichmentHttpHandler(dataDirectory, maximumUploadBytes, authenticator)' in LAUNCHER:
+    raise AssertionError('product launcher must not register live legacy CSV enrichment POST transport')
 if 'io.rbvm.csv.RbvmPlatformMain' not in RUN:
     raise AssertionError('local launcher does not use CSV-first enabled main')
 if 'Main-Class: io.rbvm.csv.RbvmPlatformMain' not in BUILD:
     raise AssertionError('distribution manifest does not use CSV-first enabled main')
 
-print('CSV-first public enrichment + immutable contextual-analysis HTTP structural checks: PASS')
+print('CSV-first local public enrichment + immutable contextual-analysis HTTP structural checks: PASS')

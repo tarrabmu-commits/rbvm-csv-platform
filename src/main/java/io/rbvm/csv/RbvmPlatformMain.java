@@ -12,6 +12,7 @@ import io.rbvm.postgres.CanonicalMvpPriorityStore;
 import io.rbvm.postgres.CanonicalProjectionFactory;
 import io.rbvm.postgres.CanonicalProjectionFactory.RuntimeComponents;
 import io.rbvm.postgres.CisaKevImporter;
+import io.rbvm.postgres.CsvFirstLocalIntelligenceRuntimeFactory;
 import io.rbvm.postgres.DerivedRiskResultRuntimeFactory;
 import io.rbvm.postgres.EpssImporter;
 import io.rbvm.postgres.FormulaResultRuntimeFactory;
@@ -71,6 +72,8 @@ public final class RbvmPlatformMain {
                 ActiveRiskMethodExecutionRuntimeFactory.fromEnvironment(environment);
         Optional<PostgresPublicIntelligenceSyncJobStore> publicIntelligenceStatusRuntime =
                 PublicIntelligenceSyncRuntimeFactory.fromEnvironment(environment);
+        Optional<CsvFirstLocalIntelligenceSnapshotExporter> csvFirstLocalIntelligence =
+                CsvFirstLocalIntelligenceRuntimeFactory.fromEnvironment(environment);
         Optional<PublicIntelligenceSyncCoordinator> publicIntelligenceOrchestration =
                 PublicIntelligenceOrchestrationRuntimeFactory.fromEnvironment(
                         environment, dataDirectory);
@@ -116,6 +119,7 @@ public final class RbvmPlatformMain {
                 canonicalMvpPriority,
                 runtime.epssImporter(),
                 runtime.cisaKevImporter(),
+                csvFirstLocalIntelligence,
                 publicIntelligenceStatusRuntime,
                 publicIntelligenceOrchestration,
                 authenticator
@@ -156,6 +160,8 @@ public final class RbvmPlatformMain {
                 + application.baseUri().resolve("/api/v1/csv-first-enrichments"));
         System.out.println("CSV-first async enrichment jobs API: "
                 + application.baseUri().resolve("/api/v1/csv-first-enrichment-jobs"));
+        System.out.println("CSV-first local public intelligence: "
+                + (csvFirstLocalIntelligence.isPresent() ? "CONFIGURED" : "UNAVAILABLE"));
         System.out.println("CSV-first MVP priority API: "
                 + application.baseUri().resolve("/api/v1/csv-first-priorities/{runId}/{analysisId}"));
         System.out.println("Canonical MVP priority API: "
@@ -187,6 +193,7 @@ public final class RbvmPlatformMain {
             Optional<CanonicalMvpPriorityStore> canonicalMvpPriority,
             Optional<EpssImporter> epssImporter,
             Optional<CisaKevImporter> cisaKevImporter,
+            Optional<CsvFirstLocalIntelligenceSnapshotExporter> csvFirstLocalIntelligence,
             Optional<? extends PublicIntelligenceStatusReader> publicIntelligenceStatus,
             Optional<? extends PublicIntelligenceSyncTrigger> publicIntelligenceSync,
             ApiKeyAuthenticator authenticator
@@ -200,11 +207,13 @@ public final class RbvmPlatformMain {
         HttpServer server = (HttpServer) serverField.get(application);
         server.createContext(
                 "/api/v1/csv-first-enrichments",
-                new CsvFirstEnrichmentHttpHandler(dataDirectory, maximumUploadBytes, authenticator)
+                new CsvFirstLocalEnrichmentHttpHandler(
+                        dataDirectory, maximumUploadBytes, csvFirstLocalIntelligence, authenticator)
         );
         server.createContext(
                 "/api/v1/csv-first-enrichment-jobs",
-                new CsvFirstEnrichmentJobHttpHandler(dataDirectory, maximumUploadBytes, authenticator)
+                new CsvFirstLocalEnrichmentJobHttpHandler(
+                        dataDirectory, maximumUploadBytes, csvFirstLocalIntelligence, authenticator)
         );
         server.createContext(
                 "/api/v1/csv-first-priorities",
