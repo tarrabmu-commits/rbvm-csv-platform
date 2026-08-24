@@ -33,8 +33,8 @@ public final class PostgresCsvFirstLocalIntelligenceSnapshotExporterLiveSelfTest
         PostgresPublicIntelligenceStore.SourceDescriptor cisa = new PostgresPublicIntelligenceStore.SourceDescriptor(
                 PostgresPublicIntelligenceStore.Provider.CISA_KEV,
                 "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
-                "2099.08.24",
-                "1".repeat(64),
+                "2099.08.24-csv-local-export-proof",
+                "7b98a558abed73fce512266930fe46b394f8d0f881822ca13780ac5b6a33922f",
                 t0.plusSeconds(30),
                 t0.plusSeconds(60));
         PostgresPublicIntelligenceSyncJobStore.Job cisaJob = status.start(
@@ -54,6 +54,7 @@ public final class PostgresCsvFirstLocalIntelligenceSnapshotExporterLiveSelfTest
 
         PostgresPublicIntelligenceStore.BeginResult cisaRun = store.beginOrReplay(
                 cisa, PostgresPublicIntelligenceStore.SyncMode.BOOTSTRAP, t0);
+        require(!cisaRun.replayed(), "CSV exporter CISA test source must be isolated from earlier live tests");
         store.appendRecords(
                 cisaRun.runId(),
                 PostgresPublicIntelligenceStore.Provider.CISA_KEV,
@@ -85,11 +86,12 @@ public final class PostgresCsvFirstLocalIntelligenceSnapshotExporterLiveSelfTest
                 PostgresPublicIntelligenceStore.Provider.NVD,
                 "https://nvd.nist.gov/vuln/data-feeds",
                 "bootstrap-2099-export-proof",
-                "2".repeat(64),
+                "75ef9f6386826bb18eddf754a65dfb4843045babb95147177a512dae4d815d72",
                 t0.plusSeconds(110),
                 t0.plusSeconds(120));
         PostgresPublicIntelligenceStore.BeginResult nvdBaseRun = store.beginOrReplay(
                 nvdBase, PostgresPublicIntelligenceStore.SyncMode.BOOTSTRAP, t0.plusSeconds(105));
+        require(!nvdBaseRun.replayed(), "CSV exporter NVD base source must be isolated from earlier live tests");
         store.appendRecords(
                 nvdBaseRun.runId(),
                 PostgresPublicIntelligenceStore.Provider.NVD,
@@ -110,11 +112,12 @@ public final class PostgresCsvFirstLocalIntelligenceSnapshotExporterLiveSelfTest
                 PostgresPublicIntelligenceStore.Provider.NVD,
                 "https://services.nvd.nist.gov/rest/json/cves/2.0",
                 "modified-2099-export-proof",
-                "3".repeat(64),
+                "fa328918193cd0c134aa9245a4af8f3ec3aea77a25dfb6bced4317386c4aaf06",
                 t0.plusSeconds(140),
                 t0.plusSeconds(150));
         PostgresPublicIntelligenceStore.BeginResult nvdDeltaRun = store.beginOrReplay(
                 nvdDelta, PostgresPublicIntelligenceStore.SyncMode.INCREMENTAL, t0.plusSeconds(135));
+        require(!nvdDeltaRun.replayed(), "CSV exporter NVD delta source must be isolated from earlier live tests");
         store.appendRecords(
                 nvdDeltaRun.runId(),
                 PostgresPublicIntelligenceStore.Provider.NVD,
