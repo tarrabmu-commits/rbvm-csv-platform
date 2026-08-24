@@ -16,6 +16,8 @@ import io.rbvm.postgres.DerivedRiskResultRuntimeFactory;
 import io.rbvm.postgres.EpssImporter;
 import io.rbvm.postgres.FormulaResultRuntimeFactory;
 import io.rbvm.postgres.PostgresPublicIntelligenceSyncJobStore;
+import io.rbvm.postgres.PublicIntelligenceAutomationController;
+import io.rbvm.postgres.PublicIntelligenceAutomationRuntimeFactory;
 import io.rbvm.postgres.PublicIntelligenceOrchestrationRuntimeFactory;
 import io.rbvm.postgres.PublicIntelligenceStatusReader;
 import io.rbvm.postgres.PublicIntelligenceSyncCoordinator;
@@ -72,6 +74,9 @@ public final class RbvmPlatformMain {
         Optional<PublicIntelligenceSyncCoordinator> publicIntelligenceOrchestration =
                 PublicIntelligenceOrchestrationRuntimeFactory.fromEnvironment(
                         environment, dataDirectory);
+        Optional<PublicIntelligenceAutomationController> publicIntelligenceAutomation =
+                PublicIntelligenceAutomationRuntimeFactory.fromEnvironment(
+                        environment, publicIntelligenceOrchestration);
         ApiKeyAuthenticator authenticator = ApiKeyAuthenticator.fromEnvironment(environment);
         RequestRateLimiter rateLimiter = RequestRateLimiter.fromEnvironment(environment);
         CanonicalProjection canonicalProjection = runtime.canonicalProjection();
@@ -140,10 +145,12 @@ public final class RbvmPlatformMain {
         );
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            publicIntelligenceAutomation.ifPresent(PublicIntelligenceAutomationController::close);
             publicIntelligenceOrchestration.ifPresent(PublicIntelligenceSyncCoordinator::close);
             application.close();
         }, "rbvm-shutdown"));
         application.start();
+        publicIntelligenceAutomation.ifPresent(PublicIntelligenceAutomationController::start);
         System.out.println("RBVM CSV Platform is running at " + application.baseUri());
         System.out.println("CSV-first enrichment API: "
                 + application.baseUri().resolve("/api/v1/csv-first-enrichments"));
@@ -163,6 +170,8 @@ public final class RbvmPlatformMain {
                 + application.baseUri().resolve("/api/v1/intelligence/status"));
         System.out.println("Public intelligence sync API: "
                 + application.baseUri().resolve("/api/v1/intelligence/sync/{provider}"));
+        System.out.println("Public intelligence automation: "
+                + (publicIntelligenceAutomation.isPresent() ? "CONFIGURED" : "DISABLED"));
         System.out.println("Managed Assets operator UI: " + application.baseUri().resolve("/assets"));
         System.out.println("Data directory: " + dataDirectory.toAbsolutePath().normalize());
         System.out.println("Canonical projection: " + canonicalProjection.health().get("backend"));
