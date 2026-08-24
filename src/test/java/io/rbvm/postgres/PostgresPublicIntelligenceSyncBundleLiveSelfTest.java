@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.Map;
@@ -67,9 +68,22 @@ public final class PostgresPublicIntelligenceSyncBundleLiveSelfTest {
                     PostgresPublicIntelligenceStore.CurrentRecord>> current =
                     store.lookupCurrent(Set.of(cve));
             require(current.containsKey(cve), "completed bundle record must be current");
-            require(current.get(cve).get(PostgresPublicIntelligenceStore.Provider.CISA_KEV)
-                            .payloadJson().equals(payload),
-                    "local lookup must preserve exact bundle payload JSON");
+            PostgresPublicIntelligenceStore.CurrentRecord currentRecord =
+                    current.get(cve).get(PostgresPublicIntelligenceStore.Provider.CISA_KEV);
+            require(currentRecord != null, "CISA KEV provider record must be present");
+            require(currentRecord.payloadJson().contains(cve)
+                            && currentRecord.payloadJson().contains("bundle-live"),
+                    "local lookup must preserve the bundle payload semantically");
+            String expectedRecordSha = new PostgresPublicIntelligenceStore.RecordVersion(
+                    cve,
+                    PostgresPublicIntelligenceStore.RecordState.ACTIVE,
+                    Instant.parse("2026-08-24T05:00:00Z"),
+                    Instant.parse("2026-08-24T04:59:00Z"),
+                    payload,
+                    Instant.parse("2026-08-24T05:01:00Z"))
+                    .recordSha256();
+            require(currentRecord.recordSha256().equals(expectedRecordSha),
+                    "record SHA must bind the exact canonical payload admitted from the bundle");
 
             PublicIntelligenceSyncBundleImporter.ImportSummary replay =
                     PublicIntelligenceSyncBundleImporter.importBundle(store, validated);
