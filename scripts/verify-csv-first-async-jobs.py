@@ -3,6 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 handler = (ROOT / 'src/main/java/io/rbvm/csv/CsvFirstEnrichmentJobHttpHandler.java').read_text(encoding='utf-8')
+local_handler = (ROOT / 'src/main/java/io/rbvm/csv/CsvFirstLocalEnrichmentJobHttpHandler.java').read_text(encoding='utf-8')
 launcher = (ROOT / 'src/main/java/io/rbvm/csv/RbvmPlatformMain.java').read_text(encoding='utf-8')
 compile_sh = (ROOT / 'scripts/compile.sh').read_text(encoding='utf-8')
 transform = (ROOT / 'scripts/stabilize-csv-first-async-runtime.py').read_text(encoding='utf-8')
@@ -27,16 +28,33 @@ for token in [
     'ApiRole.OPERATOR', 'ApiRole.VIEWER',
 ]:
     if token not in handler:
-        raise AssertionError(f'async enrichment handler missing {token!r}')
+        raise AssertionError(f'async compatibility enrichment handler missing {token!r}')
 
 for forbidden in ['Executors.newFixedThreadPool', 'newCachedThreadPool', 'newSingleThreadExecutor']:
-    if forbidden in handler:
+    if forbidden in handler or forbidden in local_handler:
         raise AssertionError(f'async enrichment must not use an unbounded executor: {forbidden}')
 
-if 'new CsvFirstEnrichmentJobHttpHandler' not in launcher:
-    raise AssertionError('async enrichment handler is not registered')
-if 'new CsvFirstEnrichmentHttpHandler' not in launcher:
-    raise AssertionError('legacy synchronous enrichment route must remain available for compatibility')
+for token in [
+    'new CsvFirstEnrichmentJobHttpHandler(',
+    'CsvFirstLocalEnrichmentExecutor',
+    'WAITING_FOR_LOCAL_WORKER',
+    'READING_LOCAL_PUBLIC_INTELLIGENCE',
+    'GLOBAL_PUBLIC_INTELLIGENCE_ONLY',
+    'tenantDatabaseStateUsed',
+    'MAX_CONCURRENT_JOBS = 1',
+    'MAX_QUEUED_JOBS = 8',
+]:
+    if token not in local_handler:
+        raise AssertionError(f'async local enrichment wrapper missing {token!r}')
+
+if 'new CsvFirstLocalEnrichmentJobHttpHandler' not in launcher:
+    raise AssertionError('async local enrichment handler is not registered')
+if 'new CsvFirstLocalEnrichmentHttpHandler' not in launcher:
+    raise AssertionError('synchronous local enrichment handler is not registered')
+if 'new CsvFirstEnrichmentJobHttpHandler(dataDirectory, maximumUploadBytes, authenticator)' in launcher:
+    raise AssertionError('product launcher must not register live legacy async enrichment transport')
+if 'new CsvFirstEnrichmentHttpHandler(dataDirectory, maximumUploadBytes, authenticator)' in launcher:
+    raise AssertionError('product launcher must not register live legacy synchronous enrichment transport')
 
 legacy_call = "const response = await api('/api/v1/csv-first-enrichments', {"
 async_call = "const response = await api('/api/v1/csv-first-enrichment-jobs', {"
@@ -75,4 +93,4 @@ for token in ['csv-job-progress', '@keyframes csv-job-indeterminate', 'prefers-r
     if token not in status_css:
         raise AssertionError(f'job-status CSS missing {token}')
 
-print('CSV-first async enrichment job checks: PASS')
+print('CSV-first async local enrichment job checks: PASS')
