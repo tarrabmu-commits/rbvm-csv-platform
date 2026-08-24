@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 handler = (ROOT / 'src/main/java/io/rbvm/csv/CsvFirstEnrichmentJobHttpHandler.java').read_text(encoding='utf-8')
 local_handler = (ROOT / 'src/main/java/io/rbvm/csv/CsvFirstLocalEnrichmentJobHttpHandler.java').read_text(encoding='utf-8')
+executor = (ROOT / 'src/main/java/io/rbvm/csv/CsvFirstLocalEnrichmentExecutor.java').read_text(encoding='utf-8')
 launcher = (ROOT / 'src/main/java/io/rbvm/csv/RbvmPlatformMain.java').read_text(encoding='utf-8')
 compile_sh = (ROOT / 'scripts/compile.sh').read_text(encoding='utf-8')
 transform = (ROOT / 'scripts/stabilize-csv-first-async-runtime.py').read_text(encoding='utf-8')
@@ -38,7 +39,6 @@ for token in [
     'new CsvFirstEnrichmentJobHttpHandler(',
     'CsvFirstLocalEnrichmentExecutor',
     'WAITING_FOR_LOCAL_WORKER',
-    'READING_LOCAL_PUBLIC_INTELLIGENCE',
     'GLOBAL_PUBLIC_INTELLIGENCE_ONLY',
     'tenantDatabaseStateUsed',
     'MAX_CONCURRENT_JOBS = 1',
@@ -46,6 +46,19 @@ for token in [
 ]:
     if token not in local_handler:
         raise AssertionError(f'async local enrichment wrapper missing {token!r}')
+
+for token in [
+    'READING_LOCAL_PUBLIC_INTELLIGENCE',
+    'BUILDING_LOCAL_PUBLIC_INTELLIGENCE_SNAPSHOT',
+    'ENRICHING_CSV_FROM_LOCAL_PUBLIC_INTELLIGENCE',
+    'target.clear()',
+    'collect-public-vulnerability-intel.py',
+]:
+    if token == 'collect-public-vulnerability-intel.py':
+        if token in executor:
+            raise AssertionError('shared local enrichment executor must not invoke live provider collector')
+    elif token not in executor:
+        raise AssertionError(f'shared local enrichment executor missing {token!r}')
 
 if 'new CsvFirstLocalEnrichmentJobHttpHandler' not in launcher:
     raise AssertionError('async local enrichment handler is not registered')
