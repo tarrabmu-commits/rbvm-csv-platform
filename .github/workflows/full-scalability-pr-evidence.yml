@@ -46,9 +46,29 @@ jobs:
             --output "$driver"
           printf '%s  %s\n' "$PGJDBC_SHA256" "$driver" | sha256sum --check
           printf 'RBVM_POSTGRES_DRIVER_JAR=%s\n' "$driver" >> "$GITHUB_ENV"
+      - name: Apply single reverse-lookup index experiment
+        run: |
+          set -euo pipefail
+          cat > db/migration/V32__exposure_observation_reverse_lookup.sql <<'SQL'
+          BEGIN;
+          CREATE INDEX exposure_observation_observation_lookup_idx
+              ON rbvm.exposure_observation (tenant_id, observation_id, exposure_id);
+          COMMIT;
+          SQL
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('src/main/java/io/rbvm/postgres/PostgresMigrator.java')
+          source = path.read_text()
+          old = '            new Migration(31, "V31__public_intelligence_sync_job.sql")\n    );'
+          new = ('            new Migration(31, "V31__public_intelligence_sync_job.sql"),\n'
+                 '            new Migration(32, "V32__exposure_observation_reverse_lookup.sql")\n'
+                 '    );')
+          assert source.count(old) == 1, 'migration tail marker drifted'
+          path.write_text(source.replace(old, new, 1))
+          PY
       - name: Compile benchmark runtime
         run: ./scripts/compile.sh --tests
-      - name: Run optimized production-source 10K diagnostic
+      - name: Run 10K reverse-index A/B
         env:
           RBVM_PROJECTION_BACKEND: POSTGRESQL
           RBVM_JDBC_URL: jdbc:postgresql://127.0.0.1:5432/rbvm?sslmode=disable
