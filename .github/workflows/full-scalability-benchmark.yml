@@ -97,7 +97,7 @@ jobs:
           if [[ "$BENCHMARK_STRESS" == "true" ]]; then
             args+=(--stress)
           fi
-          python3 scripts/run-full-scalability-benchmark.py "${args[@]}"
+          python3 scripts/run-full-scalability-benchmark-isolated.py "${args[@]}"
       - name: Upload benchmark evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
