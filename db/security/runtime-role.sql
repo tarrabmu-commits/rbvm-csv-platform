@@ -18,7 +18,8 @@ GRANT SELECT, INSERT, UPDATE ON
     rbvm.asset_component,
     rbvm.vulnerability_case,
     rbvm.exposure,
-    rbvm.catalog_state
+    rbvm.catalog_state,
+    rbvm.public_intelligence_sync_run
 TO rbvm_runtime;
 
 GRANT SELECT, INSERT ON
@@ -57,7 +58,9 @@ GRANT SELECT, INSERT ON
     rbvm.derived_risk_result,
     rbvm.risk_method_selection_policy,
     rbvm.risk_method_selection_policy_activation_event,
-    rbvm.active_risk_method_execution_binding
+    rbvm.active_risk_method_execution_binding,
+    rbvm.finding_mvp_priority_result,
+    rbvm.public_intelligence_record
 TO rbvm_runtime;
 
 GRANT SELECT ON
@@ -99,7 +102,10 @@ GRANT SELECT ON
     rbvm.current_finding_business_service_link,
     rbvm.active_finding_business_service_link,
     rbvm.current_risk_method_selection_policy_activation,
-    rbvm.active_risk_method_selection_policy
+    rbvm.active_risk_method_selection_policy,
+    rbvm.latest_public_intelligence_record,
+    rbvm.current_public_intelligence_record,
+    rbvm.public_intelligence_source_status
 TO rbvm_runtime;
 
 GRANT USAGE, SELECT ON SEQUENCE rbvm.case_audit_event_database_sequence TO rbvm_runtime;
@@ -133,3 +139,6 @@ REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.derived_risk_result FROM rbvm_runtime;
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.risk_method_selection_policy FROM rbvm_runtime;
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.risk_method_selection_policy_activation_event FROM rbvm_runtime;
 REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.active_risk_method_execution_binding FROM rbvm_runtime;
+REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.finding_mvp_priority_result FROM rbvm_runtime;
+REVOKE UPDATE, DELETE, TRUNCATE ON rbvm.public_intelligence_record FROM rbvm_runtime;
+REVOKE DELETE, TRUNCATE ON rbvm.public_intelligence_sync_run FROM rbvm_runtime;
