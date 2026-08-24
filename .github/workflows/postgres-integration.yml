@@ -84,7 +84,7 @@ jobs:
           RBVM_SCALABILITY_BENCHMARK_MODE: 'true'
         run: |
           set -euo pipefail
-          python3 scripts/run-full-scalability-benchmark.py \
+          python3 scripts/run-full-scalability-benchmark-isolated.py \
             --sizes 1000 \
             --stress-max-rows 1000 \
             --tier-timeout-seconds 120 \
@@ -99,5 +99,17 @@ jobs:
           tier = summary['tiers'][0]
           assert tier['rows'] == 1000 and tier['status'] == 'PASS', tier
           assert tier['canonical']['priorityMappedSourceRows'] == 1000, tier
-          print('Full scalability 1K PostgreSQL smoke: PASS')
+          stage = tier['stages']['publicIntelligenceSeedExport']
+          assert stage['measurementBoundary'] == 'ISOLATED_LOCAL_LOOKUP_EXPORT_PROCESS', stage
+          assert stage['setupStatus'] == 'PASS', stage
+          assert stage['peakRssMiB'] > 0, stage
+          print('Full scalability 1K PostgreSQL isolated smoke: PASS')
           PY
+      - name: Upload 1K scalability smoke evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: rbvm-full-scalability-smoke-${{ github.sha }}
+          path: build/full-scalability-smoke/
+          if-no-files-found: error
+          retention-days: 7
