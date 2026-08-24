@@ -71,10 +71,14 @@ def main():
     yes_auto = module.resolve_automatable("Yes")
     no_auto = module.resolve_automatable("no")
     missing_auto = module.resolve_automatable("")
+    unknown_auto = module.resolve_automatable("UNKNOWN")
     invalid_auto = module.resolve_automatable("maybe")
     assert (yes_auto.status, yes_auto.value) == ("PRESENT", "Y")
     assert (no_auto.status, no_auto.value) == ("PRESENT", "N")
     assert (missing_auto.status, missing_auto.value, missing_auto.blocker) == (
+        "MISSING", None, "AUTOMATABLE_MISSING"
+    )
+    assert (unknown_auto.status, unknown_auto.value, unknown_auto.blocker) == (
         "MISSING", None, "AUTOMATABLE_MISSING"
     )
     assert (invalid_auto.status, invalid_auto.value, invalid_auto.blocker) == (
@@ -84,23 +88,27 @@ def main():
     partial = module.resolve_technical_impact("Partial")
     total = module.resolve_technical_impact("T")
     missing_ti = module.resolve_technical_impact(None)
+    incomplete_ti = module.resolve_technical_impact("INCOMPLETE")
     invalid_ti = module.resolve_technical_impact("high")
     assert (partial.status, partial.value) == ("PRESENT", "P")
     assert (total.status, total.value) == ("PRESENT", "T")
     assert missing_ti.status == "MISSING" and missing_ti.value is None
+    assert incomplete_ti.status == "MISSING" and incomplete_ti.value is None
     assert invalid_ti.status == "INVALID" and invalid_ti.value is None
 
     # Explicit Publicly Exposed is a distinct BOD input. UNKNOWN/missing is not No.
     assert module.resolve_publicly_exposed("YES").value == "Y"
     assert module.resolve_publicly_exposed("NO").value == "N"
-    assert module.resolve_publicly_exposed("UNKNOWN").status == "INVALID"
+    assert module.resolve_publicly_exposed("UNKNOWN").status == "MISSING"
     assert module.resolve_publicly_exposed("").status == "MISSING"
+    assert module.resolve_publicly_exposed("maybe").status == "INVALID"
 
     # KEV resolution only accepts an already established membership state.
     assert module.resolve_in_kev("LISTED").value == "Y"
     assert module.resolve_in_kev("NOT_LISTED").value == "N"
     assert module.resolve_in_kev("").status == "MISSING"
-    assert module.resolve_in_kev("UNKNOWN").status == "INVALID"
+    assert module.resolve_in_kev("UNKNOWN").status == "MISSING"
+    assert module.resolve_in_kev("maybe").status == "INVALID"
 
     canonical_text = module.CANONICAL_JSON.casefold()
     for forbidden in (
