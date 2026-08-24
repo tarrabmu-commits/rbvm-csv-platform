@@ -10,7 +10,7 @@ jobs:
   progressive-evidence:
     if: github.head_ref == 'full-scalability-benchmark-v1'
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16.14-bookworm@sha256:92620daddcd947f8d5ab5ba66e848702fe443d87fed30c4cea8e389fd78dfc55
@@ -48,7 +48,7 @@ jobs:
           printf 'RBVM_POSTGRES_DRIVER_JAR=%s\n' "$driver" >> "$GITHUB_ENV"
       - name: Compile benchmark runtime
         run: ./scripts/compile.sh --tests
-      - name: Run focused 10K SQL timing diagnostic
+      - name: Run exhaustive 1K SQL statement diagnostic
         env:
           RBVM_PROJECTION_BACKEND: POSTGRESQL
           RBVM_JDBC_URL: jdbc:postgresql://127.0.0.1:5432/rbvm?sslmode=disable
@@ -62,15 +62,15 @@ jobs:
           test -n "$postgres_container"
           docker exec -e PGPASSWORD=postgres-scalability-owner "$postgres_container" \
             psql -U postgres -d rbvm -v ON_ERROR_STOP=1 \
-            -c "ALTER SYSTEM SET log_min_duration_statement = '5ms';"
+            -c "ALTER SYSTEM SET log_min_duration_statement = '0';"
           docker exec -e PGPASSWORD=postgres-scalability-owner "$postgres_container" \
             psql -U postgres -d rbvm -v ON_ERROR_STOP=1 \
             -c "SELECT pg_reload_conf();"
 
           python3 scripts/run-full-scalability-benchmark-isolated.py \
-            --sizes 10000 \
-            --stress-max-rows 10000 \
-            --tier-timeout-seconds 600 \
+            --sizes 1000 \
+            --stress-max-rows 1000 \
+            --tier-timeout-seconds 180 \
             --output-directory build/full-scalability-pr-evidence
 
           classpath="build/manual/main:build/manual/test:${RBVM_POSTGRES_DRIVER_JAR}"
@@ -78,8 +78,7 @@ jobs:
             build/full-scalability-pr-evidence/postgres-table-stats.tsv
           docker logs "$postgres_container" \
             > build/full-scalability-pr-evidence/postgres-duration.log 2>&1
-          head -20 build/full-scalability-pr-evidence/postgres-table-stats.tsv
-          tail -100 build/full-scalability-pr-evidence/postgres-duration.log
+          wc -l build/full-scalability-pr-evidence/postgres-duration.log
       - name: Upload diagnostic evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
