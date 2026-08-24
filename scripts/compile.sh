@@ -73,6 +73,11 @@ if [[ -f "$ROOT_DIR/src/main/resources/web/csv-canonical-handoff.js" ]]; then
   cat "$ROOT_DIR/src/main/resources/web/csv-canonical-handoff.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
 fi
 
+# V29 canonical priority integration is compile-time and fail-closed: it adds
+# the explicit run->canonical materialization action and lazy Finding-detail
+# reads without another MutationObserver runtime overlay or client-side scoring.
+python3 "$ROOT_DIR/scripts/integrate-canonical-mvp-priority-ui.py" "$MAIN_CLASSES/web/rbvm-ui.js"
+
 # Stabilization V1: exactly one dashboard enhancement module is allowed at
 # runtime. Legacy V3/V4/V5 MutationObserver overlays remain in source history
 # but are deliberately not bundled; stacking them caused repeated full-catalog

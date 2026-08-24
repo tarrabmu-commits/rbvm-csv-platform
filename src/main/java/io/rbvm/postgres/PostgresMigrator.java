@@ -47,7 +47,8 @@ public final class PostgresMigrator {
             new Migration(25, "V25__risk_method_selection_policy.sql"),
             new Migration(26, "V26__risk_method_selection_policy_activation.sql"),
             new Migration(27, "V27__active_risk_method_execution_binding.sql"),
-            new Migration(28, "V28__findings_read_hotpath_indexes.sql")
+            new Migration(28, "V28__findings_read_hotpath_indexes.sql"),
+            new Migration(29, "V29__canonical_mvp_priority_persistence.sql")
     );
 
     private final JdbcConnectionFactory connections;

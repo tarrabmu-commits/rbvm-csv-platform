@@ -7,6 +7,8 @@ import io.rbvm.context.FindingReachabilityScopeLinkRegistry;
 import io.rbvm.postgres.ActiveRiskMethodExecutionRuntimeFactory;
 import io.rbvm.postgres.CanonicalImportFindingExporter;
 import io.rbvm.postgres.CanonicalImportFindingRuntimeFactory;
+import io.rbvm.postgres.CanonicalMvpPriorityRuntimeFactory;
+import io.rbvm.postgres.CanonicalMvpPriorityStore;
 import io.rbvm.postgres.CanonicalProjectionFactory;
 import io.rbvm.postgres.CanonicalProjectionFactory.RuntimeComponents;
 import io.rbvm.postgres.CisaKevImporter;
@@ -49,6 +51,8 @@ public final class RbvmPlatformMain {
                 CanonicalProjectionFactory.findingContextAssociationRuntimeFromEnvironment(environment);
         Optional<CanonicalImportFindingExporter> canonicalImportFindings =
                 CanonicalImportFindingRuntimeFactory.fromEnvironment(environment);
+        Optional<CanonicalMvpPriorityStore> canonicalMvpPriority =
+                CanonicalMvpPriorityRuntimeFactory.fromEnvironment(environment);
         Optional<FormulaResultRuntimeFactory.Runtime> formulaResultRuntime =
                 FormulaResultRuntimeFactory.fromEnvironment(environment);
         Optional<DerivedRiskResultRuntimeFactory.Runtime> derivedRiskResultRuntime =
@@ -93,6 +97,7 @@ public final class RbvmPlatformMain {
                 dataDirectory,
                 maximumUploadBytes,
                 canonicalImportFindings,
+                canonicalMvpPriority,
                 runtime.epssImporter(),
                 runtime.cisaKevImporter(),
                 authenticator
@@ -132,6 +137,8 @@ public final class RbvmPlatformMain {
                 + application.baseUri().resolve("/api/v1/csv-first-enrichment-jobs"));
         System.out.println("CSV-first MVP priority API: "
                 + application.baseUri().resolve("/api/v1/csv-first-priorities/{runId}/{analysisId}"));
+        System.out.println("Canonical MVP priority API: "
+                + application.baseUri().resolve("/api/v1/canonical-mvp-priorities/{importId}/{runId}/{analysisId}"));
         System.out.println("CSV-first source API: "
                 + application.baseUri().resolve("/api/v1/csv-first-sources/{runId}"));
         System.out.println("CSV-first canonical public evidence API: "
@@ -150,6 +157,7 @@ public final class RbvmPlatformMain {
             Path dataDirectory,
             long maximumUploadBytes,
             Optional<CanonicalImportFindingExporter> canonicalImportFindings,
+            Optional<CanonicalMvpPriorityStore> canonicalMvpPriority,
             Optional<EpssImporter> epssImporter,
             Optional<CisaKevImporter> cisaKevImporter,
             ApiKeyAuthenticator authenticator
@@ -157,7 +165,7 @@ public final class RbvmPlatformMain {
         // Transitional registration seam: CsvPlatformServer predates extension
         // contexts and keeps its HttpServer private. Keep the reflection isolated
         // here so the established adapter does not need a broad rewrite for these
-        // narrow CSV-first and exact import-scoped read transports.
+        // narrow CSV-first and exact import-scoped transports.
         Field serverField = CsvPlatformServer.class.getDeclaredField("server");
         serverField.setAccessible(true);
         HttpServer server = (HttpServer) serverField.get(application);
@@ -172,6 +180,14 @@ public final class RbvmPlatformMain {
         server.createContext(
                 "/api/v1/csv-first-priorities",
                 new CsvFirstMvpPriorityHttpHandler(dataDirectory, authenticator)
+        );
+        server.createContext(
+                "/api/v1/canonical-mvp-priorities/findings",
+                new CanonicalMvpPriorityReadHttpHandler(canonicalMvpPriority, authenticator)
+        );
+        server.createContext(
+                "/api/v1/canonical-mvp-priorities",
+                new CanonicalMvpPriorityHttpHandler(dataDirectory, canonicalMvpPriority, authenticator)
         );
         server.createContext(
                 "/api/v1/csv-first-sources",

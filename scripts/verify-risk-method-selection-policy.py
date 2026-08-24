@@ -102,7 +102,10 @@ for marker in [
 ]:
     assert marker in live, f"V25 live proof missing {marker!r}"
 
-assert 'V18-V27' in workflow
+# The shared PostgreSQL integration workflow may advance beyond V27. Preserve
+# the actual V25 live proof instead of pinning a display label to an old latest
+# schema version.
+assert 'v22-live-integration' in workflow
 assert 'PostgresV25RiskMethodSelectionPolicyLiveSelfTest' in workflow
 
 for marker in [
