@@ -4,7 +4,8 @@
 import argparse
 import base64
 import csv
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from decimal import Decimal, InvalidOperation
 import gzip
 import hashlib
 import io
@@ -14,6 +15,7 @@ import re
 import zipfile
 
 CVE_RE = re.compile(r"^CVE-[0-9]{4}-[0-9]{4,}$")
+EPSS_MODEL_RE = re.compile(r"^v?[0-9]{4}\.[0-9]{2}\.[0-9]{2}$")
 PROVIDERS = {"NVD", "FIRST_EPSS", "CISA_KEV", "CVE_PROGRAM"}
 MODES = {"BOOTSTRAP", "INCREMENTAL"}
 HEADER = [
@@ -106,6 +108,12 @@ def nvd_records(raw, source_name, observed_at):
     vulns = root.get("vulnerabilities")
     if not isinstance(vulns, list):
         raise RuntimeError("NVD JSON 2.0 source must contain vulnerabilities[]")
+    declared = root.get("totalResults")
+    if isinstance(declared, int) and declared != len(vulns):
+        raise RuntimeError(
+            "NVD source is not a complete requested result set: "
+            f"totalResults={declared}, parsed={len(vulns)}"
+        )
     seen = set()
     for index, item in enumerate(vulns):
         if not isinstance(item, dict) or not isinstance(item.get("cve"), dict):
@@ -125,6 +133,61 @@ def nvd_records(raw, source_name, observed_at):
         )
 
 
+def epss_metadata_and_rows(text):
+    lines = text.splitlines()
+    comments = []
+    header_index = None
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("#"):
+            comments.append(stripped[1:].strip())
+            continue
+        header_index = index
+        break
+    if header_index is None:
+        raise RuntimeError("FIRST EPSS source does not contain a CSV header")
+    if not comments:
+        raise RuntimeError("FIRST EPSS source is missing model metadata")
+
+    metadata = {}
+    for comment in comments:
+        for part in comment.split(","):
+            if ":" in part:
+                key, value = part.split(":", 1)
+            elif "=" in part:
+                key, value = part.split("=", 1)
+            else:
+                continue
+            metadata[key.strip().lower()] = value.strip()
+
+    model_version = metadata.get("model_version", "")
+    if not EPSS_MODEL_RE.fullmatch(model_version):
+        raise RuntimeError("FIRST EPSS model_version is missing or invalid")
+    score_date = metadata.get("score_date", "")
+    try:
+        score_date = date.fromisoformat(score_date).isoformat()
+    except ValueError as exc:
+        raise RuntimeError("FIRST EPSS score_date must be an ISO-8601 date") from exc
+
+    reader = csv.DictReader(io.StringIO("\n".join(lines[header_index:]) + "\n"))
+    if reader.fieldnames != ["cve", "epss", "percentile"]:
+        raise RuntimeError("FIRST EPSS CSV headers must be exactly cve,epss,percentile")
+    return model_version, score_date, reader
+
+
+def probability(value, field, row_number):
+    text = str(value or "").strip()
+    try:
+        number = Decimal(text)
+    except InvalidOperation as exc:
+        raise RuntimeError(f"FIRST EPSS row {row_number} {field} is not a decimal") from exc
+    if not number.is_finite() or number < 0 or number > 1:
+        raise RuntimeError(f"FIRST EPSS row {row_number} {field} must be between 0 and 1")
+    return format(number, "f")
+
+
 def epss_records(raw, source_name, observed_at):
     try:
         data = gzip.decompress(raw) if source_name.endswith(".gz") else raw
@@ -132,37 +195,29 @@ def epss_records(raw, source_name, observed_at):
     except (OSError, UnicodeDecodeError) as exc:
         raise RuntimeError("FIRST EPSS source must be UTF-8 CSV or gzip-compressed CSV") from exc
 
-    lines = text.splitlines()
-    if not lines:
-        raise RuntimeError("FIRST EPSS source is empty")
-    metadata = {}
-    if lines[0].startswith("#"):
-        for part in lines.pop(0)[1:].split(","):
-            if ":" in part:
-                key, value = part.split(":", 1)
-                metadata[key.strip()] = value.strip()
-    reader = csv.DictReader(io.StringIO("\n".join(lines)))
-    required = {"cve", "epss", "percentile"}
-    if reader.fieldnames is None or not required.issubset(set(reader.fieldnames)):
-        raise RuntimeError("FIRST EPSS CSV must contain cve,epss,percentile")
-    model_version = metadata.get("model_version", "")
-    score_date = metadata.get("score_date", "")
+    model_version, score_date, reader = epss_metadata_and_rows(text)
     seen = set()
-    for index, row in enumerate(reader, start=2):
-        cve_id = canonical_cve(row.get("cve"), f"FIRST EPSS row {index} cve")
+    row_count = 0
+    for row_number, row in enumerate(reader, start=2):
+        if None in row:
+            raise RuntimeError(f"FIRST EPSS row {row_number} contains unexpected extra fields")
+        row_count += 1
+        cve_id = canonical_cve(row.get("cve"), f"FIRST EPSS row {row_number} cve")
         if cve_id in seen:
             raise RuntimeError(f"FIRST EPSS source contains duplicate CVE: {cve_id}")
         seen.add(cve_id)
         payload = {
             "cve": cve_id,
-            "epss": str(row.get("epss", "")).strip(),
-            "percentile": str(row.get("percentile", "")).strip(),
+            "epss": probability(row.get("epss"), "epss", row_number),
+            "percentile": probability(row.get("percentile"), "percentile", row_number),
             "modelVersion": model_version,
             "scoreDate": score_date,
         }
         yield record_line(
             cve_id, "ACTIVE", "", "", observed_at, canonical_json(payload)
         )
+    if row_count == 0:
+        raise RuntimeError("FIRST EPSS source contains no score rows")
 
 
 def cisa_records(raw, source_name, observed_at):
@@ -171,8 +226,8 @@ def cisa_records(raw, source_name, observed_at):
     if not isinstance(vulns, list):
         raise RuntimeError("CISA KEV source must contain vulnerabilities[]")
     declared = root.get("count")
-    if isinstance(declared, int) and declared != len(vulns):
-        raise RuntimeError("CISA KEV declared count does not match parsed count")
+    if not isinstance(declared, int) or declared != len(vulns):
+        raise RuntimeError("CISA KEV declared count must equal parsed count")
     seen = set()
     for index, payload in enumerate(vulns):
         if not isinstance(payload, dict):
@@ -186,27 +241,48 @@ def cisa_records(raw, source_name, observed_at):
         )
 
 
+def cve_program_json_names(names):
+    selected = []
+    for name in names:
+        normalized = name.replace("\\", "/")
+        if normalized.endswith("/") or not normalized.lower().endswith(".json"):
+            continue
+        parts = [part for part in normalized.split("/") if part]
+        if "cves" in parts:
+            selected.append(name)
+    return sorted(selected)
+
+
 def cve_program_payloads(path):
     if path.is_dir():
-        for file_path in sorted(path.rglob("*.json")):
+        records_root = path / "cves" if (path / "cves").is_dir() else path
+        for file_path in sorted(records_root.rglob("*.json")):
             if file_path.is_symlink() or not file_path.is_file():
                 continue
             try:
-                yield json.loads(file_path.read_text(encoding="utf-8"))
+                payload = json.loads(file_path.read_text(encoding="utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                 raise RuntimeError(f"invalid CVE Program JSON: {file_path}") from exc
+            if isinstance(payload, dict) and isinstance(payload.get("cveMetadata"), dict):
+                yield payload
         return
+
     raw = source_bytes(path)
     if zipfile.is_zipfile(io.BytesIO(raw)):
         with zipfile.ZipFile(io.BytesIO(raw)) as archive:
-            for name in sorted(archive.namelist()):
-                if not name.lower().endswith(".json") or name.endswith("/"):
-                    continue
+            names = cve_program_json_names(archive.namelist())
+            if not names:
+                raise RuntimeError("CVE Program archive contains no cves/*.json records")
+            for name in names:
                 try:
-                    yield json.loads(archive.read(name).decode("utf-8"))
+                    payload = json.loads(archive.read(name).decode("utf-8"))
                 except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                     raise RuntimeError(f"invalid CVE Program JSON in archive: {name}") from exc
+                if not isinstance(payload, dict) or not isinstance(payload.get("cveMetadata"), dict):
+                    raise RuntimeError(f"CVE Program archive record lacks cveMetadata: {name}")
+                yield payload
         return
+
     root = decompressed_json(raw, path.name)
     if isinstance(root, list):
         yield from root
@@ -216,9 +292,11 @@ def cve_program_payloads(path):
 
 def cve_program_records(path, observed_at):
     seen = set()
+    row_count = 0
     for index, payload in enumerate(cve_program_payloads(path)):
         if not isinstance(payload, dict) or not isinstance(payload.get("cveMetadata"), dict):
             raise RuntimeError(f"CVE Program record {index} must contain cveMetadata")
+        row_count += 1
         metadata = payload["cveMetadata"]
         cve_id = canonical_cve(metadata.get("cveId"), f"CVE Program record {index} cveId")
         if cve_id in seen:
@@ -233,6 +311,8 @@ def cve_program_records(path, observed_at):
         yield record_line(
             cve_id, "ACTIVE", modified, published, observed_at, canonical_json(payload)
         )
+    if row_count == 0:
+        raise RuntimeError("CVE Program source contains no CVE records")
 
 
 def previous_cves(path):
@@ -260,9 +340,13 @@ def write_properties(path, values):
 
 def directory_source_sha(path):
     digest = hashlib.sha256()
-    for file_path in sorted(path.rglob("*.json")):
-        if file_path.is_symlink() or not file_path.is_file():
-            continue
+    json_files = [
+        file_path for file_path in sorted(path.rglob("*.json"))
+        if file_path.is_file() and not file_path.is_symlink()
+    ]
+    if not json_files:
+        raise RuntimeError("source directory contains no JSON files")
+    for file_path in json_files:
         digest.update(file_path.relative_to(path).as_posix().encode("utf-8"))
         digest.update(b"\0")
         digest.update(file_path.read_bytes())
