@@ -160,6 +160,8 @@ public final class RbvmPlatformMain {
                 + application.baseUri().resolve("/api/v1/csv-first-enrichments"));
         System.out.println("CSV-first async enrichment jobs API: "
                 + application.baseUri().resolve("/api/v1/csv-first-enrichment-jobs"));
+        System.out.println("CSV-first customer asset bundle API: "
+                + application.baseUri().resolve("/api/v1/csv-first-customer-assets/{runId}"));
         System.out.println("CSV-first local public intelligence: "
                 + (csvFirstLocalIntelligence.isPresent() ? "CONFIGURED" : "UNAVAILABLE"));
         System.out.println("CSV-first MVP priority API: "
@@ -214,6 +216,11 @@ public final class RbvmPlatformMain {
                 "/api/v1/csv-first-enrichment-jobs",
                 new CsvFirstLocalEnrichmentJobHttpHandler(
                         dataDirectory, maximumUploadBytes, csvFirstLocalIntelligence, authenticator)
+        );
+        server.createContext(
+                CsvFirstCustomerAssetBundleHttpHandler.ROOT,
+                new CsvFirstCustomerAssetBundleHttpHandler(
+                        dataDirectory, maximumUploadBytes, authenticator)
         );
         server.createContext(
                 "/api/v1/csv-first-priorities",
