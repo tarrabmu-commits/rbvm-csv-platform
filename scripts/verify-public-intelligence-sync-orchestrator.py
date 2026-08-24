@@ -103,7 +103,7 @@ for token in [
 for token in [
     "PublicIntelligenceOrchestrationRuntimeFactory.fromEnvironment",
     "PublicIntelligenceSyncHttpHandler.ROOT",
-    "PublicIntelligenceSyncHttpHandler(publicIntelligenceOrchestrator",
+    "new PublicIntelligenceSyncHttpHandler(publicIntelligenceSync, authenticator)",
 ]:
     assert token in main, f"product runtime wiring missing {token!r}"
 
