@@ -81,6 +81,10 @@ public final class PostgresCanonicalProjection implements CanonicalProjection {
         try (Connection connection = connections.open()) {
             beginProjectionTransaction(connection);
             try {
+                try (PreparedStatement planMode = connection.prepareStatement(
+                        "SET LOCAL plan_cache_mode = force_custom_plan")) {
+                    planMode.execute();
+                }
                 Instant now = clock.instant();
                 UUID tenantId = ensureTenant(connection, now);
                 UUID sourceProfileId = ensureSourceProfile(
