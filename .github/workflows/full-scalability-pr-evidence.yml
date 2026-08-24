@@ -10,7 +10,7 @@ jobs:
   progressive-evidence:
     if: github.head_ref == 'full-scalability-benchmark-v1'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:16.14-bookworm@sha256:92620daddcd947f8d5ab5ba66e848702fe443d87fed30c4cea8e389fd78dfc55
@@ -48,7 +48,7 @@ jobs:
           printf 'RBVM_POSTGRES_DRIVER_JAR=%s\n' "$driver" >> "$GITHUB_ENV"
       - name: Compile benchmark runtime
         run: ./scripts/compile.sh --tests
-      - name: Run standard 1K through 100K progression
+      - name: Run focused 10K diagnostic tier
         env:
           RBVM_PROJECTION_BACKEND: POSTGRESQL
           RBVM_JDBC_URL: jdbc:postgresql://127.0.0.1:5432/rbvm?sslmode=disable
@@ -59,11 +59,15 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/run-full-scalability-benchmark-isolated.py \
-            --sizes 1000,5000,10000,25000,50000,100000 \
-            --stress-max-rows 100000 \
-            --tier-timeout-seconds 900 \
+            --sizes 10000 \
+            --stress-max-rows 10000 \
+            --tier-timeout-seconds 600 \
             --output-directory build/full-scalability-pr-evidence
-      - name: Upload progressive evidence
+          classpath="build/manual/main:build/manual/test:${RBVM_POSTGRES_DRIVER_JAR}"
+          java -ea -cp "$classpath" io.rbvm.postgres.PostgresFullScalabilityTableStatsProbe \
+            build/full-scalability-pr-evidence/postgres-table-stats.tsv
+          head -20 build/full-scalability-pr-evidence/postgres-table-stats.tsv
+      - name: Upload diagnostic evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
