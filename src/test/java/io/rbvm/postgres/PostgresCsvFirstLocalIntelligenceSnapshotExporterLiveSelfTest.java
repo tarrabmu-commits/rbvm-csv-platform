@@ -21,6 +21,8 @@ public final class PostgresCsvFirstLocalIntelligenceSnapshotExporterLiveSelfTest
         PostgresPublicIntelligenceStore store = new PostgresPublicIntelligenceStore(connections, true);
         PostgresPublicIntelligenceSyncJobStore status =
                 new PostgresPublicIntelligenceSyncJobStore(connections, false);
+        PostgresCisaKevCatalogValidationReader cisaValidation =
+                new PostgresCisaKevCatalogValidationReader(connections);
         require(store.schemaVersion() >= 31, "CSV local-intelligence export proof requires schema 31+");
 
         Instant t0 = Instant.parse("2026-08-24T06:00:00Z");
@@ -35,6 +37,21 @@ public final class PostgresCsvFirstLocalIntelligenceSnapshotExporterLiveSelfTest
                 "1".repeat(64),
                 t0.plusSeconds(30),
                 t0.plusSeconds(60));
+        PostgresPublicIntelligenceSyncJobStore.Job cisaJob = status.start(
+                PostgresPublicIntelligenceStore.Provider.CISA_KEV,
+                PostgresPublicIntelligenceSyncJobStore.TriggerSource.SYSTEM,
+                t0.minusSeconds(20));
+        status.acquired(
+                cisaJob.id(),
+                PostgresPublicIntelligenceStore.Provider.CISA_KEV,
+                new PostgresPublicIntelligenceSyncJobStore.SourceIdentity(
+                        cisa.sourceUri(), cisa.sourceVersion(), cisa.sourceSha256()),
+                t0.minusSeconds(10));
+        status.bundleBuilt(
+                cisaJob.id(),
+                PostgresPublicIntelligenceStore.Provider.CISA_KEV,
+                t0.minusSeconds(5));
+
         PostgresPublicIntelligenceStore.BeginResult cisaRun = store.beginOrReplay(
                 cisa, PostgresPublicIntelligenceStore.SyncMode.BOOTSTRAP, t0);
         store.appendRecords(
@@ -52,23 +69,34 @@ public final class PostgresCsvFirstLocalIntelligenceSnapshotExporterLiveSelfTest
                 PostgresPublicIntelligenceStore.Provider.CISA_KEV,
                 1,
                 t0.plusSeconds(90));
+        status.linkSyncRun(
+                cisaJob.id(),
+                PostgresPublicIntelligenceStore.Provider.CISA_KEV,
+                cisaRun.runId(),
+                t0.plusSeconds(95));
+        status.complete(
+                cisaJob.id(),
+                PostgresPublicIntelligenceStore.Provider.CISA_KEV,
+                t0.plusSeconds(100));
+        require(cisaValidation.isCompleteValidatedCatalog(cisaRun.runId()),
+                "linked COMPLETE V31 CISA job must admit safe negative semantics");
 
         PostgresPublicIntelligenceStore.SourceDescriptor nvdBase = new PostgresPublicIntelligenceStore.SourceDescriptor(
                 PostgresPublicIntelligenceStore.Provider.NVD,
                 "https://nvd.nist.gov/vuln/data-feeds",
                 "bootstrap-2099-export-proof",
                 "2".repeat(64),
-                t0.plusSeconds(100),
+                t0.plusSeconds(110),
                 t0.plusSeconds(120));
         PostgresPublicIntelligenceStore.BeginResult nvdBaseRun = store.beginOrReplay(
-                nvdBase, PostgresPublicIntelligenceStore.SyncMode.BOOTSTRAP, t0.plusSeconds(95));
+                nvdBase, PostgresPublicIntelligenceStore.SyncMode.BOOTSTRAP, t0.plusSeconds(105));
         store.appendRecords(
                 nvdBaseRun.runId(),
                 PostgresPublicIntelligenceStore.Provider.NVD,
                 List.of(new PostgresPublicIntelligenceStore.RecordVersion(
                         tombstoned,
                         PostgresPublicIntelligenceStore.RecordState.ACTIVE,
-                        t0.plusSeconds(100),
+                        t0.plusSeconds(110),
                         t0.plusSeconds(80),
                         "{\"id\":\"" + tombstoned + "\",\"vulnStatus\":\"Analyzed\"}",
                         t0.plusSeconds(120))));
@@ -102,6 +130,8 @@ public final class PostgresCsvFirstLocalIntelligenceSnapshotExporterLiveSelfTest
                 PostgresPublicIntelligenceStore.Provider.NVD,
                 1,
                 t0.plusSeconds(160));
+        require(!cisaValidation.isCompleteValidatedCatalog(nvdDeltaRun.runId()),
+                "non-CISA V30 runs must never admit CISA negative semantics");
 
         Path root = Files.createTempDirectory("rbvm-csv-local-intel-live-");
         try {
@@ -117,7 +147,7 @@ public final class PostgresCsvFirstLocalIntelligenceSnapshotExporterLiveSelfTest
             Path output = root.resolve("export");
 
             PostgresCsvFirstLocalIntelligenceSnapshotExporter exporter =
-                    new PostgresCsvFirstLocalIntelligenceSnapshotExporter(store, status);
+                    new PostgresCsvFirstLocalIntelligenceSnapshotExporter(store, status, cisaValidation);
             CsvFirstLocalIntelligenceSnapshotExporter.ExportSummary summary =
                     exporter.export(input, output);
 
@@ -139,15 +169,17 @@ public final class PostgresCsvFirstLocalIntelligenceSnapshotExporterLiveSelfTest
                     "completely absent CVE must not fabricate provider records");
 
             String providers = Files.readString(output.resolve("provider-status.tsv"), StandardCharsets.UTF_8);
-            require(providers.contains("CISA_KEV\ttrue\t"),
-                    "successful complete CISA source state must be exported for safe negative semantics");
-            require(providers.contains("NVD\ttrue\t"),
-                    "successful NVD source state must remain visible after tombstone resolution");
+            require(providers.contains("CISA_KEV\ttrue\ttrue\t"),
+                    "safe CISA negative semantics must require the linked COMPLETE V31 lifecycle");
+            require(providers.contains("NVD\ttrue\tfalse\t"),
+                    "non-CISA providers must never claim CISA-style safe negative absence");
 
             String requested = Files.readString(output.resolve("requested-cves.txt"), StandardCharsets.UTF_8);
             require(requested.indexOf(listed) < requested.indexOf(tombstoned)
                             && requested.indexOf(tombstoned) < requested.indexOf(absent),
                     "requested CVEs must be deterministic and sorted");
+            require(!requested.contains("\n\n"),
+                    "requested CVE export must not insert blank lines between entries");
         } finally {
             deleteTree(root);
         }
