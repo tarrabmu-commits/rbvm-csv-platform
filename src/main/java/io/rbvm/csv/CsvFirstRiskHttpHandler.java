@@ -55,9 +55,9 @@ public final class CsvFirstRiskHttpHandler implements HttpHandler {
     private static final String LEGACY_DIRECTORY = "csv-first-risk-methods";
 
     private static final List<MethodSpec> ACTIVE_METHODS = List.of(
-            new MethodSpec("RBVM_CSV_BOUNDED_RISK_V2", "RBVM_CSV_BOUNDED_RISK_V2.json", ACTIVE_DIRECTORY,
-                    2, "RBVM_LOCAL_POLICY", "RBVM", "0..10",
-                    "fb0ccafd51df21baebf709fcee137d1db212a36d7cfe90242f71c4e3f0385947"),
+            new MethodSpec("RBVM_CSV_BOUNDED_RISK_V3", "RBVM_CSV_BOUNDED_RISK_V3.json", ACTIVE_DIRECTORY,
+                    3, "RBVM_LOCAL_POLICY", "RBVM", "0..10",
+                    "190d1da1d8703057f594fd2419bc00c0601d71e2b3f9320781feda21b828bb5b"),
             new MethodSpec("JUPITERONE_STYLE_CSV_V2", "JUPITERONE_STYLE_CSV_V2.json", ACTIVE_DIRECTORY,
                     2, "VENDOR_STYLE_BENCHMARK", "JupiterOne", "0..1",
                     "26d132aee325b80985746ba7bd9c4acb554bb59cd6daf8a36c5926c489add5ec"),
@@ -72,6 +72,9 @@ public final class CsvFirstRiskHttpHandler implements HttpHandler {
             new MethodSpec("RBVM_CSV_BOUNDED_RISK_V1", "RBVM_CSV_BOUNDED_RISK_V1.json", LEGACY_DIRECTORY,
                     1, "RBVM_LOCAL_POLICY", "RBVM", "0..10",
                     "f4c3b8c3aed6c68b2767caefa7a70e49f968ad00e6fa91f3a4ed397fadc1b0e1"),
+            new MethodSpec("RBVM_CSV_BOUNDED_RISK_V2", "RBVM_CSV_BOUNDED_RISK_V2.json", LEGACY_DIRECTORY,
+                    2, "RBVM_LOCAL_POLICY", "RBVM", "0..10",
+                    "fb0ccafd51df21baebf709fcee137d1db212a36d7cfe90242f71c4e3f0385947"),
             new MethodSpec("JUPITERONE_STYLE_CSV_V1", "JUPITERONE_STYLE_CSV_V1.json", LEGACY_DIRECTORY,
                     1, "VENDOR_STYLE_BENCHMARK", "JupiterOne", "0..1",
                     "27521ffbabb17e3b7c74f212e5bc7e6781e8b8d1c58c30ec4194386b6af02fd6")
