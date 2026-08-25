@@ -49,16 +49,21 @@
   function setStage(stage, status, detail, timing = {}) {
     const current = state.get(stage) || fresh();
     const now = Date.now();
-    const next = {
-      ...current,
-      status,
-      detail: detail || current.detail,
-      startedAt: timing.startedAt || current.startedAt || (status === 'running' ? now : null),
-      completedAt: timing.completedAt || (status === 'complete' ? now : status === 'failed' ? now : current.completedAt),
-    };
-    if (status === 'running' && current.status !== 'running') next.startedAt = timing.startedAt || now;
-    if (status === 'ready' || status === 'waiting') next.completedAt = null;
-    state.set(stage, next);
+    const nextDetail = detail || current.detail;
+    const suppliedStart = timing.startedAt && Number.isFinite(Number(timing.startedAt)) ? Number(timing.startedAt) : null;
+    const suppliedComplete = timing.completedAt && Number.isFinite(Number(timing.completedAt)) ? Number(timing.completedAt) : null;
+    let startedAt = suppliedStart || current.startedAt;
+    let completedAt = suppliedComplete || current.completedAt;
+    if (status === 'running' && current.status !== 'running') startedAt = suppliedStart || now;
+    if (status === 'complete' && current.status !== 'complete') completedAt = suppliedComplete || now;
+    if (status === 'failed' && current.status !== 'failed') completedAt = suppliedComplete || now;
+    if (status === 'ready' || status === 'waiting') completedAt = null;
+    const unchanged = current.status === status
+      && current.detail === nextDetail
+      && Number(current.startedAt || 0) === Number(startedAt || 0)
+      && Number(current.completedAt || 0) === Number(completedAt || 0);
+    if (unchanged) return;
+    state.set(stage, {status, detail: nextDetail, startedAt, completedAt});
     schedule();
   }
 
@@ -304,10 +309,10 @@
     if (!root || !header) return null;
     let panel = root.querySelector('[data-csv-run-activity]');
     if (!panel) {
-      panel = element('section', {'data-csv-run-activity': 'true', class: 'panel csv-activity-panel'},
+      panel = element('section', {'data-csv-run-activity': 'true', class: 'panel csv-activity-panel', role: 'status', 'aria-live': 'polite', 'aria-atomic': 'false'},
         element('div', {class: 'panel-header'},
           element('div', {}, element('div', {class: 'csv-activity-eyebrow', text: 'Live workflow'}), element('h2', {class: 'panel-title', text: 'Run progress'}), element('p', {class: 'panel-subtitle', 'data-activity-headline': 'true'})),
-          element('div', {class: 'csv-activity-live', text: '● Live'})),
+          element('div', {class: 'csv-activity-live', 'aria-label': 'Live run status', text: '● Live'})),
         element('div', {class: 'panel-body'}, element('ol', {class: 'csv-activity-steps', 'data-activity-steps': 'true'}))
       );
       header.insertAdjacentElement('afterend', panel);
