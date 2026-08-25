@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "src/main/resources/web/csv-run-risk-benchmark-ui.js"
 COMPILE = ROOT / "scripts/compile.sh"
 RUNTIME = ROOT / "build/manual/main/web/rbvm-ui.js"
+MODULE_MARKER = "const CONTRACT = 'CSV_FIRST_RISK_BENCHMARK_UI_V1';"
 
 REQUIRED = [
     "CSV_FIRST_RISK_BENCHMARK_UI_V1",
@@ -25,7 +26,7 @@ REQUIRED = [
     "benchmarkExecutionSha256",
     "benchmarkReport",
     "sourceAnalysisSha256",
-    "DESCRIPTIVE",
+    "DESCRIPTIVE_COMPARISON_ONLY_NO_METHOD_SELECTION",
     "native",
     "analysisByRun.set(String(payload.runId), payload)",
     "payload.immutable === true",
@@ -61,6 +62,24 @@ def forbid(text: str, token: str, label: str) -> None:
         raise AssertionError(f"forbidden {label}: {token}")
 
 
+def extract_compiled_module(runtime: str) -> str:
+    marker = runtime.find(MODULE_MARKER)
+    if marker < 0:
+        raise AssertionError("compiled risk benchmark UI marker is missing")
+    start = runtime.rfind("(() => {", 0, marker)
+    if start < 0:
+        raise AssertionError("compiled risk benchmark UI IIFE start is missing")
+    end_marker = "\n})();"
+    end = runtime.find(end_marker, marker)
+    if end < 0:
+        raise AssertionError("compiled risk benchmark UI IIFE end is missing")
+    end += len(end_marker)
+    module = runtime[start:end]
+    if module.count(MODULE_MARKER) != 1:
+        raise AssertionError("compiled risk benchmark UI module marker is ambiguous")
+    return module
+
+
 def verify_ui(text: str, label: str) -> None:
     for token in REQUIRED:
         require(text, token, f"{label} benchmark UI contract")
@@ -68,6 +87,7 @@ def verify_ui(text: str, label: str) -> None:
         forbid(text, token, f"{label} client-side decision/scoring semantics")
     require(text, "{method: 'POST'}", f"{label} server-side benchmark materialization")
     require(text, "await api(execution.benchmarkReport)", f"{label} immutable report read")
+    require(text, "execution.semantics !== EXECUTION_SEMANTICS", f"{label} descriptive execution semantics guard")
     require(text, "does not select a risk method", f"{label} no-selection wording")
     require(text, "does not select a risk method, average methods, normalize their native scales", f"{label} explicit descriptive semantics")
     require(text, "data-csv-risk-benchmark-ui", f"{label} dedicated comparison mount")
@@ -82,10 +102,11 @@ def main() -> None:
 
     source = SOURCE.read_text(encoding="utf-8")
     runtime = RUNTIME.read_text(encoding="utf-8")
+    compiled_module = extract_compiled_module(runtime)
     compile_script = COMPILE.read_text(encoding="utf-8")
 
     verify_ui(source, "source")
-    verify_ui(runtime, "compiled")
+    verify_ui(compiled_module, "compiled module")
 
     bundle_token = 'cat "$ROOT_DIR/src/main/resources/web/csv-run-risk-benchmark-ui.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"'
     require(compile_script, bundle_token, "benchmark UI bundle step")
