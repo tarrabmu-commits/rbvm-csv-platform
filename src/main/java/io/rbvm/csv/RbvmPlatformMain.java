@@ -166,6 +166,13 @@ public final class RbvmPlatformMain {
                 + (csvFirstLocalIntelligence.isPresent() ? "CONFIGURED" : "UNAVAILABLE"));
         System.out.println("CSV-first MVP priority API: "
                 + application.baseUri().resolve("/api/v1/csv-first-priorities/{runId}/{analysisId}"));
+        System.out.println("CSV-first risk method catalog API: "
+                + application.baseUri().resolve(CsvFirstRiskHttpHandler.METHODS_ROOT));
+        System.out.println("CSV-first risk readiness API: "
+                + application.baseUri().resolve("/api/v1/csv-first-risk-readiness/{runId}/{analysisId}"));
+        System.out.println("CSV-first risk execution API: "
+                + application.baseUri().resolve(
+                        "/api/v1/csv-first-risks/{runId}/{analysisId}/{methodId}"));
         System.out.println("Canonical MVP priority API: "
                 + application.baseUri().resolve("/api/v1/canonical-mvp-priorities/{importId}/{runId}/{analysisId}"));
         System.out.println("CSV-first source API: "
@@ -226,6 +233,11 @@ public final class RbvmPlatformMain {
                 "/api/v1/csv-first-priorities",
                 new CsvFirstMvpPriorityHttpHandler(dataDirectory, authenticator)
         );
+        CsvFirstRiskHttpHandler csvFirstRisk = new CsvFirstRiskHttpHandler(
+                dataDirectory, authenticator);
+        server.createContext(CsvFirstRiskHttpHandler.METHODS_ROOT, csvFirstRisk);
+        server.createContext(CsvFirstRiskHttpHandler.READINESS_ROOT, csvFirstRisk);
+        server.createContext(CsvFirstRiskHttpHandler.RISKS_ROOT, csvFirstRisk);
         server.createContext(
                 "/api/v1/canonical-mvp-priorities/findings",
                 new CanonicalMvpPriorityReadHttpHandler(canonicalMvpPriority, authenticator)
