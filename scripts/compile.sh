@@ -55,6 +55,19 @@ if [[ -f "$ROOT_DIR/src/main/resources/web/customer-flow.js" ]]; then
   # source module retains compatibility with the legacy synchronous route.
   python3 "$ROOT_DIR/scripts/stabilize-csv-first-async-runtime.py" "$MAIN_CLASSES/web/rbvm-ui.js"
 fi
+
+# Load the run-activity observer before Local API/review/risk modules. Those modules
+# intentionally bind or call window.fetch later, so the activity layer can observe the
+# exact server actions without inventing client-only progress or persisting browser state.
+if [[ -f "$ROOT_DIR/src/main/resources/web/csv-run-activity.js" ]]; then
+  printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
+  cat "$ROOT_DIR/src/main/resources/web/csv-run-activity.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
+fi
+if [[ -f "$ROOT_DIR/src/main/resources/web/csv-run-activity.css" ]]; then
+  printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.css"
+  cat "$ROOT_DIR/src/main/resources/web/csv-run-activity.css" >> "$MAIN_CLASSES/web/rbvm-ui.css"
+fi
+
 if [[ -f "$ROOT_DIR/src/main/resources/web/customer-flow-local-api.js" ]]; then
   printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
   cat "$ROOT_DIR/src/main/resources/web/customer-flow-local-api.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
