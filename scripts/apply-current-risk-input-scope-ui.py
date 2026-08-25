@@ -49,6 +49,12 @@ def main() -> None:
     )
     text = replace_once(
         text,
+        "el('div', {class: 'inline-actions', style: 'margin-top:12px'}, remove)",
+        "null",
+        "remove-asset-control",
+    )
+    text = replace_once(
+        text,
         "`${candidates.length} asset${candidates.length === 1 ? '' : 's'} loaded. Only the current page is rendered to keep browser memory bounded; Save and analysis still use the complete bundle. Publicly Exposed remains separate from Internet Facing, and CR/IR/AR remain direct customer CVSS v4 declarations.`",
         "`${candidates.length} asset${candidates.length === 1 ? '' : 's'} loaded. Only the current page is rendered to keep browser memory bounded; Save and analysis still use the complete bundle. Current customer inputs are Asset Criticality and Internet Facing only.`",
         "asset-list-scope",
@@ -76,6 +82,12 @@ def main() -> None:
         "callout('Publicly Exposed follows cisa:PE:1.0.0 and remains UNKNOWN until the customer explicitly assesses it. Internet Facing remains separate legacy context and cannot set Publicly Exposed or MAV. CR/IR/AR use FIRST CVSS v4 values X/L/M/H and are not inferred from Asset Criticality.'),",
         "callout('Do not infer these values from the hostname, scanner severity, CVSS, or the number of findings. Asset Criticality and Internet Facing must be customer-declared. Legacy V4 fields remain preserved for replay but are outside the current input scope.'),",
         "asset-panel-callout",
+    )
+    text = replace_once(
+        text,
+        "el('div', {class: 'inline-actions'}, uploadButton, addButton, saveButton, downloadButton, enrichedButton, finishButton),",
+        "el('div', {class: 'inline-actions'}, uploadButton, saveButton, downloadButton, enrichedButton, finishButton),",
+        "asset-toolbar-scope",
     )
     text = replace_once(
         text,
