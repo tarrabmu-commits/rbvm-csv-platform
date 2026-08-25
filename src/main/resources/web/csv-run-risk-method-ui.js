@@ -5,6 +5,7 @@
   const API_CONTRACT = 'CSV_FIRST_RISK_HTTP_V1';
   const READINESS_CONTRACT = 'CSV_FIRST_RISK_READINESS_V1';
   const REPORT_CONTRACT = 'CSV_FIRST_RISK_REPORT_V1';
+  const RBVM_PRESENTATION_ONLY_RATING_METHOD = 'RBVM_CSV_BOUNDED_RISK_V3';
   const PREVIEW_LIMIT = 300;
   const PAGE_SIZE = 50;
   const analysisByRun = new Map();
@@ -238,6 +239,16 @@
     paint();
   }
 
+  function methodSemanticsCallout(execution) {
+    if (execution.methodId === RBVM_PRESENTATION_ONLY_RATING_METHOD) {
+      return callout('RBVM LOW / MEDIUM / HIGH / CRITICAL are presentation labels for the continuous risk score only. They are not treatment Priority, SLA, or remediation policy.');
+    }
+    if (execution.classification === 'VENDOR_STYLE_BENCHMARK') {
+      return callout('This vendor-style method is a pinned RBVM benchmark configuration. Its score and rating are not claimed to reproduce a vendor tenant’s configurable policy.', 'warning');
+    }
+    return null;
+  }
+
   function renderResult(host, runId, analysisId, execution, report, preview) {
     const result = report.result || {};
     const scope = report.scope || {};
@@ -255,6 +266,7 @@
         ), headerActions),
         el('div', {class: 'panel-body'},
           callout('This is the selected method’s native output. RBVM does not normalize or average it with another risk method.'),
+          methodSemanticsCallout(execution),
           el('div', {class: 'metrics'},
             metric('Computed', result.computedRows ?? '—', `of ${scope.findingRows ?? '—'} finding rows`),
             metric('Non-computable', result.nonComputableRows ?? '—', blockerCounts),
