@@ -63,6 +63,10 @@ if [[ -f "$ROOT_DIR/src/main/resources/web/csv-run-review.js" ]]; then
   printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
   cat "$ROOT_DIR/src/main/resources/web/csv-run-review.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
 fi
+if [[ -f "$ROOT_DIR/src/main/resources/web/csv-run-risk-method-ui.js" ]]; then
+  printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
+  cat "$ROOT_DIR/src/main/resources/web/csv-run-risk-method-ui.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
+fi
 if [[ -f "$ROOT_DIR/src/main/resources/web/csv-first-job-status.js" ]]; then
   printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
   cat "$ROOT_DIR/src/main/resources/web/csv-first-job-status.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
