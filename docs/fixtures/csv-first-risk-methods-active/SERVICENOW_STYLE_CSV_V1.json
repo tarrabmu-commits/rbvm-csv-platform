@@ -1,0 +1,60 @@
+{
+  "classification": "VENDOR_STYLE_BENCHMARK",
+  "contractId": "CSV_FIRST_RISK_METHOD_DEFINITION_V1",
+  "implementation": "SERVICENOW_STYLE",
+  "inputs": {
+    "cvssColumns": [
+      "CVSS4_Base_Score_Calculated",
+      "CVSS4_Base_Score"
+    ]
+  },
+  "methodId": "SERVICENOW_STYLE_CSV_V1",
+  "methodVersion": 1,
+  "missingPolicy": "NON_COMPUTABLE_NO_IMPUTATION",
+  "nativeScale": {
+    "maximum": 100,
+    "minimum": 0
+  },
+  "policy": {
+    "assetCriticalityMap": {
+      "HIGH": 80,
+      "LOW": 20,
+      "MISSION_CRITICAL": 100,
+      "MODERATE": 50
+    },
+    "epssFactor": "EPSS_PROBABILITY*100",
+    "exposureFactor": {
+      "NO": 0,
+      "YES": 100
+    },
+    "severityFactor": "CVSS_BASE*10",
+    "weights": {
+      "criticality": 25,
+      "epss": 25,
+      "exposure": 10,
+      "severity": 40
+    }
+  },
+  "provider": "ServiceNow",
+  "ratingBands": [
+    {
+      "minimum": 70,
+      "rating": "HIGH"
+    },
+    {
+      "minimum": 40,
+      "rating": "MEDIUM"
+    },
+    {
+      "minimum": 0,
+      "rating": "LOW"
+    }
+  ],
+  "requiredAttributes": [
+    "CVSS_BASE",
+    "EPSS_PROBABILITY",
+    "ASSET_CRITICALITY",
+    "INTERNET_FACING"
+  ],
+  "semantics": "Pinned local demo configuration using ServiceNow-style weighted calculator mechanics; not claimed equivalent to a tenant's ServiceNow configuration."
+}

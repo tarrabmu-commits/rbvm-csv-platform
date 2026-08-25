@@ -1,0 +1,27 @@
+{
+  "classification": "RBVM_LOCAL_POLICY",
+  "contractId": "CSV_FIRST_RISK_METHOD_DEFINITION_V1",
+  "implementation": "RBVM_BOUNDED_V2",
+  "inputs": {"cvssColumns": ["CVSS4_Base_Score_Calculated", "CVSS4_Base_Score"]},
+  "methodId": "RBVM_CSV_BOUNDED_RISK_V2",
+  "methodVersion": 2,
+  "missingPolicy": "NON_COMPUTABLE_NO_IMPUTATION",
+  "nativeScale": {"maximum": 10, "minimum": 0},
+  "policy": {
+    "assetCriticalityMap": {"HIGH": 7.5, "LOW": 2.5, "MISSION_CRITICAL": 10.0, "MODERATE": 5.0},
+    "epssBaselineProbability": 0.03,
+    "internetFacingModifier": 0.5,
+    "negativeThreatDiscountAuthority": 0.1,
+    "positiveThreatHeadroomAuthority": 0.4,
+    "threatPower": 3
+  },
+  "provider": "RBVM",
+  "ratingBands": [
+    {"minimum": 9.0, "rating": "CRITICAL"},
+    {"minimum": 7.0, "rating": "HIGH"},
+    {"minimum": 4.0, "rating": "MEDIUM"},
+    {"minimum": 0.0, "rating": "LOW"}
+  ],
+  "requiredAttributes": ["CVSS_BASE", "EPSS_PROBABILITY", "KEV_STATE", "ASSET_CRITICALITY", "INTERNET_FACING"],
+  "semantics": "CSV-first RBVM bounded local policy using CVSS, EPSS, KEV, customer Asset Criticality, and customer Internet Facing. Missing evidence is never imputed."
+}

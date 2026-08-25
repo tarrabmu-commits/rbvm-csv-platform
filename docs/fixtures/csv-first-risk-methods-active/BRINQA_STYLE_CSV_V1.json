@@ -1,0 +1,91 @@
+{
+  "classification": "VENDOR_STYLE_BENCHMARK",
+  "contractId": "CSV_FIRST_RISK_METHOD_DEFINITION_V1",
+  "implementation": "BRINQA_STYLE",
+  "inputs": {
+    "cvssColumns": [
+      "CVSS4_Base_Score_Calculated",
+      "CVSS4_Base_Score"
+    ]
+  },
+  "methodId": "BRINQA_STYLE_CSV_V1",
+  "methodVersion": 1,
+  "missingPolicy": "NON_COMPUTABLE_NO_IMPUTATION",
+  "nativeScale": {
+    "maximum": 10,
+    "minimum": 0
+  },
+  "policy": {
+    "assetCriticalityOffsets": {
+      "HIGH": 0.0,
+      "LOW": 0.0,
+      "MISSION_CRITICAL": 0.5,
+      "MODERATE": 0.0
+    },
+    "clamp": {
+      "maximum": 10,
+      "minimum": 0
+    },
+    "epssOffsets": [
+      {
+        "label": "EPSS_LT_1_PERCENT",
+        "maximum": 0.01,
+        "minimum": 0.0,
+        "offset": -1.5
+      },
+      {
+        "label": "EPSS_1_TO_5_PERCENT",
+        "maximum": 0.05,
+        "minimum": 0.01,
+        "offset": -0.5
+      },
+      {
+        "label": "EPSS_5_TO_20_PERCENT",
+        "maximum": 0.2,
+        "minimum": 0.05,
+        "offset": 0.0
+      },
+      {
+        "label": "EPSS_20_TO_50_PERCENT",
+        "maximum": 0.5,
+        "minimum": 0.2,
+        "offset": 0.5
+      },
+      {
+        "label": "EPSS_GTE_50_PERCENT",
+        "maximum": null,
+        "minimum": 0.5,
+        "offset": 1.0
+      }
+    ],
+    "internetFacingOffset": 0.5,
+    "kevListedOffset": 1.0
+  },
+  "provider": "Brinqa",
+  "ratingBands": [
+    {
+      "minimum": 9.0,
+      "rating": "CRITICAL"
+    },
+    {
+      "minimum": 7.0,
+      "rating": "HIGH"
+    },
+    {
+      "minimum": 4.0,
+      "rating": "MEDIUM"
+    },
+    {
+      "minimum": 0.0,
+      "rating": "LOW"
+    }
+  ],
+  "requiredAttributes": [
+    "CVSS_BASE",
+    "EPSS_PROBABILITY",
+    "KEV_STATE",
+    "ASSET_CRITICALITY",
+    "INTERNET_FACING"
+  ],
+  "semantics": "Pinned Brinqa risk-factor style benchmark using explicit local offsets; not claimed equivalent to any Brinqa customer configuration."
+}
