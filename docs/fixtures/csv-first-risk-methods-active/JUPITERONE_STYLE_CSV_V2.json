@@ -1,0 +1,27 @@
+{
+  "classification": "VENDOR_STYLE_BENCHMARK",
+  "contractId": "CSV_FIRST_RISK_METHOD_DEFINITION_V1",
+  "implementation": "JUPITERONE_STYLE_V2",
+  "inputs": {"cvssColumns": ["CVSS4_Base_Score_Calculated", "CVSS4_Base_Score"]},
+  "methodId": "JUPITERONE_STYLE_CSV_V2",
+  "methodVersion": 2,
+  "missingPolicy": "NON_COMPUTABLE_NO_IMPUTATION",
+  "nativeScale": {"maximum": 1, "minimum": 0},
+  "policy": {
+    "cvssExponent": 2.0,
+    "cvssWeight": 0.3,
+    "epssPercentileWeight": 0.4,
+    "occurrenceCap": 0.3,
+    "occurrenceMultiplier": 10.0,
+    "occurrenceSemantics": "min(0.3, (affectedDistinctAssets * 10.0) / csvDistinctAssets)",
+    "populationScope": "DISTINCT_ASSETS_IN_THIS_INPUT_CSV"
+  },
+  "provider": "JupiterOne",
+  "ratingBands": [
+    {"minimum": 0.6, "rating": "HIGH"},
+    {"minimum": 0.3, "rating": "MEDIUM"},
+    {"minimum": 0.0, "rating": "LOW"}
+  ],
+  "requiredAttributes": ["CVSS_BASE", "EPSS_PERCENTILE", "CSV_DISTINCT_ASSET_POPULATION", "CVE_AFFECTED_ASSET_COUNT"],
+  "semantics": "Pinned CSV-scoped benchmark using the requested JupiterOne-style formula. The denominator is distinct assets represented by this input CSV, not the customer's complete device inventory, so it is not claimed equivalent to the current JupiterOne product."
+}
