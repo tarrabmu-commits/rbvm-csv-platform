@@ -405,27 +405,14 @@ public final class CsvFirstRiskBenchmarkHttpHandler implements HttpHandler {
 
     private static void deleteTree(Path root) throws IOException {
         if (!Files.exists(root)) return;
-        try (var paths = Files.walk(root)) {
-            paths.sorted((left, right) -> right.compareTo(left)).forEach(path -> {
-                try {
-                    Files.deleteIfExists(path);
-                } catch (IOException exception) {
-                    throw new DeleteFailure(exception);
-                }
-            });
-        } catch (DeleteFailure failure) {
-            throw failure.cause;
+        List<Path> paths;
+        try (var stream = Files.walk(root)) {
+            paths = stream.sorted((left, right) -> right.compareTo(left)).toList();
+        }
+        for (Path path : paths) {
+            Files.deleteIfExists(path);
         }
     }
 
     private record ProcessOutcome(boolean success, boolean timedOut, boolean interrupted) {}
-
-    private static final class DeleteFailure extends RuntimeException {
-        private final IOException cause;
-
-        private DeleteFailure(IOException cause) {
-            super(cause);
-            this.cause = cause;
-        }
-    }
 }
