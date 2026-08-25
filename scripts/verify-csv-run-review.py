@@ -3,6 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 UI = (ROOT / "src/main/resources/web/csv-run-review.js").read_text(encoding="utf-8")
+RISK_UI = (ROOT / "src/main/resources/web/csv-run-risk-method-ui.js").read_text(encoding="utf-8")
 COMPILE = (ROOT / "scripts/compile.sh").read_text(encoding="utf-8")
 
 required = [
@@ -90,4 +91,54 @@ if "function priorityWhy(row)" not in UI or "el('details', {class: 'priority-exp
 if 'csv-run-review.js' not in COMPILE or 'cat "$ROOT_DIR/src/main/resources/web/csv-run-review.js"' not in COMPILE:
     raise AssertionError("runtime frontend bundle does not include csv-run-review.js")
 
-print("CSV-first saved V4 immutable finding review + bounded preview checks: PASS")
+risk_required = [
+    "CSV_FIRST_RISK_METHOD_SELECTION_UI_V1",
+    "CSV_FIRST_RISK_HTTP_V1",
+    "CSV_FIRST_RISK_READINESS_V1",
+    "CSV_FIRST_RISK_REPORT_V1",
+    "EXPLICIT_PER_ANALYSIS_NO_IMPLICIT_DEFAULT",
+    "/api/v1/csv-first-risk-methods",
+    "/api/v1/csv-first-risk-readiness/",
+    "/api/v1/csv-first-risks/",
+    "Calculate selected risk",
+    "Choose one method. No method is selected by default.",
+    "Download risk CSV",
+    "Download risk report",
+    "Download method definition",
+    "Risk_Explanation_JSON",
+    "Risk_Blockers",
+    "Risk_Status",
+    "PREVIEW_LIMIT = 300",
+    "PAGE_SIZE = 50",
+    "response.body.getReader()",
+    "reader.cancel()",
+    "Server-produced scores and explanations",
+    "never chooses a default, averages methods, or calculates scores client-side",
+    "data-csv-run-review",
+]
+for token in risk_required:
+    if token not in RISK_UI:
+        raise AssertionError(f"CSV-first risk-method UI missing {token}")
+
+for forbidden in [
+    "localStorage",
+    "sessionStorage",
+    "Risk_Score =",
+    "CVSS4_Base_Score *",
+    "EPSS_Probability *",
+    "selectedIndex = 0",
+    ".checked = true",
+    "Math.max(...methods",
+    "Math.min(...methods",
+]:
+    if forbidden in RISK_UI:
+        raise AssertionError(f"CSV-first risk-method UI contains client-side scoring/default-selection logic: {forbidden}")
+
+if "window.fetch = async" not in RISK_UI or "analysisByRun.set" not in RISK_UI:
+    raise AssertionError("risk-method UI must bind the exact immutable analysis response rather than infer analysis identity")
+if "method: 'POST'" not in RISK_UI:
+    raise AssertionError("risk-method UI must explicitly request server-side risk materialization")
+if 'csv-run-risk-method-ui.js' not in COMPILE or 'cat "$ROOT_DIR/src/main/resources/web/csv-run-risk-method-ui.js"' not in COMPILE:
+    raise AssertionError("runtime frontend bundle does not include csv-run-risk-method-ui.js")
+
+print("CSV-first saved V4 immutable finding review + explicit risk-method selection checks: PASS")
