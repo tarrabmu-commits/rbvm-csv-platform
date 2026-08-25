@@ -67,6 +67,13 @@ if [[ -f "$ROOT_DIR/src/main/resources/web/csv-run-risk-method-ui.js" ]]; then
   printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
   cat "$ROOT_DIR/src/main/resources/web/csv-run-risk-method-ui.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
 fi
+
+# Current product scope asks customers only for Asset Criticality and Internet Facing.
+# Keep the V4 persistence/replay contract intact, but fail closed while rewriting the
+# compiled presentation so legacy BOD/CVSS optional fields are not requested by this flow
+# and the review no longer claims organizational risk is globally non-computable.
+python3 "$ROOT_DIR/scripts/apply-current-risk-input-scope-ui.py" "$MAIN_CLASSES/web/rbvm-ui.js"
+
 if [[ -f "$ROOT_DIR/src/main/resources/web/csv-first-job-status.js" ]]; then
   printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
   cat "$ROOT_DIR/src/main/resources/web/csv-first-job-status.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
