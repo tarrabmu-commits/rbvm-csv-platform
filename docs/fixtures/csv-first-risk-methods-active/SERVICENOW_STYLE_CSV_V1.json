@@ -37,9 +37,18 @@
   },
   "provider": "ServiceNow",
   "ratingBands": [
-    {"minimum": 70, "rating": "HIGH"},
-    {"minimum": 40, "rating": "MEDIUM"},
-    {"minimum": 0, "rating": "LOW"}
+    {
+      "minimum": 70,
+      "rating": "HIGH"
+    },
+    {
+      "minimum": 40,
+      "rating": "MEDIUM"
+    },
+    {
+      "minimum": 0,
+      "rating": "LOW"
+    }
   ],
   "requiredAttributes": [
     "CVSS_BASE",
