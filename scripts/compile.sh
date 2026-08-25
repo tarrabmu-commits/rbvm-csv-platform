@@ -80,6 +80,10 @@ if [[ -f "$ROOT_DIR/src/main/resources/web/csv-run-risk-method-ui.js" ]]; then
   printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
   cat "$ROOT_DIR/src/main/resources/web/csv-run-risk-method-ui.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
 fi
+if [[ -f "$ROOT_DIR/src/main/resources/web/csv-run-risk-benchmark-ui.js" ]]; then
+  printf '\n' >> "$MAIN_CLASSES/web/rbvm-ui.js"
+  cat "$ROOT_DIR/src/main/resources/web/csv-run-risk-benchmark-ui.js" >> "$MAIN_CLASSES/web/rbvm-ui.js"
+fi
 
 # Current product scope asks customers only for Asset Criticality and Internet Facing.
 # Keep the V4 persistence/replay contract intact, but fail closed while rewriting the
