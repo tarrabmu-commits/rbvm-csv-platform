@@ -4,6 +4,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 UI = (ROOT / "src/main/resources/web/csv-run-review.js").read_text(encoding="utf-8")
 RISK_UI = (ROOT / "src/main/resources/web/csv-run-risk-method-ui.js").read_text(encoding="utf-8")
+ACTIVITY_UI = (ROOT / "src/main/resources/web/csv-run-activity.js").read_text(encoding="utf-8")
+ACTIVITY_CSS = (ROOT / "src/main/resources/web/csv-run-activity.css").read_text(encoding="utf-8")
 COMPILE = (ROOT / "scripts/compile.sh").read_text(encoding="utf-8")
 
 required = [
@@ -147,4 +149,75 @@ if "method: 'POST'" not in RISK_UI:
 if 'csv-run-risk-method-ui.js' not in COMPILE or 'cat "$ROOT_DIR/src/main/resources/web/csv-run-risk-method-ui.js"' not in COMPILE:
     raise AssertionError("runtime frontend bundle does not include csv-run-risk-method-ui.js")
 
-print("CSV-first saved V4 immutable finding review + explicit risk-method selection + rating semantics checks: PASS")
+activity_required = [
+    "CSV_FIRST_RUN_ACTIVITY_UI_V1",
+    "CSV_FIRST_ENRICHMENT_JOB_HTTP_V1",
+    "CSV_FIRST_CONTEXTUAL_ANALYSIS_HTTP_V1",
+    "CSV_FIRST_MVP_PRIORITY_HTTP_V1",
+    "CSV_FIRST_RISK_HTTP_V1",
+    "CSV_FIRST_RISK_READINESS_V1",
+    "CSV_FIRST_RISK_REPORT_V1",
+    "STAGE_ORDER = ['UPLOAD', 'ENRICHMENT', 'ASSET_CONTEXT', 'ANALYSIS', 'PRIORITY', 'RISK']",
+    "CSV scope",
+    "Public intelligence",
+    "Asset context",
+    "Contextual analysis",
+    "Treatment priority",
+    "Risk method",
+    "/api/v1/csv-first-enrichment-jobs",
+    "csv-first-customer-assets",
+    "csv-first-risk-readiness",
+    "csv-first-risks",
+    "Queued for the local enrichment worker.",
+    "Matching the CSV CVEs against local CVSS, EPSS, KEV and CISA/CVE Program intelligence.",
+    "Creating the immutable contextual analysis from saved customer context",
+    "Materializing the server-side Pareto treatment-priority frontier",
+    "Checking required evidence for all four selectable risk methods",
+    "no percentage is fabricated",
+    "data-csv-run-activity",
+    "role: 'status'",
+    "aria-live': 'polite'",
+    "suppressLegacyEnrichmentPanel",
+    "panel.dataset.customerBundlePersisted === 'true'",
+    "window.fetch = async",
+]
+for token in activity_required:
+    if token not in ACTIVITY_UI:
+        raise AssertionError(f"CSV run activity UI missing {token}")
+
+for forbidden in [
+    "localStorage",
+    "sessionStorage",
+    "aria-valuenow",
+    "Math.round(",
+    "progressPercent",
+    "fakeProgress",
+    "Risk_Score =",
+    "CVSS4_Base_Score *",
+    "EPSS_Probability *",
+]:
+    if forbidden in ACTIVITY_UI:
+        raise AssertionError(f"CSV run activity UI contains fabricated progress, persistence, or scoring logic: {forbidden}")
+
+activity_css_required = [
+    ".csv-activity-panel",
+    ".csv-activity-steps",
+    ".csv-activity-step.is-running",
+    ".csv-activity-step.is-complete",
+    ".csv-activity-step.is-ready",
+    ".csv-activity-step.is-failed",
+    "@media(prefers-reduced-motion:reduce)",
+]
+for token in activity_css_required:
+    if token not in ACTIVITY_CSS:
+        raise AssertionError(f"CSV run activity CSS missing {token}")
+
+activity_pos = COMPILE.find('cat "$ROOT_DIR/src/main/resources/web/csv-run-activity.js"')
+local_api_pos = COMPILE.find('cat "$ROOT_DIR/src/main/resources/web/customer-flow-local-api.js"')
+risk_pos = COMPILE.find('cat "$ROOT_DIR/src/main/resources/web/csv-run-risk-method-ui.js"')
+if min(activity_pos, local_api_pos, risk_pos) < 0 or not (activity_pos < local_api_pos < risk_pos):
+    raise AssertionError('run activity must be bundled before Local API and risk modules so exact fetch operations remain observable')
+if 'cat "$ROOT_DIR/src/main/resources/web/csv-run-activity.css"' not in COMPILE:
+    raise AssertionError('runtime frontend bundle does not include csv-run-activity.css')
+
+print("CSV-first saved V4 immutable finding review + explicit risk-method selection + rating semantics + live run activity checks: PASS")
