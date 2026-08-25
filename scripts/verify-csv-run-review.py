@@ -115,6 +115,12 @@ risk_required = [
     "Server-produced scores and explanations",
     "never chooses a default, averages methods, or calculates scores client-side",
     "data-csv-run-review",
+    "RBVM_PRESENTATION_ONLY_RATING_METHOD = 'RBVM_CSV_BOUNDED_RISK_V3'",
+    "function methodSemanticsCallout(execution)",
+    "RBVM LOW / MEDIUM / HIGH / CRITICAL are presentation labels for the continuous risk score only. They are not treatment Priority, SLA, or remediation policy.",
+    "execution.classification === 'VENDOR_STYLE_BENCHMARK'",
+    "This vendor-style method is a pinned RBVM benchmark configuration. Its score and rating are not claimed to reproduce a vendor tenant’s configurable policy.",
+    "methodSemanticsCallout(execution)",
 ]
 for token in risk_required:
     if token not in RISK_UI:
@@ -141,4 +147,4 @@ if "method: 'POST'" not in RISK_UI:
 if 'csv-run-risk-method-ui.js' not in COMPILE or 'cat "$ROOT_DIR/src/main/resources/web/csv-run-risk-method-ui.js"' not in COMPILE:
     raise AssertionError("runtime frontend bundle does not include csv-run-risk-method-ui.js")
 
-print("CSV-first saved V4 immutable finding review + explicit risk-method selection checks: PASS")
+print("CSV-first saved V4 immutable finding review + explicit risk-method selection + rating semantics checks: PASS")
