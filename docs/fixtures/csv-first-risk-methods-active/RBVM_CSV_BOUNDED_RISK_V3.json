@@ -1,0 +1,30 @@
+{
+  "classification": "RBVM_LOCAL_POLICY",
+  "contractId": "CSV_FIRST_RISK_METHOD_DEFINITION_V1",
+  "implementation": "RBVM_BOUNDED_V3",
+  "inputs": {"cvssColumns": ["CVSS4_Base_Score_Calculated", "CVSS4_Base_Score"]},
+  "methodId": "RBVM_CSV_BOUNDED_RISK_V3",
+  "methodVersion": 3,
+  "missingPolicy": "NON_COMPUTABLE_NO_IMPUTATION",
+  "nativeScale": {"maximum": 10, "minimum": 0},
+  "policy": {
+    "assetCriticalityMap": {"HIGH": 7.5, "LOW": 2.5, "MISSION_CRITICAL": 10.0, "MODERATE": 5.0},
+    "assetAdjustmentAuthority": 0.4,
+    "assetAdjustmentPower": 2,
+    "epssBaselineProbability": 0.03,
+    "internetFacingModifier": 0.5,
+    "negativeThreatDiscountAuthority": 0.05,
+    "positiveThreatHeadroomAuthority": 0.4,
+    "threatPower": 3
+  },
+  "provider": "RBVM",
+  "ratingBands": [
+    {"minimum": 9.0, "rating": "CRITICAL"},
+    {"minimum": 7.0, "rating": "HIGH"},
+    {"minimum": 4.0, "rating": "MEDIUM"},
+    {"minimum": 0.0, "rating": "LOW"}
+  ],
+  "ratingSemantics": "PRESENTATION_ONLY_NOT_PRIORITY_SLA_OR_TREATMENT",
+  "requiredAttributes": ["CVSS_BASE", "EPSS_PROBABILITY", "KEV_STATE", "ASSET_CRITICALITY", "INTERNET_FACING"],
+  "semantics": "Calibrated CSV-first RBVM local policy: bounded customer Asset Criticality adjustment, asymmetric bounded EPSS/KEV threat adjustment, and explicit Internet Facing modifier. Missing evidence is never imputed."
+}
