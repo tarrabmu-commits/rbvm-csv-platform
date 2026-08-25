@@ -85,8 +85,9 @@ if 'NETWORK_REACHABILITY_CSV_V1' not in UI or 'MAV' not in UI:
 if 'not derived from Asset Criticality' not in UI:
     raise AssertionError('customer flow must state CR/IR/AR are not derived from criticality')
 
-# Source V4 retains historical/optional evidence fields for replay compatibility, but the
-# compiled product surface must request only the two customer attributes in current scope.
+# Source V4 retains historical/optional evidence fields and editor population controls for
+# replay compatibility, but the compiled product surface must request only the two customer
+# attributes in current scope and must keep the CSV-derived asset population fixed.
 if not RUNTIME.is_file():
     raise AssertionError('compiled frontend runtime is missing')
 runtime = RUNTIME.read_text(encoding='utf-8')
@@ -98,6 +99,7 @@ for token in [
     'before risk calculation.',
     'key.readOnly = true',
     'name.readOnly = true',
+    "el('div', {class: 'inline-actions'}, uploadButton, saveButton, downloadButton, enrichedButton, finishButton)",
     "metric('Organizational Risk', 'SELECT METHOD', 'Calculated separately from MVP Priority')",
     'organizational risk is available through the selectable risk methods in Finding Review',
 ]:
@@ -109,9 +111,11 @@ for retired_runtime_prompt in [
     "field('Confidentiality Requirement (CVSS CR)', cr)",
     "field('Integrity Requirement (CVSS IR)', ir)",
     "field('Availability Requirement (CVSS AR)', ar)",
+    "el('div', {class: 'inline-actions'}, uploadButton, addButton, saveButton",
+    "el('div', {class: 'inline-actions', style: 'margin-top:12px'}, remove)",
     'Organizational Risk remains NON_COMPUTABLE.',
 ]:
     if retired_runtime_prompt in runtime:
         raise AssertionError(f'compiled current-scope UI still exposes retired prompt/state: {retired_runtime_prompt}')
 
-print('CSV-first customer asset V4 persistence + current two-field risk input UI: PASS')
+print('CSV-first customer asset V4 persistence + fixed-population two-field risk input UI: PASS')
