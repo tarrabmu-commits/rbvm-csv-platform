@@ -173,6 +173,9 @@ public final class RbvmPlatformMain {
         System.out.println("CSV-first risk execution API: "
                 + application.baseUri().resolve(
                         "/api/v1/csv-first-risks/{runId}/{analysisId}/{methodId}"));
+        System.out.println("CSV-first risk benchmark API: "
+                + application.baseUri().resolve(
+                        "/api/v1/csv-first-risk-benchmarks/{runId}/{analysisId}"));
         System.out.println("Canonical MVP priority API: "
                 + application.baseUri().resolve("/api/v1/canonical-mvp-priorities/{importId}/{runId}/{analysisId}"));
         System.out.println("CSV-first source API: "
@@ -238,6 +241,10 @@ public final class RbvmPlatformMain {
         server.createContext(CsvFirstRiskHttpHandler.METHODS_ROOT, csvFirstRisk);
         server.createContext(CsvFirstRiskHttpHandler.READINESS_ROOT, csvFirstRisk);
         server.createContext(CsvFirstRiskHttpHandler.RISKS_ROOT, csvFirstRisk);
+        server.createContext(
+                CsvFirstRiskBenchmarkHttpHandler.ROOT,
+                new CsvFirstRiskBenchmarkHttpHandler(dataDirectory, authenticator)
+        );
         server.createContext(
                 "/api/v1/canonical-mvp-priorities/findings",
                 new CanonicalMvpPriorityReadHttpHandler(canonicalMvpPriority, authenticator)
