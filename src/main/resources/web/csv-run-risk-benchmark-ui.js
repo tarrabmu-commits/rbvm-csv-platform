@@ -5,6 +5,7 @@
   const HTTP_CONTRACT = 'CSV_FIRST_RISK_BENCHMARK_HTTP_V1';
   const REPORT_CONTRACT = 'CSV_FIRST_RISK_METHOD_BENCHMARK_V1';
   const ANALYSIS_CONTRACT = 'CSV_FIRST_CONTEXTUAL_ANALYSIS_HTTP_V1';
+  const EXECUTION_SEMANTICS = 'DESCRIPTIVE_COMPARISON_ONLY_NO_METHOD_SELECTION';
   const analysisByRun = new Map();
   const previousFetch = window.fetch.bind(window);
   let queued = false;
@@ -191,7 +192,7 @@
     status.textContent = 'Comparing all four pinned risk methods on the exact immutable analysis…';
     try {
       const execution = (await api(`/api/v1/csv-first-risk-benchmarks/${encodeURIComponent(runId)}/${encodeURIComponent(analysisId)}`, {method: 'POST'})).json || {};
-      if (execution.contractId !== HTTP_CONTRACT || execution.analysisId !== analysisId || !execution.benchmarkExecutionSha256 || !execution.benchmarkReport) {
+      if (execution.contractId !== HTTP_CONTRACT || execution.analysisId !== analysisId || execution.semantics !== EXECUTION_SEMANTICS || !execution.benchmarkExecutionSha256 || !execution.benchmarkReport) {
         throw new Error('Unexpected risk benchmark execution contract.');
       }
       const report = (await api(execution.benchmarkReport)).json || {};
