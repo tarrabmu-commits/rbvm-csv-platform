@@ -91,6 +91,12 @@ def main() -> None:
     )
     text = replace_once(
         text,
+        "saveButton.insertAdjacentElement('afterend', analyzeButton);",
+        "analyzeButton.hidden = true;",
+        "single-analysis-entry-point",
+    )
+    text = replace_once(
+        text,
         "const bodIncomplete = bundle.assets.filter(asset => asset.publiclyExposed === 'UNKNOWN').length;\n      const suffix = bodIncomplete ? ` ${bodIncomplete} asset${bodIncomplete === 1 ? '' : 's'} remain BOD-incomplete because Publicly Exposed is UNKNOWN.` : '';\n      setStatus(panel, `Saved ${bundle.assets.length} customer asset context record${bundle.assets.length === 1 ? '' : 's'} to the Local API.${suffix}`, 'success');",
         "setStatus(panel, `Saved ${bundle.assets.length} customer asset context record${bundle.assets.length === 1 ? '' : 's'} to the Local API. Current risk inputs are Asset Criticality and Internet Facing.`, 'success');",
         "local-save-message",
