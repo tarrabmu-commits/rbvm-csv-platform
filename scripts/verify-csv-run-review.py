@@ -112,7 +112,7 @@ risk_required = [
     "PAGE_SIZE = 50",
     "response.body.getReader()",
     "reader.cancel()",
-    "server-produced scores and explanations",
+    "Server-produced scores and explanations",
     "never chooses a default, averages methods, or calculates scores client-side",
     "data-csv-run-review",
 ]
